@@ -47,35 +47,31 @@ def _load_style_spec() -> str:
         return ""
 
 SYSTEM_PROMPT = (
-    "You are the LCARS Starship Voice Command Computer from Star Trek: The Next Generation. "
-    "Be direct, factual, and unemotional. "
-    "IMPORTANT RULES:\n"
-    "1. If the user asks a question that has a direct answer, GIVE THE ANSWER IMMEDIATELY. Do not prefix with 'Confirmed', 'Acknowledged', or any acknowledgment.\n"
-    "2. Only use '确认'/'Confirmed' when responding to yes/no questions or confirming an action request.\n"
-    "3. NEVER use filler phrases like 'Processing...', 'Working...', 'Computing...' in normal responses.\n"
-    "4. You MUST reply in the SAME LANGUAGE as the user's input. Chinese input = Chinese reply. English input = English reply.\n"
-    "5. Keep answers concise but complete - 1-3 sentences.\n"
-    "6. If the question is complex, set needs_escalation to true and provide ONLY a standard 'Working...' or '处理中...' acknowledgment in the reply field.\n"
-    "Must output ONLY a single line of JSON: {\"reply\": \"your response here\", \"intent\": \"answer|clarify|refuse\", \"needs_escalation\": false}"
+    "You are the LCARS Starship Voice Command Computer from Star Trek: TNG. "
+    "Act as a 'Triage Doctor' for incoming queries. "
+    "AVAILABLE MODELS FOR ESCALATION:\n"
+    "- 'gemini-2.0-flash': Standard for detailed factual/ST lore answers.\n"
+    "- 'gemini-2.0-flash-thinking-exp-01-21': For logic puzzles, complex math, or reasoning.\n"
+    "- 'gemini-1.5-pro': For deep analysis or extremely complex information retrieval.\n\n"
+    "DECISION LOGIC:\n"
+    "1. If the query is simple (time, status, simple fact), ANSWER DIRECTLY and set needs_escalation to false.\n"
+    "2. If it requires deep thinking, detailed calculation, or nuanced explanation, set needs_escalation to true, choose the best escalated_model, and set reply to 'Working...' or '处理中...'.\n\n"
+    "RULES:\n"
+    "- Be factual and unemotional.\n"
+    "- NO redundant 'Confirmed' prefixes for answers.\n"
+    "- Reply in the SAME LANGUAGE as the user.\n"
+    "Output JSON: {\"reply\": \"...\", \"intent\": \"answer|clarify|refuse\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}"
 )
 
-
 ESCALATION_PROMPT = (
-    "You are the LCARS Starship Voice Command Computer providing a detailed response to a complex query. "
-    "The user asked a question that required deeper analysis. Provide a thorough, accurate answer. "
-    "CRITICAL RULES:\n"
-    "1. Reply in the SAME LANGUAGE as the user's input.\n"
-    "2. DO NOT use start-of-message acknowledgments like 'Confirmed' or 'Working'. Just provide the data.\n"
-    "3. Format your response in Star Trek computer style - factual, precise, unemotional.\n"
+    "You are the LCARS Starship Voice Command Computer providing a specialized response. "
+    "Provide a thorough, accurate answer in the SAME LANGUAGE as the user. "
+    "Format: Factual, precise, unemotional Star Trek computer style. NO filler words. "
     "Output JSON: {\"reply\": \"your detailed response\"}"
 )
 
-# Complexity indicators that suggest need for deeper thinking
-COMPLEX_INDICATORS = [
-    "计算", "多久", "多远", "为什么", "解释", "分析", "比较", "推算",
-    "how long", "how far", "why", "explain", "analyze", "calculate",
-    "what if", "假设", "推测", "历史", "history", "详细", "预估"
-]
+# Default models if not specified by triage
+DEFAULT_THINKING_MODEL = "gemini-2.0-flash" 
 
 
 async def generate_computer_reply(trigger_text: str, context: List[str], meta: Optional[Dict] = None) -> Dict:
@@ -130,17 +126,25 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         result["model"] = fast_model
         result["is_chinese"] = is_chinese
         
-        # Check if escalation is needed
-        # We escalation if the model flag it OR if we hit keyword complex indicators on a long query
-        model_needs_escalation = result.get("needs_escalation", False)
-        keyword_needs_escalation = is_complex and len(trigger_text) > 15
+        # Triage Decision
+        needs_escalation = result.get("needs_escalation", False)
         
-        if model_needs_escalation or keyword_needs_escalation:
-            # Override reply for Stage 1 to ONLY be the "Working" message
+        if needs_escalation:
+            # The AI picked a model or we fall back
+            target_model = result.get("escalated_model") or DEFAULT_THINKING_MODEL
+            # Normalise model name just in case
+            if "thinking" in target_model.lower():
+                target_model = "gemini-2.0-flash-thinking-exp-01-21"
+            elif "pro" in target_model.lower():
+                target_model = "gemini-1.5-pro"
+            else:
+                target_model = "gemini-2.0-flash"
+                
+            result["escalated_model"] = target_model
+            result["original_query"] = trigger_text
+            # Ensure the reply is just the "Working" message for Stage 1
             working_msg = "处理中..." if is_chinese else "Working..."
             result["reply"] = working_msg
-            result["needs_escalation"] = True
-            result["original_query"] = trigger_text
         
         return result
 
@@ -149,13 +153,13 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         return _fallback(str(e))
 
 
-async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Optional[Dict] = None) -> Dict:
+async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Optional[str] = None, meta: Optional[Dict] = None) -> Dict:
     """
-    Generates a detailed reply using a more powerful model for complex questions.
+    Generates a detailed reply using the requested specialized model.
     """
     config = get_config()
     api_key = config.get("gemini_api_key", "")
-    thinking_model = config.get("gemini_thinking_model", "gemini-2.0-flash")
+    final_model = model_name or config.get("gemini_thinking_model", DEFAULT_THINKING_MODEL)
 
     if not api_key:
         return _fallback("rp_disabled (missing api key)")
@@ -168,16 +172,15 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
         prompt = (
             f"System: {ESCALATION_PROMPT}\n\n"
             f"Language: {lang_instruction}\n\n"
-            f"User Query: {trigger_text}\n\n"
-            f"Provide a detailed, accurate answer based on Star Trek canon and real-world science where applicable."
+            f"User Query: {trigger_text}"
         )
 
         response = client.models.generate_content(
-            model=thinking_model,
+            model=final_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=500,  # Allow longer responses for complex answers
-                temperature=0.2,
+                max_output_tokens=1000,  # Pro/Thinking can be more verbose
+                temperature=0.4,
                 response_mime_type="application/json"
             )
         )
@@ -185,9 +188,9 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
         if not response or not response.text:
             return _fallback("empty_response")
         
-        logger.warning(f"[DEBUG] Escalation raw response: {response.text}")
+        logger.warning(f"[DEBUG] Escalation raw response ({final_model}): {response.text}")
         result = _parse_response(response.text)
-        result["model"] = thinking_model
+        result["model"] = final_model
         result["is_escalated"] = True
         return result
 
@@ -264,7 +267,8 @@ def _parse_response(text: str) -> Dict:
             "intent": intent,
             "model": model,
             "reason": reason,
-            "needs_escalation": data.get("needs_escalation", False)
+            "needs_escalation": data.get("needs_escalation", False),
+            "escalated_model": data.get("escalated_model")
         }
     except json.JSONDecodeError as je:
         logger.warning(f"Failed to parse Gemini RP response (JSONDecodeError): {je}")

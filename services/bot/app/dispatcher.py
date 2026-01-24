@@ -105,7 +105,8 @@ def handle_event(event: InternalEvent):
                         event.group_id,
                         event.user_id,
                         session_key,
-                        event.message_id
+                        event.message_id,
+                        result.get("escalated_model")
                     )
                 
                 return True
@@ -120,7 +121,7 @@ def handle_event(event: InternalEvent):
     return False
 
 
-def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str, session_key: str, original_message_id: str):
+def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str, session_key: str, original_message_id: str, requested_model: str | None):
     """
     Background handler for escalated queries - calls stronger model and sends follow-up message.
     """
@@ -132,7 +133,7 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
     try:
         # Call the stronger model
         escalation_result = _run_async(
-            rp_engine_gemini.generate_escalated_reply(query, is_chinese)
+            rp_engine_gemini.generate_escalated_reply(query, is_chinese, requested_model)
         )
         
         logger.info(f"[Dispatcher] Escalation result: {escalation_result}")

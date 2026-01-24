@@ -25,19 +25,19 @@
         <!-- 主内容区 -->
         <main class="content">
             <header class="main-header">
-                <h1>STARSHIP COMPUTER - 核心配置</h1>
+                <h1>星舰计算中心 - 核心配置</h1>
                 <div class="st-line"></div>
             </header>
 
             <section class="config-panel">
                 <div class="field-group">
-                    <label>群聊白名单 (BOT_ENABLED_GROUPS)</label>
+                    <label>群聊解析与过滤 (BOT_ENABLED_GROUPS)</label>
                     <input type="text" id="enabled_groups" placeholder="例如：123456, 789012 或 *">
-                    <small>允许机器人响应的群号，用逗号分隔。使用 * 表示监听所有群。</small>
+                    <small>授权机器人响应的群号（英文逗号分隔）。输入 * 为不限群聊。</small>
                 </div>
 
                 <div class="field-group">
-                    <label>计算机回复前缀 (COMPUTER_PREFIX)</label>
+                    <label>计算机指令前缀 (COMPUTER_PREFIX)</label>
                     <input type="text" id="computer_prefix" placeholder="例如：Computer:">
                 </div>
 
@@ -59,48 +59,48 @@
                 </div>
 
                 <div class="st-line header-small"></div>
-                <h2>SUBSPACE COMMUNICATIONS (GEMINI AI)</h2>
+                <h2>子空间通讯协议 (GEMINI AI 引擎)</h2>
 
                 <div class="field-group">
-                    <label>GEMINI_API_KEY</label>
+                    <label>GEMINI API 密钥 (API_KEY)</label>
                     <input type="password" id="gemini_api_key" placeholder="在此输入你的 Gemini API Key">
-                    <small>建议使用多模型通用的 API KEY。</small>
+                    <small>用于角色扮演 (RP) 与意图判断的后端密钥。</small>
                 </div>
 
                 <div class="field-group">
-                    <label>GEMINI_RP_MODEL</label>
+                    <label>模型规格 (RP_MODEL)</label>
                     <input type="text" id="gemini_rp_model" placeholder="gemini-2.0-flash-lite">
                 </div>
 
                 <div class="st-line header-small"></div>
-                <h2>SECURITY PROTOCOLS (CONTENT MODERATION)</h2>
+                <h2>安全防护层 (内容审核插件)</h2>
 
                 <div class="field-grid">
                     <div class="field-group">
-                        <label>启用内容审核</label>
+                        <label>全局审核开关</label>
                         <select id="moderation_enabled">
-                            <option value="false">关闭 (仅限内测)</option>
-                            <option value="true">开启 (接入腾讯 TMS)</option>
+                            <option value="false">禁用 (开发调试模式)</option>
+                            <option value="true">启用 (接入腾讯云 TMS)</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="field-grid">
                     <div class="field-group">
-                        <label>TENCENT_SECRET_ID</label>
+                        <label>腾讯云 SECRET_ID</label>
                         <input type="password" id="tencent_secret_id">
                     </div>
                     <div class="field-group">
-                        <label>TENCENT_SECRET_KEY</label>
+                        <label>腾讯云 SECRET_KEY</label>
                         <input type="password" id="tencent_secret_key">
                     </div>
                 </div>
 
                 <div class="st-line header-small"></div>
-                <h2>SUBSPACE LINK (ENDPOINT CONFIG)</h2>
+                <h2>指令分发链路 (端点配置)</h2>
 
                 <div class="field-group">
-                    <label>QQ 发送端点 (QQ_SEND_ENDPOINT)</label>
+                    <label>QQ 消息发送 API (SEND_ENDPOINT)</label>
                     <input type="text" id="qq_send_endpoint" placeholder="http://ip:port/send_msg">
                 </div>
 

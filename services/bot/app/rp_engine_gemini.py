@@ -54,21 +54,37 @@ SYSTEM_PROMPT = (
     "Must output ONLY a single line of JSON: {\"reply\": \"your response here\", \"intent\": \"ack|answer|clarify|refuse\"}"
 )
 
+# Complexity indicators that suggest need for deeper thinking
+COMPLEX_INDICATORS = [
+    "计算", "多久", "多远", "为什么", "解释", "分析", "比较",
+    "how long", "how far", "why", "explain", "analyze", "calculate",
+    "what if", "假设", "推测", "历史", "history", "详细"
+]
 
 async def generate_computer_reply(trigger_text: str, context: List[str], meta: Optional[Dict] = None) -> Dict:
     """
     Generates a Starship Computer style reply using Gemini.
+    Supports two-tier response: quick ack + escalation for complex queries.
     """
     config = get_config()
     api_key = config.get("gemini_api_key", "")
-    model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+    fast_model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+    # Use a more capable model for complex questions
+    thinking_model = config.get("gemini_thinking_model", "gemini-2.0-flash")
 
     if not api_key:
         return _fallback("rp_disabled (missing api key)")
 
+    # Check if question seems complex
+    is_complex = any(indicator in trigger_text.lower() for indicator in COMPLEX_INDICATORS)
+    is_chinese = any('\u4e00' <= char <= '\u9fff' for char in trigger_text)
+    
     try:
         client = genai.Client(api_key=api_key)
         style_spec = _load_style_spec()
+        
+        # Use appropriate model based on complexity
+        model_to_use = thinking_model if is_complex else fast_model
         
         prompt = (
             f"System: {SYSTEM_PROMPT}\n\n"
@@ -78,13 +94,8 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             f"Trigger: {trigger_text}"
         )
 
-        # Note: google-genai SDK 0.3.0+ supports aio for async
-        # We'll use the synchronous client for now if aio isn't stable or wrap it.
-        # Actually, let's use the standard call if aio isn't available in this version.
-        # google-genai 0.3.0 has client.models.generate_content
-        
         response = client.models.generate_content(
-            model=model,
+            model=model_to_use,
             contents=prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=MAX_TOKENS,
@@ -95,12 +106,22 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         
         if not response or not response.text:
             return _fallback("empty_response")
-            
-        return _parse_response(response.text)
+        
+        result = _parse_response(response.text)
+        result["model"] = model_to_use
+        result["was_complex"] = is_complex
+        
+        # If complex, prepend "Working..." acknowledgment
+        if is_complex and result.get("ok"):
+            working_prefix = "处理中... " if is_chinese else "Working... "
+            result["reply"] = working_prefix + result.get("reply", "")
+        
+        return result
 
     except Exception as e:
         logger.error(f"Gemini RP generation failed: {e}")
         return _fallback(str(e))
+
 
 def _parse_response(text: str) -> Dict:
     text = text.strip()

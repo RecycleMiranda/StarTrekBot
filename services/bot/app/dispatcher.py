@@ -91,7 +91,8 @@ def handle_event(event: InternalEvent):
             # Fetch full ALAS User Profile
             sender = event.raw.get("sender", {})
             nickname = sender.get("card") or sender.get("nickname")
-            user_profile = permissions.get_user_profile(event.user_id, nickname)
+            title = sender.get("title") # QQ Group Title
+            user_profile = permissions.get_user_profile(event.user_id, nickname, title)
             profile_str = permissions.format_profile_for_ai(user_profile)
 
             # Generate AI reply in a separate thread to avoid event loop conflict

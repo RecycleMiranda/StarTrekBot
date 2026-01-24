@@ -17,16 +17,30 @@ DEPARTMENTS = {
     "SECTION_31": "Section 31 (Classified)"
 }
 
-# LCARS Ranks (Ordered by authority)
-RANKS = [
+# LCARS Ranks Map (Keywords -> Standard Canon Rank)
+RANK_MAP = {
+    "admiral": "Admiral", "上将": "Admiral", "将军": "Admiral",
+    "captain": "Captain", "舰长": "Captain", "上校": "Captain",
+    "commander": "Commander", "副舰长": "Commander", "中校": "Commander",
+    "lt. commander": "Lt. Commander", "少校": "Lt. Commander",
+    "lt. cmdr": "Lt. Commander",
+    "lieutenant": "Lieutenant", "上尉": "Lieutenant",
+    "lieutenant j.g.": "Lieutenant J.G.", "中尉": "Lieutenant J.G.",
+    "ensign": "Ensign", "少尉": "Ensign",
+    "crewman": "Crewman", "船员": "Crewman", "水兵": "Crewman",
+    "civilian": "Civilian", "平民": "Civilian"
+}
+
+# Ordered list for hierarchy resolution
+RANKS_HIERARCHY = [
     "Admiral", "Captain", "Commander", "Lt. Commander", 
     "Lieutenant", "Lieutenant J.G.", "Ensign", "Crewman", "Civilian"
 ]
 
-# User to Profile mapping (user_id -> UserProfile)
+# User to Profile mapping (Manual overrides)
 USER_PROFILES: Dict[str, UserProfile] = {
     "2819163610": {
-        "name": "AAAAA你米兰达🌈", # Taken from user's QQ nickname in logs
+        "name": "AAAAA你米兰达🌈",
         "rank": "Admiral",
         "department": "SECTION_31",
         "clearance": 4
@@ -40,13 +54,41 @@ DEFAULT_PROFILE: UserProfile = {
     "clearance": 1
 }
 
-def get_user_profile(user_id: str, nickname: Optional[str] = None) -> UserProfile:
-    """Returns the full LCARS profile for a user."""
+def resolve_rank_from_title(title_text: str) -> str:
+    """Attempts to match a title string to a Star Trek rank."""
+    if not title_text:
+        return "Ensign"
+        
+    title_lower = title_text.lower()
+    # Check for keywords in the title
+    for kw, standard_rank in RANK_MAP.items():
+        if kw in title_lower:
+            return standard_rank
+            
+    return "Ensign" # Default if no match found
+
+def get_user_profile(user_id: str, nickname: Optional[str] = None, title: Optional[str] = None) -> UserProfile:
+    """Returns the full LCARS profile for a user, syncing rank from title if available."""
     profile = USER_PROFILES.get(str(user_id))
+    
     if not profile:
-        profile = DEFAULT_PROFILE.copy()
-        if nickname:
-            profile["name"] = nickname
+        # Dynamic profile based on title
+        rank = resolve_rank_from_title(title)
+        
+        # Simple clearance logic based on rank
+        clearance = 1
+        if rank in ["Admiral", "Captain"]:
+            clearance = 3
+        elif rank in ["Commander", "Lt. Commander"]:
+            clearance = 2
+            
+        profile = {
+            "name": nickname or "Unknown",
+            "rank": rank,
+            "department": "OPERATIONS", # Default department
+            "clearance": clearance
+        }
+    
     return profile
 
 def format_profile_for_ai(profile: UserProfile) -> str:

@@ -7,6 +7,7 @@
 - 2026-01-25: add webhook token auth
 - 2026-01-25: health supports HEAD
 - 2026-01-25: support OneBot v11 reverse websocket
+- 2026-01-25: bilingual README (CN/EN)
 
 ## Milestones
 - M0: local skeleton + docker

@@ -1,11 +1,25 @@
 import os
 import logging
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from .models import InternalEvent
 from .config_manager import ConfigManager
 from . import router, send_queue, rp_engine_gemini
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for running async code from sync context
+_executor = ThreadPoolExecutor(max_workers=4)
+
+def _run_async(coro):
+    """Run async coroutine in a new event loop in a separate thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 def is_group_enabled(group_id: str | None) -> bool:
     """
@@ -48,19 +62,16 @@ def handle_event(event: InternalEvent):
         
         # Check if we should respond (computer mode or high confidence)
         if route_result.get("route") == "computer" or route_result.get("confidence", 0) >= 0.7:
-            # Generate AI reply asynchronously
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(
-                    rp_engine_gemini.generate_computer_reply(
-                        trigger_text=event.text,
-                        context=[],  # Could add conversation history later
-                        meta={"session_id": session_id, "user_id": event.user_id}
-                    )
+            # Generate AI reply in a separate thread to avoid event loop conflict
+            future = _executor.submit(
+                _run_async,
+                rp_engine_gemini.generate_computer_reply(
+                    trigger_text=event.text,
+                    context=[],
+                    meta={"session_id": session_id, "user_id": event.user_id}
                 )
-            finally:
-                loop.close()
+            )
+            result = future.result(timeout=15)  # 15 second timeout
             
             logger.info(f"[Dispatcher] AI result: {result}")
             
@@ -84,4 +95,3 @@ def handle_event(event: InternalEvent):
         logger.error(f"[Dispatcher] Error processing message: {e}", exc_info=True)
     
     return False
-

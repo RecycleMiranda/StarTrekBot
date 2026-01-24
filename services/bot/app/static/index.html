@@ -1,67 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Starship Admin - LCARS Control</title>
+    <title>星舰控制中心 - LCARS 管理后台</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
     <div class="lcars-container">
-        <!-- Sidebar / Header Hook -->
+        <!-- 侧边栏 -->
         <div class="sidebar">
             <div class="elbow-top-left"></div>
             <div class="menu-items">
-                <div class="menu-btn active">SETTINGS</div>
-                <div class="menu-btn">LOGS</div>
-                <div class="menu-btn">STATUS</div>
+                <div class="menu-btn active">指挥部设置</div>
+                <div class="menu-btn" onclick="alert('即将上线：查看实时日志')">子空间记录</div>
+                <div class="menu-btn" onclick="alert('即将上线：传感器状态')">全舰状态</div>
             </div>
             <div class="elbow-bottom-left"></div>
         </div>
 
-        <!-- Main Content -->
+        <!-- 主内容区 -->
         <main class="content">
             <header class="main-header">
-                <h1>STARSHIP COMPUTER CONFIGURATION</h1>
+                <h1>STARSHIP COMPUTER - 核心配置</h1>
                 <div class="st-line"></div>
             </header>
 
             <section class="config-panel">
                 <div class="field-group">
-                    <label>BOT_ENABLED_GROUPS</label>
-                    <input type="text" id="enabled_groups" placeholder="e.g. 123456,789012 or *">
-                    <small>Comma-separated group IDs to allow. Use * for all.</small>
+                    <label>群聊白名单 (BOT_ENABLED_GROUPS)</label>
+                    <input type="text" id="enabled_groups" placeholder="例如：123456, 789012 或 *">
+                    <small>允许机器人响应的群号，用逗号分隔。使用 * 表示监听所有群。</small>
                 </div>
 
                 <div class="field-group">
-                    <label>COMPUTER_PREFIX</label>
-                    <input type="text" id="computer_prefix" placeholder="e.g. Computer:">
+                    <label>计算机回复前缀 (COMPUTER_PREFIX)</label>
+                    <input type="text" id="computer_prefix" placeholder="例如：Computer:">
                 </div>
 
                 <div class="field-grid">
                     <div class="field-group">
-                        <label>SENDER_TYPE</label>
+                        <label>发送者模式 (SENDER_TYPE)</label>
                         <select id="sender_type">
-                            <option value="mock">MOCK (LOG ONLY)</option>
-                            <option value="qq">QQ (HTTP ADAPTER)</option>
+                            <option value="mock">MOCK (仅记录日志，测试用)</option>
+                            <option value="qq">QQ (调用真实 API 发送)</option>
                         </select>
                     </div>
                     <div class="field-group">
-                        <label>STYLE_STRICT</label>
+                        <label>RP 风格强制简洁 (STYLE_STRICT)</label>
                         <select id="rp_style_strict">
-                            <option value="true">ENABLED</option>
-                            <option value="false">DISABLED</option>
+                            <option value="true">开启 (严格限制字数)</option>
+                            <option value="false">关闭 (允许更长的回复)</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="field-group">
-                    <label>QQ_SEND_ENDPOINT</label>
-                    <input type="text" id="qq_send_endpoint" placeholder="http://...">
+                    <label>QQ 发送端点 (QQ_SEND_ENDPOINT)</label>
+                    <input type="text" id="qq_send_endpoint" placeholder="http://ip:port/send_msg">
                 </div>
 
                 <footer class="controls">
-                    <button class="st-btn save" id="save-btn">SAVE CONFIG</button>
+                    <button class="st-btn save" id="save-btn">同步至主控中心</button>
                     <span id="status-msg"></span>
                 </footer>
             </section>
@@ -69,4 +71,5 @@
     </div>
     <script src="/static/app.js"></script>
 </body>
+
 </html>

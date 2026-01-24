@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const statusMsg = document.getElementById('status-msg');
     const saveBtn = document.getElementById('save-btn');
-    
-    // Get token from URL
+
+    // 从 URL 获取 Token
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token') || '';
 
@@ -17,11 +17,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('sender_type').value = data.sender_type || 'mock';
                 document.getElementById('rp_style_strict').value = String(data.rp_style_strict);
                 document.getElementById('qq_send_endpoint').value = data.qq_send_endpoint || '';
+                showStatus('主控系统连接成功', 'success');
+            } else if (json.code === 401) {
+                showStatus('身份认证失败，请检查 URL 中的 Token', 'error');
             } else {
-                showStatus('Unauthorized or Error loading settings', 'error');
+                showStatus('配置加载失败：' + json.message, 'error');
             }
         } catch (e) {
-            showStatus('Network error loading settings', 'error');
+            showStatus('网络异常：无法连接至主控中心', 'error');
         }
     }
 
@@ -36,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             saveBtn.disabled = true;
-            showStatus('Processing...', '');
+            showStatus('正在同步配置...', '');
             const resp = await fetch(`/api/settings?token=${token}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -44,12 +47,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             const json = await resp.json();
             if (json.code === 0) {
-                showStatus('CONFIGURATION PERSISTED SUCCESSFULY', 'success');
+                showStatus('✅ 配置已成功存入持久化存储', 'success');
             } else {
-                showStatus('Save failed: ' + json.message, 'error');
+                showStatus('❌ 存储失败：' + json.message, 'error');
             }
         } catch (e) {
-            showStatus('Network error saving settings', 'error');
+            showStatus('❌ 网络异常：配置未能同步', 'error');
         } finally {
             saveBtn.disabled = false;
         }
@@ -58,8 +61,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function showStatus(msg, type) {
         statusMsg.textContent = msg;
         statusMsg.className = type;
-        if (type) {
-            setTimeout(() => { statusMsg.textContent = ''; }, 5000);
+        if (type === 'success' || type === 'error') {
+            setTimeout(() => {
+                if (statusMsg.textContent === msg) statusMsg.textContent = '';
+            }, 5000);
         }
     }
 

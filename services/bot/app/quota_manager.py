@@ -7,7 +7,12 @@ class QuotaManager:
     _instance = None
     
     def __init__(self):
-        self.db_path = os.path.join(os.path.dirname(__file__), "../../../data/quotas.json")
+        # Path for Docker persistence (mounted to /app/data)
+        self.db_path = "/app/data/quotas.json"
+        # Fallback for local development
+        if not os.path.exists("/app/data") and not os.access("/app", os.W_OK):
+            self.db_path = os.path.join(os.path.dirname(__file__), "../data/quotas.json")
+            
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.data = self._load_data()
 

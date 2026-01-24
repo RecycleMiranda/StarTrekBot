@@ -7,11 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 from .models import InternalEvent
 from .config_manager import ConfigManager
 from . import router
-import send_queue
-import rp_engine_gemini
-import permissions
-import report_builder
-import visual_core
+from . import send_queue
+from . import rp_engine_gemini
+from . import permissions
+from . import report_builder
+from . import visual_core
 
 logger = logging.getLogger(__name__)
 

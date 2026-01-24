@@ -35,11 +35,10 @@ class QQSender(Sender):
             "message": text
         }
 
-        # Try multiple possible paths
+        # Try paths - /send_group_msg works for NapCat
         paths = [
-            "/api/send_group_msg",
-            "/send_group_msg", 
-            "/v1/send_group_msg"
+            "/send_group_msg",
+            "/api/send_group_msg"
         ]
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, TypedDict
+from typing import Dict, Optional, TypedDict, Tuple
 
 class UserProfile(TypedDict):
     name: str

@@ -90,10 +90,8 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
     # Detect language
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in trigger_text)
     
-    # Check if question seems complex based on keywords
-    is_complex = any(indicator in trigger_text.lower() for indicator in COMPLEX_INDICATORS)
-    
     try:
+
         client = genai.Client(api_key=api_key)
         style_spec = _load_style_spec()
         

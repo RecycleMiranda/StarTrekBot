@@ -70,7 +70,7 @@ CORE_STATIONS = {
 }
 
 # LCARS Ranks Map (Keywords -> Standard Canon Rank)
-# Star Trek uses Navy-style ranks.
+# Starfleet uses a specific rank structure.
 RANK_MAP = {
     # Admirals
     "fleet admiral": "Fleet Admiral", "舰队上将": "Fleet Admiral", "舰队上将": "Fleet Admiral",

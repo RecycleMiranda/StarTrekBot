@@ -4,7 +4,7 @@ import json
 import logging
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router
+from . import dispatcher, router, judge_gemini
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -97,29 +97,119 @@ async def onebot_v11_ws(websocket: WebSocket):
 async def post_route(request: Request):
     """
     Determine if the message should go to computer/RP or chat.
+    Includes Gemini Judge for secondary verification.
     """
     body = await request.json()
     session_id = body.get("session_id", "default")
     text = body.get("text", "")
-    meta = body.get("meta")
+    meta = body.get("meta") or {}
 
-    result = router.route_event(session_id, text, meta)
+    # 1. First pass: Rule-based router
+    r_res = router.route_event(session_id, text, meta)
+    
+    final_route = r_res["route"]
+    final_confidence = r_res["confidence"]
+    final_reason = r_res["reason"]
+    
+    judge_called = False
+    j_res = None
+    judge_error = None
+
+    # 2. Strategy: When to call Gemini Judge
+    # - Skip if manual command or high-confidence wake word
+    # - Call only if router says 'computer' but confidence is not 'very high' (< 0.92)
+    needs_judge = (
+        r_res["reason"] not in ["manual_enter", "manual_exit"] and
+        not (r_res["reason"] == "wake_word" and r_res["confidence"] >= 0.95) and
+        r_res["route"] == "computer" and r_res["confidence"] < 0.92
+    )
+
+    if needs_judge:
+        judge_called = True
+        context = router.get_session_context(session_id)
+        # Context should not include the current trigger for the LLM
+        # get_session_context returns history including current text (because router.py adds it first)
+        # So we take history[:-1] if matches
+        if context and context[-1]["text"] == text:
+            context = context[:-1]
+            
+        try:
+            j_res = await judge_gemini.judge_intent(
+                trigger={"text": text, "ts": int(time.time())},
+                context=context,
+                meta={**meta, "session_id": session_id}
+            )
+            final_route = j_res["route"]
+            final_confidence = j_res["confidence"]
+            final_reason = f"judge_{j_res['reason']}"
+        except Exception as e:
+            logger.error(f"Judge failed: {e}")
+            judge_error = str(e)
+            # A-Strategy Fallback: chat
+            final_route = "chat"
+            final_confidence = 0.5
+            final_reason = "judge_fallback_chat" if "TIMEOUT" in judge_error.upper() else "judge_error_fallback_chat"
 
     # Log to router_log.jsonl
     log_data = {
         "ts": int(time.time()),
         "session_id": session_id,
         "text": text,
-        "pred_route": result["route"],
-        "confidence": result["confidence"],
-        "reason": result["reason"],
-        "mode_active": result["mode"]["active"],
-        "expires_at": result["mode"]["expires_at"],
-        "meta": meta
+        "pred_route": r_res["route"],
+        "confidence": r_res["confidence"],
+        "reason": r_res["reason"],
+        "mode_active": r_res["mode"]["active"],
+        "expires_at": r_res["mode"]["expires_at"],
+        "meta": meta,
+        "judge_called": judge_called,
+        "judge_route": j_res["route"] if j_res else None,
+        "judge_confidence": j_res["confidence"] if j_res else None,
+        "judge_reason": j_res["reason"] if j_res else None,
+        "judge_error": judge_error,
+        "final_route": final_route,
+        "final_confidence": final_confidence,
+        "final_reason": final_reason
     }
     log_jsonl("router_log.jsonl", log_data)
 
-    return {"code": 0, "message": "ok", "data": result}
+    return {
+        "code": 0,
+        "message": "ok",
+        "data": {
+            "router": r_res,
+            "judge": j_res,
+            "final": {
+                "route": final_route,
+                "confidence": final_confidence,
+                "reason": final_reason
+            }
+        }
+    }
+
+@app.post("/judge")
+async def post_judge(request: Request):
+    """
+    Direct endpoint to test Gemini Judge.
+    """
+    body = await request.json()
+    text = body.get("text", "")
+    context_texts = body.get("context", [])
+    meta = body.get("meta") or {}
+
+    context = [{"text": t} for t in context_texts]
+    
+    try:
+        res = await judge_gemini.judge_intent(
+            trigger={"text": text, "ts": int(time.time())},
+            context=context,
+            meta=meta
+        )
+        return {"code": 0, "message": "ok", "data": res}
+    except ValueError as e:
+        return {"code": 400, "message": str(e), "data": None}
+    except Exception as e:
+        logger.error(f"Internal Judge error: {e}")
+        return {"code": 500, "message": "internal_judge_error", "data": None}
 
 @app.post("/route/feedback")
 async def post_route_feedback(request: Request):

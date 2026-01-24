@@ -20,6 +20,16 @@
   - **IP**: `104.194.88.246`
   - **域名**: `https://startrekbot.miranda5799.top`
 
+### 配置 Gemini Judge / Gemini Judge Config
+为了提高分发准度，请在 VPS 的 `infra/docker-compose.override.yml` 中添加 API Key：
+```yaml
+services:
+  bot:
+    environment:
+      - GEMINI_API_KEY=你的API_KEY
+      - GEMINI_MODEL=gemini-2.0-flash-lite
+```
+
 ### 测试 Webhook
 **测试 QQ 官方 Webhook (生产环境)**
 > 注意：如果设置了 `WEBHOOK_TOKEN` 环境变量，请添加 `-H "X-Webhook-Token: <your_token>"`
@@ -28,6 +38,35 @@ curl -X POST https://startrekbot.miranda5799.top/qq/webhook \
      -H "Content-Type: application/json" \
      -H "X-Webhook-Token: your_token_here" \
      -d '{"type": "message", "author_id": "user123", "content": "hello bot"}'
+```
+
+### 筛选器测试 / Router Test
+**测试消息分发 (Router)**
+- 计算机命令示例 / Computer Command:
+```bash
+curl -X POST https://startrekbot.miranda5799.top/route \
+     -H "Content-Type: application/json" \
+     -d '{"session_id": "user1", "text": "报告传感器状态"}'
+```
+- 闲聊示例 / Smalltalk:
+```bash
+curl -X POST https://startrekbot.miranda5799.top/route \
+     -H "Content-Type: application/json" \
+     -d '{"session_id": "user1", "text": "你是谁"}'
+```
+
+**反馈纠错 (Feedback)**
+```bash
+curl -X POST https://startrekbot.miranda5799.top/route/feedback \
+     -H "Content-Type: application/json" \
+     -d '{"session_id": "user1", "text": "报告传感器状态", "pred_route": "chat", "correct_route": "computer", "note": "误判为闲聊"}'
+```
+
+**测试 Gemini Judge 单测 (Judge Test)**
+```bash
+curl -X POST https://startrekbot.miranda5799.top/judge \
+     -H "Content-Type: application/json" \
+     -d '{"text": "Computer, scan for life forms", "context": ["We are entering the system"]}'
 ```
 
 ### 个人号接入 (OneBot v11)

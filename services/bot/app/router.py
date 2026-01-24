@@ -25,6 +25,16 @@ COMMAND_VERBS = ["报告", "查询", "设定", "锁定", "扫描", "显示", "�
 # Smalltalk signals
 SMALLTALK_SIGNALS = ["哈哈", "😂", "lol", "随便聊", "讲个笑话", "你觉得", "你怎么看", "开个玩笑", "吃什么"]
 
+def get_session_context(session_id: str) -> List[Dict]:
+    """
+    Returns the last text entries for a session as a context list.
+    """
+    state = _session_states.get(session_id)
+    if not state:
+        return []
+    # Return context as list of dicts for judge
+    return [{"text": t} for t in state["last_texts"]]
+
 def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict:
     now = int(time.time())
     state = _session_states.get(session_id, {

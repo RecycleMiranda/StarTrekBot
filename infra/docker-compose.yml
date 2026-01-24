@@ -3,7 +3,7 @@ services:
     build:
       context: ../services/bot
     env_file:
-      - ../services/bot/.env.example
+      - ../services/bot/.env
     environment:
       - NAPCAT_HOST=napcat
     volumes:

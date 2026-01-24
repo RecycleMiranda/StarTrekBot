@@ -79,14 +79,22 @@ def handle_event(event: InternalEvent):
                 reply_text = result["reply"]
                 logger.info(f"[Dispatcher] Sending reply: {reply_text[:100]}...")
                 
-                # Enqueue the response
+                # Enqueue the response (need to run async enqueue_send)
                 sq = send_queue.SendQueue.get_instance()
-                sq.enqueue({
-                    "group_id": event.group_id,
-                    "user_id": event.user_id,
-                    "message": reply_text
-                })
+                session_key = f"qq:{event.group_id or event.user_id}"
+                
+                # Run async enqueue_send in thread
+                enqueue_future = _executor.submit(
+                    _run_async,
+                    sq.enqueue_send(session_key, reply_text, {
+                        "group_id": event.group_id,
+                        "user_id": event.user_id
+                    })
+                )
+                enqueue_result = enqueue_future.result(timeout=5)
+                logger.info(f"[Dispatcher] Enqueued: {enqueue_result}")
                 return True
+
             else:
                 logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
         else:

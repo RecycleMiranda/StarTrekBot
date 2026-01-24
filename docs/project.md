@@ -16,6 +16,7 @@
 - 2026-01-25: add send queue with global rate limit + session cooldown + output moderation + mock sender
 - 2026-01-25: make sender pluggable and add qq sender adapter (http endpoint)
 - 2026-01-25: add gemini rp engine + /ingest pipeline to enqueue replies
+- 2026-01-25: add computer style spec and integrate into gemini rp prompt
 
 ## Milestones
 - M0: local skeleton + docker

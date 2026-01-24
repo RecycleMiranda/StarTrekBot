@@ -43,7 +43,12 @@ services:
     environment:
       - GEMINI_API_KEY=你的API_KEY
       - GEMINI_RP_MODEL=gemini-2.0-flash-lite
+      - COMPUTER_PREFIX=Computer:  # 默认前缀
+      - RP_STYLE_STRICT=true       # 强制短回复
 ```
+
+> [!NOTE]
+> 角色风格由 [computer_style.md](file:///Users/wanghaozhe/Documents/GitHub/StarTrekBot/docs/computer_style.md) 定义。
 
 ### 配置安全审核 / Moderation Config
 在 VPS 的 `infra/docker-compose.override.yml` 中添加腾讯云 TMS 密钥：

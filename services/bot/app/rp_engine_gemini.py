@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from typing import Optional, List, Dict
 from google import genai
 from google.genai import types
@@ -15,11 +16,41 @@ TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
 
 logger = logging.getLogger(__name__)
 
+# Suffixing/Trimming Config
+COMPUTER_PREFIX = os.getenv("COMPUTER_PREFIX", "Computer:")
+STYLE_STRICT = os.getenv("RP_STYLE_STRICT", "true").lower() == "true"
+
+_STYLE_CACHE: Dict[str, str] = {}
+
+def _load_style_spec() -> str:
+    """Loads Rules and Examples from docs/computer_style.md."""
+    if "spec" in _STYLE_CACHE:
+        return _STYLE_CACHE["spec"]
+    
+    spec_path = os.path.join(os.path.dirname(__file__), "../../../docs/computer_style.md")
+    if not os.path.exists(spec_path):
+        return ""
+        
+    try:
+        with open(spec_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # Extract Rules and Examples sections
+            rules = re.search(r"## Rules\n(.*?)(?=\n##|$)", content, re.S)
+            examples = re.search(r"## Examples\n(.*?)(?=\n##|$)", content, re.S)
+            
+            rules_text = rules.group(1).strip() if rules else ""
+            examples_text = examples.group(1).strip() if examples else ""
+            
+            spec = f"PERSONA RULES:\n{rules_text}\n\nFEW-SHOT EXAMPLES:\n{examples_text}"
+            _STYLE_CACHE["spec"] = spec
+            return spec
+    except Exception as e:
+        logger.warning(f"Failed to load style spec: {e}")
+        return ""
+
 SYSTEM_PROMPT = (
-    "You are the Starship Voice Command Computer from Star Trek."
-    "Respond in a concise, technical, and efficient manner."
-    "Keep replies to 1-2 sentences. If clarifying, ask only one question."
-    "No long explanations. No lists over 3 items."
+    "You are the Starship Voice Command Computer from Star Trek. "
+    "Follow the PERSONA RULES and mimic the FEW-SHOT EXAMPLES structure. "
     "Must output ONLY a single line of JSON: {\"reply\": \"...\", \"intent\": \"ack|answer|clarify|refuse\"}."
 )
 
@@ -32,9 +63,11 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
 
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
+        style_spec = _load_style_spec()
         
         prompt = (
             f"System: {SYSTEM_PROMPT}\n\n"
+            f"{style_spec}\n\n"
             f"Context: {json.dumps(context, ensure_ascii=False)}\n"
             f"Meta: {json.dumps(meta or {}, ensure_ascii=False)}\n"
             f"Trigger: {trigger_text}"
@@ -75,12 +108,38 @@ def _parse_response(text: str) -> Dict:
     
     try:
         data = json.loads(text)
+        reply = data.get("reply", "Computer: Unable to comply.")
+        intent = data.get("intent", "ack")
+        reason = "success"
+
+        # Post-Processing
+        if STYLE_STRICT:
+            # 1. Enforce Prefix
+            if COMPUTER_PREFIX and not reply.startswith(COMPUTER_PREFIX):
+                reply = f"{COMPUTER_PREFIX} {reply}"
+            
+            # 2. Enforce Brevity (Simple sentence counting and length)
+            sentences = re.split(r'([.。!！?？])', reply)
+            # Filter empty strings and combine delimiters with previous parts
+            merged = []
+            for i in range(0, len(sentences)-1, 2):
+                merged.append(sentences[i] + sentences[i+1])
+            if len(sentences) % 2 != 0 and sentences[-1]:
+                merged.append(sentences[-1])
+            
+            if len(merged) > 3 or len(reply) > 320:
+                # Trim to 3 sentences
+                reply = "".join(merged[:3])
+                if not reply.endswith((".", "!", "?", "。", "！", "？")):
+                    reply += "."
+                reason = "trimmed"
+
         return {
             "ok": True,
-            "reply": data.get("reply", "Computer: Unable to comply."),
-            "intent": data.get("intent", "ack"),
+            "reply": reply,
+            "intent": intent,
             "model": DEFAULT_MODEL,
-            "reason": "success"
+            "reason": reason
         }
     except json.JSONDecodeError:
         logger.warning(f"Failed to parse Gemini RP response: {text}")
@@ -100,5 +159,7 @@ def get_status() -> Dict:
         "configured": bool(GEMINI_API_KEY),
         "model": DEFAULT_MODEL,
         "timeout": TIMEOUT,
-        "max_output_tokens": MAX_TOKENS
+        "max_output_tokens": MAX_TOKENS,
+        "prefix": COMPUTER_PREFIX,
+        "strict": STYLE_STRICT
     }

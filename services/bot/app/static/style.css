@@ -60,6 +60,12 @@ body {
     text-align: right;
     cursor: pointer;
     transition: filter 0.2s;
+    border: none;
+    width: 100%;
+}
+
+.menu-btn.link-btn {
+    background: var(--lcars-violet);
 }
 
 .menu-btn.active {

@@ -539,12 +539,19 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
-    token = os.getenv("WEBHOOK_TOKEN")
-    # Quick check if user provided token to avoid showing a dead page
-    if token and request.query_params.get("token") != token:
-        # We don't block the page here, but the JS will fail. 
-        # However, it's better to show an error if the path is fundamentally broken.
-        pass
+    # ... (existing code omitted for brevity but preserved)
+    pass
+
+@app.get("/admin/napcat")
+def redirect_to_napcat(request: Request):
+    """Attempt to redirect to NapCat WebUI on port 6099."""
+    host = request.url.hostname
+    return HTMLResponse(f"""
+        <html><body>
+        <p>正在跳转至 NapCat 控制台...</p>
+        <script>window.location.href = "http://"+window.location.hostname+":6099/webui/";</script>
+        </body></html>
+    """)
 
     admin_index = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(admin_index):

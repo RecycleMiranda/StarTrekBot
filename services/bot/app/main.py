@@ -37,6 +37,12 @@ async def startup_event():
     """
     Initialize config, sender and start the background worker.
     """
+    token = (os.getenv("WEBHOOK_TOKEN") or "").strip().strip('"').strip("'")
+    if token:
+        logger.info(f"[Auth] Admin Token configured. Hint: {token[:3]}...{token[-1] if len(token)>1 else ''}")
+    else:
+        logger.warning("[Auth] NO WEBHOOK_TOKEN SET. Admin UI will be public!")
+
     config = ConfigManager.get_instance()
     sender_type = config.get("sender_type", "mock").lower()
     
@@ -635,20 +641,28 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
-    expected_token = os.getenv("WEBHOOK_TOKEN")
-    provided_token = request.query_params.get("token")
+    # Robust token stripping (quotes, spaces, terminal artifacts like :1)
+    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip().strip('"').strip("'")
+    provided_token = (request.query_params.get("token") or "").strip()
     
+    # Handle common terminal copy-paste artifacts (e.g., JH3...BF:1)
+    if ":" in provided_token and len(provided_token) > len(expected_token):
+        provided_token = provided_token.split(":")[0]
+
     # If a token is set in env, it MUST be provided and match
-    if expected_token and (not provided_token or provided_token.strip() != expected_token.strip()):
-        expected_token = expected_token.strip()
+    if expected_token and (not provided_token or provided_token != expected_token):
         hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
-        logger.warning(f"Unauthorized Admin UI access. Hint: {hint}")
+        logger.warning(f"Unauthorized Admin UI access. Provided: '{provided_token}', Expected: '{hint}'")
         return HTMLResponse(f"""
-            <div style="background:#05080c; color:#c54242; padding:50px; font-family:sans-serif; height:100vh;">
-                <h1>401 Unauthorized - Access Denied</h1>
-                <p>子空间安全协议拒绝了你的访问请求。</p>
-                <p style="color:#75a2d1">检测到预期 Token 格式为：<code>{hint}</code></p>
-                <p style="color:#75a2d1">请检查 URL 中的 token 参数。若忘记，请在服务器执行 <code>docker exec infra-bot-1 env | grep WEBHOOK_TOKEN</code> 查看。</p>
+            <div style="background:#05080c; color:#c54242; padding:50px; font-family:sans-serif; height:100vh; text-align:center;">
+                <h1 style="font-size:3rem; letter-spacing:5px;">ACCESS DENIED</h1>
+                <p style="font-size:1.5rem;">[ 401 - Unauthorized ]</p>
+                <div style="border:1px solid #c54242; padding:20px; display:inline-block; margin-top:20px; text-align:left;">
+                    <p style="color:#75a2d1">子空间安全协议：Token 验证失败。</p>
+                    <p style="color:#75a2d1">预期格式：<code style="background:#1b264f; padding:2px 5px;">{hint}</code></p>
+                    <p style="color:#eee">请确保你的浏览器 URL 结尾是：<br><code>/admin?token=你在服务器查到的完整Token</code></p>
+                    <p style="color:#666; font-size:0.8rem; margin-top:20px;">提示：请检查是否误复制了末尾的 ":1" 或空格。</p>
+                </div>
             </div>
         """, status_code=401)
 

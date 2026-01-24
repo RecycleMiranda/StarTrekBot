@@ -101,11 +101,10 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         prompt = (
             f"System: {SYSTEM_PROMPT}\n\n"
             f"Language: {lang_instruction}\n\n"
-            f"{style_spec}\n\n"
-            f"Context: {json.dumps(context, ensure_ascii=False)}\n"
-            f"Trigger: {trigger_text}\n\n"
-            f"If this question is too complex to answer quickly (requires calculation, detailed explanation, or deep analysis), "
-            f"set needs_escalation to true and provide a brief acknowledgment only."
+            f"Conversation History:\n{json.dumps(context, ensure_ascii=False, indent=2)}\n\n"
+            f"User Trigger: {trigger_text}\n\n"
+            f"If this is a follow-up to the previous context, provide a direct answer. "
+            f"If too complex, set needs_escalation to true."
         )
 
         response = client.models.generate_content(
@@ -152,7 +151,7 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         return _fallback(str(e))
 
 
-async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Optional[str] = None, meta: Optional[Dict] = None) -> Dict:
+async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Optional[str] = None, context: Optional[List[Dict]] = None, meta: Optional[Dict] = None) -> Dict:
     """
     Generates a detailed reply using the requested specialized model.
     """
@@ -171,6 +170,7 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
         prompt = (
             f"System: {ESCALATION_PROMPT}\n\n"
             f"Language: {lang_instruction}\n\n"
+            f"Conversation History:\n{json.dumps(context or [], ensure_ascii=False, indent=2)}\n\n"
             f"User Query: {trigger_text}"
         )
 

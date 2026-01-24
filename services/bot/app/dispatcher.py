@@ -87,7 +87,7 @@ def handle_event(event: InternalEvent):
                 _run_async,
                 rp_engine_gemini.generate_computer_reply(
                     trigger_text=event.text,
-                    context=[],
+                    context=router.get_session_context(session_id),
                     meta={"session_id": session_id, "user_id": event.user_id}
                 )
             )
@@ -114,6 +114,11 @@ def handle_event(event: InternalEvent):
                 )
                 enqueue_result = enqueue_future.result(timeout=5)
                 logger.info(f"[Dispatcher] Enqueued: {enqueue_result}")
+                
+                # Add AI reply to history for context in next turn (only if not escalating, 
+                # as escalation will send a better answer soon)
+                if not result.get("needs_escalation"):
+                    router.add_session_history(session_id, "assistant", reply_text)
                 
                 # Check if escalation is needed - spawn background task for follow-up
                 if result.get("needs_escalation"):
@@ -151,9 +156,10 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
     logger.info(f"[Dispatcher] Processing escalated query: {query[:50]}...")
     
     try:
-        # Call the stronger model
+        # Call the stronger model with context
+        context = router.get_session_context(session_key.replace("qq:", "qq:")) # key is session_id
         escalation_result = _run_async(
-            rp_engine_gemini.generate_escalated_reply(query, is_chinese, requested_model)
+            rp_engine_gemini.generate_escalated_reply(query, is_chinese, requested_model, context)
         )
         
         logger.info(f"[Dispatcher] Escalation result: {escalation_result}")
@@ -173,6 +179,9 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
                 })
             )
             logger.info(f"[Dispatcher] Escalated message enqueued: {enqueue_result}")
+            
+            # Record the final escalated answer in history
+            router.add_session_history(session_key.replace("qq:", "qq:"), "assistant", reply_text)
         else:
             logger.warning(f"[Dispatcher] Escalation returned no reply: {escalation_result}")
             

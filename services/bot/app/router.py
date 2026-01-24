@@ -9,8 +9,8 @@ _session_states: Dict[str, dict] = {}
 # Consts
 MODE_COMPUTER = "computer"
 MODE_CHAT = "chat"
-DEFAULT_TTL = 30
-MAX_HISTORY = 4
+DEFAULT_TTL = 60 # Extended to 60s for easier follow-ups
+MAX_HISTORY = 6  # Last 6 turns for context
 
 # Keywords and Regex
 RE_MANUAL_ENTER = re.compile(r"(进入计算机模式|计算机模式|computer on|enter computer mode)", re.I)
@@ -27,13 +27,24 @@ SMALLTALK_SIGNALS = ["哈哈", "😂", "lol", "随便聊", "讲个笑话", "你�
 
 def get_session_context(session_id: str) -> List[Dict]:
     """
-    Returns the last text entries for a session as a context list.
+    Returns the last text entries for a session as a context list for LLM.
     """
     state = _session_states.get(session_id)
     if not state:
         return []
-    # Return context as list of dicts for judge
-    return [{"text": t} for t in state["last_texts"]]
+    return state["last_texts"]
+
+def add_session_history(session_id: str, role: str, content: str):
+    """
+    Manually add a turn to the session history (used for AI replies).
+    """
+    state = _session_states.get(session_id)
+    if not state:
+        # Don't create state just for AI reply if no user state exists
+        return
+        
+    state["last_texts"].append({"role": role, "content": content})
+    state["last_texts"] = state["last_texts"][-MAX_HISTORY:]
 
 def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict:
     now = int(time.time())
@@ -43,8 +54,8 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
         "last_texts": []
     })
 
-    # Update history
-    state["last_texts"].append(text)
+    # Update history with user turn
+    state["last_texts"].append({"role": "user", "content": text})
     state["last_texts"] = state["last_texts"][-MAX_HISTORY:]
 
     # Check expiration

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from .sender_mock import MockSender
 from .sender_qq import QQSender
+import httpx
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

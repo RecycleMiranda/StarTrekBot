@@ -5,3 +5,5 @@ httpx
 tencentcloud-sdk-python-common
 tencentcloud-sdk-python-tms
 google-genai
+python-multipart
+jinja2

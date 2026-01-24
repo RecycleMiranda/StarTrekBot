@@ -62,6 +62,22 @@ def handle_event(event: InternalEvent):
         
         # Check if we should respond (computer mode or high confidence)
         if route_result.get("route") == "computer" or route_result.get("confidence", 0) >= 0.7:
+            # Handle "Wake-only" bleep
+            if route_result.get("is_wake_only"):
+                logger.info("[Dispatcher] Wake-only detected, sending bleep.")
+                sq = send_queue.SendQueue.get_instance()
+                session_key = f"qq:{event.group_id or event.user_id}"
+                
+                # Classic Star Trek computer chirping sound representation
+                bleep_text = "*Computer Acknowledgment Chirp*"
+                
+                _run_async(sq.enqueue_send(session_key, bleep_text, {
+                    "group_id": event.group_id,
+                    "user_id": event.user_id,
+                    "reply_to": event.message_id
+                }))
+                return True
+
             # Generate AI reply in a separate thread to avoid event loop conflict
             future = _executor.submit(
                 _run_async,

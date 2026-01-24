@@ -6,6 +6,7 @@
 - 2026-01-24: join QQ webhook + internal event skeleton
 - 2026-01-25: add webhook token auth
 - 2026-01-25: health supports HEAD
+- 2026-01-25: support OneBot v11 reverse websocket
 
 ## Milestones
 - M0: local skeleton + docker

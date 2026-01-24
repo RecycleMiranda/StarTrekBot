@@ -1,31 +1,26 @@
 # output_for_chatgpt
 
 - scan results:
-  - Added optional token-based authentication to `/qq/webhook`.
-  - Updated `README.md` with authentication instructions and curl example.
+  - Updated `/health` endpoint in `services/bot/app/main.py` to support both `GET` and `HEAD` methods using `@app.api_route`.
 
 - commands run:
   - `git add .`
-  - `git commit -m "feat: add webhook token authentication check"`
+  - `git commit -m "feat: health endpoint supports both GET and HEAD"`
   - `git push -u origin main` (FAILED with 403)
 
 - errors:
   - `git push`: 403 Forbidden (Permission denied).
 
 - key diffs:
-  - `services/bot/app/main.py`: Added `WEBHOOK_TOKEN` validation logic.
-  - `README.md`: Added `X-Webhook-Token` header to test example.
+  - `services/bot/app/main.py`: Changed `@app.get("/health")` to `@app.api_route("/health", methods=["GET", "HEAD"])`.
   - `docs/project.md`: Updated changelog.
 
-- curl test command (with auth):
+- curl test command (HEAD):
   ```bash
-  curl -X POST http://127.0.0.1:8080/qq/webhook \
-       -H "Content-Type: application/json" \
-       -H "X-Webhook-Token: your_token_here" \
-       -d '{"type": "message", "author_id": "user123", "content": "hello bot"}'
+  curl -I http://127.0.0.1:8080/health
   ```
 
 ---
 - Current Branch: main
-- Latest Commit Hash (Local): 4b4126dc6a0de5b8db62bb59620ed73fce81938b
+- Latest Commit Hash (Local): 6f62ef26207f293a388910e5fec34d284aeba4e6
 - Git Status Summary: Changes committed locally. Push to remote failed (403).

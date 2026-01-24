@@ -1,6 +1,6 @@
 import os
 import time
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
 from . import dispatcher
 
@@ -50,3 +50,33 @@ def onebot_event(event: InternalEvent):
     """
     dispatcher.handle_event(event)
     return {"code": 0, "message": "ok", "data": {"received": True}}
+
+@app.websocket("/onebot/v11/ws")
+async def onebot_v11_ws(websocket: WebSocket):
+    """
+    Reverse WebSocket endpoint for OneBot v11 (e.g. NapCatQQ).
+    """
+    await websocket.accept()
+    print("[WebSocket] OneBot v11 connection accepted.")
+    try:
+        while True:
+            data = await websocket.receive_json()
+            
+            # OneBot v11 message event processing
+            if data.get("post_type") == "message":
+                event = InternalEvent(
+                    event_type=data.get("message_type"), # private or group
+                    platform="qq",
+                    user_id=str(data.get("user_id")),
+                    group_id=str(data.get("group_id")) if data.get("group_id") else None,
+                    message_id=str(data.get("message_id")),
+                    text=data.get("raw_message"),
+                    raw=data,
+                    ts=data.get("time")
+                )
+                dispatcher.handle_event(event)
+            
+            # You can handle meta_event (heartbeat) or notice here if needed
+            
+    except WebSocketDisconnect:
+        print("[WebSocket] OneBot v11 connection closed.")

@@ -530,10 +530,12 @@ async def post_settings(request: Request):
 @app.post("/api/moderation/sync")
 async def sync_moderation_keywords(token: str = None):
     """Sync keywords from remote source."""
-    expected_token = os.getenv("WEBHOOK_TOKEN")
-    if expected_token and (not token or token.strip() != expected_token.strip()):
-        logger.warning(f"Unauthorized API access attempt. Hint: expected starts with '{expected_token[:3]}...'")
-        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
+    provided_token = (token or "").strip()
+    if expected_token and provided_token != expected_token:
+        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
+        logger.warning(f"Unauthorized sync attempt. Hint: {hint}")
+        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
     from .moderation_keywords import KeywordFilter
     result = await KeywordFilter.get_instance().sync_from_remote()
     return result
@@ -541,9 +543,11 @@ async def sync_moderation_keywords(token: str = None):
 @app.get("/api/napcat/qr")
 async def get_napcat_qr(token: str = None):
     """Proxy to get NapCat login QR code with multi-path fallback."""
-    expected_token = os.getenv("WEBHOOK_TOKEN")
-    if expected_token and (not token or token.strip() != expected_token.strip()):
-        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
+    provided_token = (token or "").strip()
+    if expected_token and provided_token != expected_token:
+        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
+        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
     
     config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
@@ -594,9 +598,11 @@ async def get_napcat_qr(token: str = None):
 @app.get("/api/napcat/status")
 async def get_napcat_status(token: str = None):
     """Proxy to get NapCat and QQ status with fallback."""
-    expected_token = os.getenv("WEBHOOK_TOKEN")
-    if expected_token and (not token or token.strip() != expected_token.strip()):
-        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
+    provided_token = (token or "").strip()
+    if expected_token and provided_token != expected_token:
+        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
+        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
         
     config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
@@ -633,12 +639,15 @@ def get_admin(request: Request):
     
     # If a token is set in env, it MUST be provided and match
     if expected_token and (not provided_token or provided_token.strip() != expected_token.strip()):
-        logger.warning(f"Unauthorized Admin UI access. Provided: '{provided_token}', Expected starts with '{expected_token[:3]}...'")
+        expected_token = expected_token.strip()
+        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
+        logger.warning(f"Unauthorized Admin UI access. Hint: {hint}")
         return HTMLResponse(f"""
             <div style="background:#05080c; color:#c54242; padding:50px; font-family:sans-serif; height:100vh;">
                 <h1>401 Unauthorized - Access Denied</h1>
                 <p>子空间安全协议拒绝了你的访问请求。</p>
-                <p style="color:#75a2d1">请检查 URL 中的 token 参数。若忘记 Token，请在服务器执行 <code>env | grep WEBHOOK_TOKEN</code> 查看。</p>
+                <p style="color:#75a2d1">检测到预期 Token 格式为：<code>{hint}</code></p>
+                <p style="color:#75a2d1">请检查 URL 中的 token 参数。若忘记，请在服务器执行 <code>docker exec infra-bot-1 env | grep WEBHOOK_TOKEN</code> 查看。</p>
             </div>
         """, status_code=401)
 

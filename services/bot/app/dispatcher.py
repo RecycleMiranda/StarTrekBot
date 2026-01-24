@@ -1,5 +1,6 @@
 import os
 import logging
+import base64
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +11,7 @@ import send_queue
 import rp_engine_gemini
 import permissions
 import report_builder
+import visual_core
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +117,19 @@ def handle_event(event: InternalEvent):
             
             if result and result.get("ok") and result.get("reply"):
                 reply_raw = result["reply"]
-                # Format report if it's a dict
-                reply_text = report_builder.format_report_to_text(reply_raw)
-                logger.info(f"[Dispatcher] Sending reply: {reply_text[:100]}...")
+                intent = result.get("intent")
+                
+                image_b64 = None
+                if intent == "report" and isinstance(reply_raw, dict):
+                    # Render image
+                    img_io = visual_core.render_report(reply_raw)
+                    image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+                    reply_text = f"Generating visual report... (Intent: {intent})"
+                else:
+                    # Format report if it's a dict for text fallback
+                    reply_text = report_builder.format_report_to_text(reply_raw)
+                
+                logger.info(f"[Dispatcher] Sending reply (intent={intent}): {reply_text[:100]}...")
                 
                 # Enqueue the response
                 sq = send_queue.SendQueue.get_instance()
@@ -129,7 +141,8 @@ def handle_event(event: InternalEvent):
                     sq.enqueue_send(session_key, reply_text, {
                         "group_id": event.group_id,
                         "user_id": event.user_id,
-                        "reply_to": event.message_id
+                        "reply_to": event.message_id,
+                        "image_b64": image_b64
                     })
                 )
                 enqueue_result = enqueue_future.result(timeout=5)
@@ -192,8 +205,17 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
         
         if escalation_result and escalation_result.get("ok") and escalation_result.get("reply"):
             reply_raw = escalation_result["reply"]
-            # Format report if it's a dict
-            reply_text = report_builder.format_report_to_text(reply_raw)
+            
+            # Determine if we should render an image based on content type
+            image_b64 = None
+            if isinstance(reply_raw, dict) and "sections" in reply_raw:
+                # Render image for structured escalation replies
+                img_io = visual_core.render_report(reply_raw)
+                image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+                reply_text = "Visual data report assembled."
+            else:
+                reply_text = report_builder.format_report_to_text(reply_raw)
+                
             logger.info(f"[Dispatcher] Sending escalated reply: {reply_text[:100]}...")
             
             # Enqueue the follow-up response
@@ -203,7 +225,8 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
                     "group_id": group_id,
                     "user_id": user_id,
                     "is_escalated": True,
-                    "reply_to": original_message_id
+                    "reply_to": original_message_id,
+                    "image_b64": image_b64
                 })
             )
             logger.info(f"[Dispatcher] Escalated message enqueued: {enqueue_result}")

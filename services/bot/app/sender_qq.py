@@ -31,6 +31,12 @@ class QQSender(Sender):
 
         # Prepare message text with quote/reply if requested
         message_to_send = text
+        
+        # Add Image if present
+        image_b64 = meta.get("image_b64")
+        if image_b64:
+            message_to_send += f"[CQ:image,file=base64://{image_b64}]"
+
         reply_to = meta.get("reply_to")
         if reply_to:
             message_to_send = f"[CQ:reply,id={reply_to}]{message_to_send}"

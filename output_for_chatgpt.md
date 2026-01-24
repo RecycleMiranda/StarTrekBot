@@ -1,43 +1,34 @@
 # output_for_chatgpt
 
-- commit hash: 58001e6 (Local)
+- commit hash: Pending (Local)
 - 变更文件列表:
-  - `services/bot/app/moderation.py` (New)
+  - `services/bot/app/sender_base.py` (New)
+  - `services/bot/app/sender_mock.py`
+  - `services/bot/app/sender_qq.py` (New)
+  - `services/bot/app/send_queue.py`
   - `services/bot/app/main.py`
-  - `services/bot/requirements.txt`
   - `README.md`
   - `docs/project.md`
 
 - VPS 验证命令 (以 127.0.0.1:8088 为准):
 
-  1) **验证状态 (未配置)**:
+  1) **验证 Mock 发送 (Default)**:
      ```bash
-     curl http://127.0.0.1:8088/moderation/health
-     ```
-     *预期输出*: `configured: false`, `enabled: false`.
-
-  2) **验证接口 (未配置时显式通过)**:
-     ```bash
-     curl -X POST http://127.0.0.1:8088/moderation/check \
+     curl -X POST http://127.0.0.1:8088/send/enqueue \
           -H "Content-Type: application/json" \
-          -d '{"text": "测试文本"}'
+          -d '{"session_id": "test_plug", "text": "Mock test"}'
      ```
-     *预期输出*: `provider: disabled`, `allow: true`.
+     *预期*: `tail -n 1 /opt/StarTrekBot/data/send_log.jsonl` 中 `provider` 为 `MockSender`。
 
-  3) **验证集成 (Gate)**:
+  2) **验证 QQ 适配器 (未配置 Endpoint 时)**:
+     *启动参数*: `SENDQ_SENDER=qq` (通过环境变量或 override)
      ```bash
-     curl -X POST http://127.0.0.1:8088/route \
+     curl -X POST http://127.0.0.1:8088/send/enqueue \
           -H "Content-Type: application/json" \
-          -d '{"session_id": "test_mod", "text": "正常指令"}'
+          -d '{"session_id": "test_plug", "text": "QQ test"}'
      ```
-     *预期输出*: `data.moderation.allow: true` 且正常进行 router 逻辑。
+     *预期*: `send_log.jsonl` 中出现一条 `status: failed` 的记录，`error` 包含 `QQ_SEND_ENDPOINT_NOT_CONFIGURED`，且 Worker 不中断。
 
-  4) **配置后验证 (如有敏感词)**:
-     *配置 `MODERATION_ENABLED=true` 和腾讯云密钥后*:
-     ```bash
-     # 输入测试敏感词
-     curl -X POST http://127.0.0.1:8088/route \
-          -H "Content-Type: application/json" \
-          -d '{"session_id": "test_mod", "text": "敏感词..."}'
-     ```
-     *预期输出*: `data.final.reason: "blocked_by_moderation"`, `data.moderation.allow: false`.
+  3) **验证 QQ 适配器错误处理**:
+     *配置错误的 Endpoint*: `QQ_SEND_ENDPOINT=http://127.0.0.1:1/invalid`
+     *预期*: `send_log.jsonl` 记录连接错误（Connection error），体现了可靠的消息状态追踪。

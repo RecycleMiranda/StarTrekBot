@@ -7,9 +7,12 @@ import os
 DATA_DIR = "/app/data"
 SEND_LOG_PATH = os.path.join(DATA_DIR, "send_log.jsonl")
 
+from .sender_base import Sender
+
 logger = logging.getLogger(__name__)
 
-async def send(text: str, meta: dict, send_item_id: str, moderation_info: dict = None) -> None:
+class MockSender(Sender):
+    async def send(self, text: str, meta: dict, send_item_id: str, moderation_info: dict = None) -> None:
     """
     Mock sender that writes to a JSONL log file.
     In the future, this is where QQ API calls would happen.

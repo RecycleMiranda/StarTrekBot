@@ -14,6 +14,7 @@
 - 2026-01-25: add gemini judge for router with timeout fallback to chat
 - 2026-01-25: add moderation module with tencent tms integration + /moderation/check + input gate in /route
 - 2026-01-25: add send queue with global rate limit + session cooldown + output moderation + mock sender
+- 2026-01-25: make sender pluggable and add qq sender adapter (http endpoint)
 
 ## Milestones
 - M0: local skeleton + docker

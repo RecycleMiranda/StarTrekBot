@@ -21,13 +21,18 @@
   - **域名**: `https://startrekbot.miranda5799.top`
 
 ### 配置发送队列 / Send Queue Config
-防风控限速配置（可在 VPS 的 `infra/docker-compose.override.yml` 修改）：
+防风控限速与发送通道配置（可在 VPS 的 `infra/docker-compose.override.yml` 修改）：
 ```yaml
 services:
   bot:
     environment:
+      - SENDQ_ENABLED=true
+      - SENDQ_SENDER=mock  # 默认为 mock 记录日志，切换为 qq 以调用真实通道
       - SENDQ_GLOBAL_RPS=2.0
       - SENDQ_SESSION_COOLDOWN_MS=1200
+      # 若使用 qq sender，需配置以下
+      - QQ_SEND_ENDPOINT=http://127.0.0.1:xxxx/send # 你的发送通道地址
+      - QQ_SEND_TOKEN=your_token
 ```
 
 ### 配置安全审核 / Moderation Config

@@ -6,7 +6,7 @@ import uuid
 from collections import deque
 from typing import Dict, Optional, List
 from . import moderation
-from . import sender_mock
+from .sender_base import Sender
 
 # Config from Env
 ENABLED = os.getenv("SENDQ_ENABLED", "true").lower() == "true"
@@ -28,7 +28,8 @@ class SendItem:
 class SendQueue:
     _instance: Optional['SendQueue'] = None
 
-    def __init__(self):
+    def __init__(self, sender: Sender):
+        self.sender = sender
         self.queues: Dict[str, deque] = {}
         self.last_sent_at: Dict[str, float] = {}
         self.global_last_sent_at = 0.0
@@ -36,9 +37,11 @@ class SendQueue:
         self.lock = asyncio.Lock()
 
     @classmethod
-    def get_instance(cls):
+    def get_instance(cls, sender: Optional[Sender] = None):
         if cls._instance is None:
-            cls._instance = cls()
+            if sender is None:
+                raise ValueError("Sender must be provided for the first call to get_instance")
+            cls._instance = cls(sender)
         return cls._instance
 
     async def enqueue_send(self, session_key: str, text: str, meta: dict) -> dict:
@@ -120,9 +123,29 @@ class SendQueue:
             text_to_send = "Computer: Unable to comply."
             mod_info["blocked"] = True
         
-        # Actual "send" (Mock)
-        # Note: meta already includes session_key, group_id etc.
-        await sender_mock.send(text_to_send, item.meta, item.id, mod_info)
+        # Actual "send" via injected sender with error logging
+        try:
+            await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to send message {item.id} via {type(self.sender).__name__}: {error_msg}")
+            
+            # Log error to send_log.jsonl (using a side-effect log)
+            from .sender_mock import SEND_LOG_PATH, DATA_DIR
+            error_entry = {
+                "ts": int(time.time()),
+                "send_item_id": item.id,
+                "session_key": item.session_key,
+                "error": error_msg,
+                "provider": type(self.sender).__name__,
+                "status": "failed"
+            }
+            try:
+                os.makedirs(DATA_DIR, exist_ok=True)
+                with open(SEND_LOG_PATH, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(error_entry, ensure_ascii=False) + "\n")
+            except Exception as le:
+                logger.warning(f"Failed to write error log: {le}")
 
     def stop(self):
         self.stop_event.set()

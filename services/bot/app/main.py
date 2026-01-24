@@ -6,6 +6,8 @@ import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
 from . import dispatcher, router, judge_gemini, moderation, send_queue
+from .sender_mock import MockSender
+from .sender_qq import QQSender
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -28,11 +30,19 @@ def log_jsonl(filename: str, data: dict):
 @app.on_event("startup")
 async def startup_event():
     """
-    Start the background sender worker.
+    Initialize sender and start the background worker.
     """
-    sq = send_queue.SendQueue.get_instance()
+    sender_type = os.getenv("SENDQ_SENDER", "mock").lower()
+    if sender_type == "qq":
+        sender = QQSender()
+        logger.info("Initializing QQSender adapter.")
+    else:
+        sender = MockSender()
+        logger.info("Initializing MockSender.")
+
+    sq = send_queue.SendQueue.get_instance(sender=sender)
     asyncio.create_task(sq.worker_loop())
-    logger.info("Startup complete: SendQueue worker launched.")
+    logger.info(f"Startup complete: SendQueue worker launched with {sender_type} sender.")
 
 @app.on_event("shutdown")
 def shutdown_event():

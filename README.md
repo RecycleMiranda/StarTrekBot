@@ -35,6 +35,16 @@ services:
       - QQ_SEND_TOKEN=your_token
 ```
 
+### 配置 Gemini RP (AI Studio)
+用于生成星舰计算机回复（可在 VPS 的 `infra/docker-compose.override.yml` 修改）：
+```yaml
+services:
+  bot:
+    environment:
+      - GEMINI_API_KEY=你的API_KEY
+      - GEMINI_RP_MODEL=gemini-2.0-flash-lite
+```
+
 ### 配置安全审核 / Moderation Config
 在 VPS 的 `infra/docker-compose.override.yml` 中添加腾讯云 TMS 密钥：
 ```yaml
@@ -115,6 +125,15 @@ curl -X POST https://startrekbot.miranda5799.top/send/enqueue \
 curl https://startrekbot.miranda5799.top/send/status
 ```
 *(注：发送记录会记录在 VPS 的 `/app/data/send_log.jsonl` 中)*
+
+**测试统一入口 (Ingest Pipeline)**
+- 模拟接收消息并自动回复:
+```bash
+curl -X POST https://startrekbot.miranda5799.top/ingest \
+     -H "Content-Type: application/json" \
+     -d '{"session_id": "user1", "text": "Computer, report sensor status."}'
+```
+*(注：如果识别为 computer 条目，回复将自动进入发送队列)*
 *(注：若 `MODERATION_ENABLED=true` 且包含敏感词，将返回 `allow: false`)*
 
 ### 个人号接入 (OneBot v11)

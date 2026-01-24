@@ -4,4 +4,5 @@ websockets==12.0
 httpx==0.27.0
 tencentcloud-sdk-python-common==3.0.1245
 tencentcloud-sdk-python-tms==3.0.1245
+google-genai==0.3.0
 

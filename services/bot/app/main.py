@@ -5,7 +5,7 @@ import logging
 import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router, judge_gemini, moderation, send_queue
+from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini
 from .sender_mock import MockSender
 from .sender_qq import QQSender
 
@@ -128,22 +128,77 @@ async def onebot_v11_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         print("[WebSocket] OneBot v11 connection closed.")
 
+async def _internal_route(session_id: str, text: str, meta: dict) -> dict:
+    """
+    Internal shared logic for routing a message.
+    """
+    # 1. First pass: Rule-based router
+    r_res = router.route_event(session_id, text, meta)
+    
+    final_route = r_res["route"]
+    final_confidence = r_res["confidence"]
+    final_reason = r_res["reason"]
+    
+    judge_called = False
+    j_res = None
+    judge_error = None
+
+    # 2. Strategy: When to call Gemini Judge
+    needs_judge = (
+        r_res["reason"] not in ["manual_enter", "manual_exit"] and
+        not (r_res["reason"] == "wake_word" and r_res["confidence"] >= 0.95) and
+        r_res["route"] == "computer" and r_res["confidence"] < 0.92
+    )
+
+    if needs_judge:
+        judge_called = True
+        context = router.get_session_context(session_id)
+        if context and context[-1]["text"] == text:
+            context = context[:-1]
+            
+        try:
+            j_res = await judge_gemini.judge_intent(
+                trigger={"text": text, "ts": int(time.time())},
+                context=context,
+                meta={**meta, "session_id": session_id}
+            )
+            final_route = j_res["route"]
+            final_confidence = j_res["confidence"]
+            final_reason = f"judge_{j_res['reason']}"
+        except Exception as e:
+            logger.error(f"Judge failed: {e}")
+            judge_error = str(e)
+            final_route = "chat"
+            final_confidence = 0.5
+            final_reason = "judge_fallback_chat" if "TIMEOUT" in judge_error.upper() else "judge_error_fallback_chat"
+
+    return {
+        "router": r_res,
+        "judge": j_res,
+        "judge_called": judge_called,
+        "judge_error": judge_error,
+        "final": {
+            "route": final_route,
+            "confidence": final_confidence,
+            "reason": final_reason
+        }
+    }
+
 @app.post("/route")
 async def post_route(request: Request):
     """
     Determine if the message should go to computer/RP or chat.
-    Includes Gemini Judge for secondary verification.
     """
     body = await request.json()
     session_id = body.get("session_id", "default")
     text = body.get("text", "")
     meta = body.get("meta") or {}
 
-    # 0. Moderation Gate (First Pass)
+    # 0. Moderation Gate
     mod_res = await moderation.moderate_text(text, "input", meta)
     if not mod_res["allow"]:
-        # Blocked
-        log_data = {
+        # (Same blocking logic as before)
+        res_data = {
             "ts": int(time.time()),
             "session_id": session_id,
             "text": text,
@@ -161,7 +216,7 @@ async def post_route(request: Request):
             "final_confidence": 0.5,
             "final_reason": "blocked_by_moderation"
         }
-        log_jsonl("router_log.jsonl", log_data)
+        log_jsonl("router_log.jsonl", res_data)
         return {
             "code": 0, "message": "ok",
             "data": {
@@ -176,76 +231,33 @@ async def post_route(request: Request):
             }
         }
 
-    # 1. First pass: Rule-based router
-    r_res = router.route_event(session_id, text, meta)
+    # 1. Route
+    res = await _internal_route(session_id, text, meta)
     
-    final_route = r_res["route"]
-    final_confidence = r_res["confidence"]
-    final_reason = r_res["reason"]
-    
-    judge_called = False
-    j_res = None
-    judge_error = None
-
-    # 2. Strategy: When to call Gemini Judge
-    # - Skip if manual command or high-confidence wake word
-    # - Call only if router says 'computer' but confidence is not 'very high' (< 0.92)
-    needs_judge = (
-        r_res["reason"] not in ["manual_enter", "manual_exit"] and
-        not (r_res["reason"] == "wake_word" and r_res["confidence"] >= 0.95) and
-        r_res["route"] == "computer" and r_res["confidence"] < 0.92
-    )
-
-    if needs_judge:
-        judge_called = True
-        context = router.get_session_context(session_id)
-        # Context should not include the current trigger for the LLM
-        # get_session_context returns history including current text (because router.py adds it first)
-        # So we take history[:-1] if matches
-        if context and context[-1]["text"] == text:
-            context = context[:-1]
-            
-        try:
-            j_res = await judge_gemini.judge_intent(
-                trigger={"text": text, "ts": int(time.time())},
-                context=context,
-                meta={**meta, "session_id": session_id}
-            )
-            final_route = j_res["route"]
-            final_confidence = j_res["confidence"]
-            final_reason = f"judge_{j_res['reason']}"
-        except Exception as e:
-            logger.error(f"Judge failed: {e}")
-            judge_error = str(e)
-            # A-Strategy Fallback: chat
-            final_route = "chat"
-            final_confidence = 0.5
-            final_reason = "judge_fallback_chat" if "TIMEOUT" in judge_error.upper() else "judge_error_fallback_chat"
-
-    # Log to router_log.jsonl
+    # 2. Log
     log_data = {
         "ts": int(time.time()),
         "session_id": session_id,
         "text": text,
-        "pred_route": r_res["route"],
-        "confidence": r_res["confidence"],
-        "reason": r_res["reason"],
-        "mode_active": r_res["mode"]["active"],
-        "expires_at": r_res["mode"]["expires_at"],
+        "pred_route": res["router"]["route"],
+        "confidence": res["router"]["confidence"],
+        "reason": res["router"]["reason"],
+        "mode_active": res["router"]["mode"]["active"],
+        "expires_at": res["router"]["mode"]["expires_at"],
         "meta": meta,
         "moderation": {
             "allow": mod_res["allow"],
             "action": mod_res["action"],
             "risk_level": mod_res["risk_level"]
         },
-        "judge_called": judge_called,
-        "judge_route": j_res["route"] if j_res else None,
-        "judge_confidence": j_res["confidence"] if j_res else None,
-        "judge_reason": j_res["reason"] if j_res else None,
-        "judge_error": judge_error,
-        "final_route": final_route,
-        "final_confidence": final_confidence,
-        "final_reason": final_reason
+        "judge_called": res["judge_called"],
+        "judge_route": res["judge"]["route"] if res["judge"] else None,
+        "judge_confidence": res["judge"]["confidence"] if res["judge"] else None,
+        "judge_reason": res["judge"]["reason"] if res["judge"] else None,
+        "judge_error": res["judge_error"],
+        "final_route": res["final"]["route"],
+        "final_confidence": res["final"]["confidence"],
+        "final_reason": res["final"]["reason"]
     }
     log_jsonl("router_log.jsonl", log_data)
 
@@ -254,15 +266,77 @@ async def post_route(request: Request):
         "message": "ok",
         "data": {
             "moderation": mod_res,
-            "router": r_res,
-            "judge": j_res,
-            "final": {
-                "route": final_route,
-                "confidence": final_confidence,
-                "reason": final_reason
-            }
+            "router": res["router"],
+            "judge": res["judge"],
+            "final": res["final"]
         }
     }
+
+@app.post("/ingest")
+async def post_ingest(request: Request):
+    """
+    Unified entry point: ingestion -> moderation -> routing -> [RP] -> enqueue
+    """
+    body = await request.json()
+    session_id = body.get("session_id", "default")
+    text = body.get("text", "")
+    meta = body.get("meta") or {}
+
+    # a) Moderation (Input)
+    mod_res = await moderation.moderate_text(text, "input", meta)
+    if not mod_res["allow"]:
+        return {
+            "code": 0, "message": "ok",
+            "data": {
+                "moderation": mod_res,
+                "router": None,
+                "final": {"route": "chat", "confidence": 0.5, "reason": "blocked_by_moderation"},
+                "rp": None,
+                "enqueued": None
+            }
+        }
+
+    # b) Routing
+    route_res = await _internal_route(session_id, text, meta)
+    final = route_res["final"]
+
+    # c) RP Engine (if route is computer)
+    rp_res = None
+    enqueued = None
+    if final["route"] == "computer":
+        context_data = router.get_session_context(session_id)
+        # Extract plain text context
+        context = [c["text"] for c in context_data]
+        if context and context[-1] == text:
+            context = context[:-1]
+            
+        rp_res = await rp_engine_gemini.generate_computer_reply(text, context, meta)
+        
+        # d) Enqueue
+        session_key = meta.get("group_id") or session_id
+        meta["session_key"] = session_key
+        
+        sq = send_queue.SendQueue.get_instance()
+        enqueued = await sq.enqueue_send(session_key, rp_res["reply"], meta)
+
+    return {
+        "code": 0,
+        "message": "ok",
+        "data": {
+            "moderation": mod_res,
+            "router": route_res["router"],
+            "final": final,
+            "rp": rp_res,
+            "enqueued": enqueued
+        }
+    }
+
+@app.get("/rp/health")
+def get_rp_health():
+    """
+    Check RP engine status.
+    """
+    return {"code": 0, "message": "ok", "data": rp_engine_gemini.get_status()}
 
 @app.post("/judge")
 async def post_judge(request: Request):

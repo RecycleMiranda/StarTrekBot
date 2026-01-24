@@ -52,7 +52,7 @@ SYSTEM_PROMPT = (
     "AVAILABLE MODELS FOR ESCALATION:\n"
     "- 'gemini-2.0-flash': Standard for detailed factual/ST lore answers.\n"
     "- 'gemini-2.0-flash-thinking-exp-01-21': For logic puzzles, complex math, or reasoning.\n"
-    "- 'gemini-1.5-pro': For deep analysis.\n\n"
+    "- 'gemini-1.5-pro-latest': For extremely complex analysis (alternative: 'gemini-2.0-flash').\n\n"
     "DECISION LOGIC:\n"
     "1. If the query is simple, ANSWER DIRECTLY (needs_escalation: false).\n"
     "2. If complex, set needs_escalation to true, pick an escalated_model, and set reply to '处理中...' or 'Working...'.\n"
@@ -135,7 +135,7 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             if "thinking" in target_model.lower():
                 target_model = "gemini-2.0-flash-thinking-exp-01-21"
             elif "pro" in target_model.lower():
-                target_model = "gemini-1.5-pro"
+                target_model = "gemini-1.5-pro-latest"
             else:
                 target_model = "gemini-2.0-flash"
                 
@@ -174,15 +174,31 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
             f"User Query: {trigger_text}"
         )
 
-        response = client.models.generate_content(
-            model=final_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=1000,  # Pro/Thinking can be more verbose
-                temperature=0.4,
-                response_mime_type="application/json"
+        try:
+            response = client.models.generate_content(
+                model=final_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=1000,
+                    temperature=0.4,
+                    response_mime_type="application/json"
+                )
             )
-        )
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                logger.warning(f"Requested model {final_model} failed (404), falling back to gemini-2.0-flash")
+                final_model = "gemini-2.0-flash"
+                response = client.models.generate_content(
+                    model=final_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=1000,
+                        temperature=0.4,
+                        response_mime_type="application/json"
+                    )
+                )
+            else:
+                raise e
         
         if not response or not response.text:
             return _fallback("empty_response")

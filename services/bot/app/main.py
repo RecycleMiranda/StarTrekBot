@@ -6,7 +6,7 @@ from . import dispatcher
 
 app = FastAPI(title="bot-service", version="0.0.1")
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"code": 0, "message": "ok", "data": {"ok": True, "env": os.getenv("APP_ENV", "dev")}}
 

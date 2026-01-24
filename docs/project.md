@@ -10,6 +10,7 @@
 - 2026-01-25: bilingual README (CN/EN)
 - 2026-01-25: update VPS deployment info (IP/Domain)
 - 2026-01-25: integrate NapCatQQ into docker-compose
+- 2026-01-25: add router endpoints (/route + feedback) with TTL + jsonl logs + data volume mount
 
 ## Milestones
 - M0: local skeleton + docker

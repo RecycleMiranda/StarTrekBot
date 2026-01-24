@@ -1,22 +1,27 @@
 # output_for_chatgpt
 
 - scan results:
-  - Updated `README.md` with VPS IP (`104.194.88.246`) and Domain (`https://startrekbot.miranda5799.top`).
-  - Added bilingual (CN/EN) instructions for production setup.
+  - Added `napcat` service to `infra/docker-compose.yml`.
+  - Configured `napcat` to use `host` network and persist data in `./napcat/config`.
 
 - commands run:
   - `git add .`
-  - `git commit -m "docs: update README with VPS deployment details"`
+  - `git commit -m "feat: integrate napcat-docker into docker-compose for easy login"`
   - `git push -u origin main` (FAILED with 403)
 
 - errors:
   - `git push`: 403 Forbidden.
 
 - key diffs:
-  - `README.md`: Included production environment section and real VPS paths for Webhook/WebSocket.
+  - `infra/docker-compose.yml`: Added `napcat` service definition.
   - `docs/project.md`: Updated changelog.
 
 ---
 - Current Branch: main
-- Latest Commit Hash (Local): 20bc9cf
+- Latest Commit Hash (Local): 77ab868
 - Git Status Summary: Changes committed locally. Push to remote failed (403).
+
+- **VPS Next Steps**:
+  1. `git pull`
+  2. `docker compose up -d`
+  3. `docker logs -f napcat` (Scan QR code to login)

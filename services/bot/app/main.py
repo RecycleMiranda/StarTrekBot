@@ -1,10 +1,22 @@
 import os
 import time
+import json
+import logging
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher
+from . import dispatcher, router
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Data directory
+DATA_DIR = "/app/data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 app = FastAPI(title="bot-service", version="0.0.1")
+
+def log_jsonl(filename: str, data: dict):
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health():
@@ -80,3 +92,49 @@ async def onebot_v11_ws(websocket: WebSocket):
             
     except WebSocketDisconnect:
         print("[WebSocket] OneBot v11 connection closed.")
+
+@app.post("/route")
+async def post_route(request: Request):
+    """
+    Determine if the message should go to computer/RP or chat.
+    """
+    body = await request.json()
+    session_id = body.get("session_id", "default")
+    text = body.get("text", "")
+    meta = body.get("meta")
+
+    result = router.route_event(session_id, text, meta)
+
+    # Log to router_log.jsonl
+    log_data = {
+        "ts": int(time.time()),
+        "session_id": session_id,
+        "text": text,
+        "pred_route": result["route"],
+        "confidence": result["confidence"],
+        "reason": result["reason"],
+        "mode_active": result["mode"]["active"],
+        "expires_at": result["mode"]["expires_at"],
+        "meta": meta
+    }
+    log_jsonl("router_log.jsonl", log_data)
+
+    return {"code": 0, "message": "ok", "data": result}
+
+@app.post("/route/feedback")
+async def post_route_feedback(request: Request):
+    """
+    Collect feedback for routing decisions.
+    """
+    body = await request.json()
+    log_data = {
+        "ts": int(time.time()),
+        "session_id": body.get("session_id"),
+        "text": body.get("text"),
+        "pred_route": body.get("pred_route"),
+        "correct_route": body.get("correct_route"),
+        "note": body.get("note")
+    }
+    log_jsonl("router_feedback.jsonl", log_data)
+
+    return {"code": 0, "message": "ok", "data": None}

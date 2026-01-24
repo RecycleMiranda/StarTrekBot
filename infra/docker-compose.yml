@@ -4,6 +4,8 @@ services:
       context: ../services/bot
     env_file:
       - ../services/bot/.env.example
+    volumes:
+      - /opt/StarTrekBot/data:/app/data
     ports:
       - "8080:8080"
     restart: unless-stopped

@@ -80,12 +80,23 @@
                         <label>全局审核开关</label>
                         <select id="moderation_enabled">
                             <option value="false">禁用 (开发调试模式)</option>
-                            <option value="true">启用 (接入腾讯云 TMS)</option>
+                            <option value="true">启用 (安全过滤模式)</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label>过滤引擎选择</label>
+                        <select id="moderation_provider">
+                            <option value="local">本地词库 (无需 Key, 简单快速)</option>
+                            <option value="tencent">腾讯云 TMS (需要 Key, 智能精准)</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="field-grid">
+                <div id="local-mod-info" class="field-group">
+                    <small>本地词库模式下，请在 VPS 的 <code>/app/data/keywords.txt</code> 中维护违禁词，每行一个。</small>
+                </div>
+
+                <div id="tencent-auth-fields" class="field-grid">
                     <div class="field-group">
                         <label>腾讯云 SECRET_ID</label>
                         <input type="password" id="tencent_secret_id">

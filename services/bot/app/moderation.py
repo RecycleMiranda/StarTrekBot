@@ -15,6 +15,7 @@ except ImportError:
     TENCENT_SDK_AVAILABLE = False
 
 from .config_manager import ConfigManager
+from .moderation_keywords import KeywordFilter
 
 # Config
 REGION = os.getenv("TENCENT_REGION", "ap-guangzhou")
@@ -39,14 +40,21 @@ async def moderate_text(text: str, stage: str = "input", meta: Optional[dict] = 
     """
     config = get_config()
     enabled = config.get("moderation_enabled", False)
-    secret_id = config.get("tencent_secret_id")
-    secret_key = config.get("tencent_secret_key")
+    provider = config.get("moderation_provider", "local")
 
     if not enabled:
         return _result(True, "pass", RISK_NONE, "moderation_disabled", "disabled")
 
+    if provider == "local":
+        kf = KeywordFilter.get_instance()
+        return kf.check(text)
+
+    # Tencent Provider Logic
+    secret_id = config.get("tencent_secret_id")
+    secret_key = config.get("tencent_secret_key")
+
     if not TENCENT_SDK_AVAILABLE:
-        logger.warning("tencentcloud-sdk-python-tms not installed but moderation enabled.")
+        logger.warning("tencentcloud-sdk-python-tms not installed but moderation enabled (tencent).")
         return _result(True, "pass", RISK_NONE, "sdk_missing", "error")
 
     if not secret_id or not secret_key:
@@ -109,12 +117,10 @@ def _result(allow: bool, action: str, risk: int, reason: str, provider: str, raw
 def get_status() -> dict:
     config = get_config()
     enabled = config.get("moderation_enabled", False)
-    secret_id = config.get("tencent_secret_id")
-    secret_key = config.get("tencent_secret_key")
+    provider = config.get("moderation_provider", "local")
     return {
         "enabled": enabled,
+        "provider": provider if enabled else "disabled",
         "sdk_available": TENCENT_SDK_AVAILABLE,
-        "configured": bool(secret_id and secret_key),
-        "region": REGION,
-        "provider": "tencent_tms" if enabled else "disabled"
+        "region": REGION
     }

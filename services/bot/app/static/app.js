@@ -21,9 +21,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('gemini_api_key').value = data.gemini_api_key || '';
                 document.getElementById('gemini_rp_model').value = data.gemini_rp_model || 'gemini-2.0-flash-lite';
                 document.getElementById('moderation_enabled').value = String(data.moderation_enabled);
+                document.getElementById('moderation_provider').value = data.moderation_provider || 'local';
                 document.getElementById('tencent_secret_id').value = data.tencent_secret_id || '';
                 document.getElementById('tencent_secret_key').value = data.tencent_secret_key || '';
 
+                toggleModFields();
                 showStatus('主控系统连接成功', 'success');
             } else if (json.code === 401) {
                 showStatus('身份认证失败，请检查 URL 中的 Token', 'error');
@@ -46,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             gemini_api_key: document.getElementById('gemini_api_key').value,
             gemini_rp_model: document.getElementById('gemini_rp_model').value,
             moderation_enabled: document.getElementById('moderation_enabled').value === 'true',
+            moderation_provider: document.getElementById('moderation_provider').value,
             tencent_secret_id: document.getElementById('tencent_secret_id').value,
             tencent_secret_key: document.getElementById('tencent_secret_key').value
         };
@@ -81,6 +84,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function toggleModFields() {
+        const provider = document.getElementById('moderation_provider').value;
+        const tencentFields = document.getElementById('tencent-auth-fields');
+        const localInfo = document.getElementById('local-mod-info');
+
+        if (provider === 'tencent') {
+            tencentFields.style.display = 'grid';
+            localInfo.style.display = 'none';
+        } else {
+            tencentFields.style.display = 'none';
+            localInfo.style.display = 'block';
+        }
+    }
+
+    document.getElementById('moderation_provider').addEventListener('change', toggleModFields);
     saveBtn.addEventListener('click', saveSettings);
     loadSettings();
 });

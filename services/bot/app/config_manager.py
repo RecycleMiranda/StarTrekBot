@@ -17,6 +17,7 @@ DEFAULT_CONFIG = {
     "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
     "gemini_rp_model": os.getenv("GEMINI_RP_MODEL", "gemini-2.0-flash-lite"),
     "moderation_enabled": os.getenv("TENCENT_TMS_ENABLED", "false").lower() == "true",
+    "moderation_provider": os.getenv("MODERATION_PROVIDER", "local"), # New
     "tencent_secret_id": os.getenv("TENCENT_SECRET_ID", ""),
     "tencent_secret_key": os.getenv("TENCENT_SECRET_KEY", ""),
 }

@@ -535,6 +535,41 @@ async def sync_moderation_keywords(token: str):
     result = await KeywordFilter.get_instance().sync_from_remote()
     return result
 
+@app.get("/api/napcat/qr")
+async def get_napcat_qr(token: str):
+    """Proxy to get NapCat login QR code."""
+    if token != os.getenv("WEBHOOK_TOKEN"):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    config = ConfigManager.get_instance().get_all()
+    target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/login/get_qr"
+    headers = {"Authorization": f"Bearer {config['napcat_token']}"} if config['napcat_token'] else {}
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(target_url, headers=headers)
+            return resp.json()
+    except Exception as e:
+        return {"code": 1, "message": f"NapCat connection failed: {e}"}
+
+@app.get("/api/napcat/status")
+async def get_napcat_status(token: str):
+    """Proxy to get NapCat and QQ status."""
+    if token != os.getenv("WEBHOOK_TOKEN"):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+        
+    config = ConfigManager.get_instance().get_all()
+    # Note: NapCat status endpoint might vary by version, using common guess
+    target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/status"
+    headers = {"Authorization": f"Bearer {config['napcat_token']}"} if config['napcat_token'] else {}
+
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(target_url, headers=headers)
+            return resp.json()
+    except Exception as e:
+        return {"code": 1, "message": f"NapCat connection failed: {e}"}
+
 # Serve static files for Admin UI
 # Use absolute path relative to current file to be safe in different working dirs
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

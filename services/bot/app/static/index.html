@@ -4,8 +4,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>星舰控制中心 - LCARS 管理后台</title>
+    <title>星舰全舰指挥中心 - Unified Command Hub</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Panel switching styles */
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        .qr-container {
+            text-align: center;
+            margin-top: 20px;
+            background: #eee;
+            padding: 10px;
+            border-radius: 5px;
+            min-height: 200px;
+        }
+
+        .qr-container img {
+            max-width: 250px;
+        }
+    </style>
 </head>
 
 <body>
@@ -14,10 +37,11 @@
         <div class="sidebar">
             <div class="elbow-top-left"></div>
             <div class="menu-items">
-                <div class="menu-btn active">指挥部设置</div>
-                <button class="menu-btn link-btn" onclick="window.location.href='/admin/napcat'">NAPCAT 控制台</button>
-                <div class="menu-btn" onclick="alert('即将上线：查看实时日志')">子空间记录</div>
-                <div class="menu-btn" onclick="alert('即将上线：全舰传感器')">全舰状态</div>
+                <div class="menu-btn active" data-panel="bridge">全舰状态</div>
+                <div class="menu-btn" data-panel="navigation">导航 (QQ 登录)</div>
+                <div class="menu-btn" data-panel="engineering">工程部 (设置)</div>
+                <div class="menu-btn" data-panel="records">子空间记录 (日志)</div>
+                <button class="menu-btn link-btn" onclick="window.location.href='/admin/napcat'">原生控制台</button>
             </div>
             <div class="elbow-bottom-left"></div>
         </div>
@@ -25,105 +49,94 @@
         <!-- 主内容区 -->
         <main class="content">
             <header class="main-header">
-                <h1>星舰计算中心 - 核心配置</h1>
+                <h1 id="panel-title">STARSHIP BRIDGE - 实时状态</h1>
                 <div class="st-line"></div>
             </header>
 
-            <section class="config-panel">
+            <!-- 面板 1: 全舰状态 -->
+            <section id="bridge" class="panel active config-panel">
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h3>子空间引擎 (AI)</h3>
+                        <p id="gemini-status">正在检测...</p>
+                    </div>
+                    <div class="status-card">
+                        <h3>防御护盾 (审核)</h3>
+                        <p id="mod-status">正在检测...</p>
+                    </div>
+                    <div class="status-card">
+                        <h3>通讯中继 (QQ)</h3>
+                        <p id="qq-status">等待导航系统...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 面板 2: 导航 (登录) -->
+            <section id="navigation" class="panel config-panel">
+                <h2>全舰导航系统 - QQ 身份验证</h2>
+                <p>请扫描二维码以激活子空间通讯中继。</p>
+                <div class="qr-container" id="qr-box">
+                    <p style="color: #333">正在获取二维码...</p>
+                </div>
+                <footer class="controls">
+                    <button class="st-btn" id="refresh-qr">重新获取二维码</button>
+                </footer>
+            </section>
+
+            <!-- 面板 3: 工程部 (设置) -->
+            <section id="engineering" class="panel config-panel">
                 <div class="field-group">
                     <label>群聊解析与过滤 (BOT_ENABLED_GROUPS)</label>
                     <input type="text" id="enabled_groups" placeholder="例如：123456, 789012 或 *">
-                    <small>授权机器人响应的群号（英文逗号分隔）。输入 * 为不限群聊。</small>
                 </div>
 
                 <div class="field-group">
-                    <label>计算机指令前缀 (COMPUTER_PREFIX)</label>
-                    <input type="text" id="computer_prefix" placeholder="例如：Computer:">
+                    <label>GEMINI API 密钥</label>
+                    <input type="password" id="gemini_api_key">
                 </div>
 
                 <div class="field-grid">
                     <div class="field-group">
-                        <label>发送者模式 (SENDER_TYPE)</label>
-                        <select id="sender_type">
-                            <option value="mock">MOCK (仅记录日志，测试用)</option>
-                            <option value="qq">QQ (调用真实 API 发送)</option>
-                        </select>
-                    </div>
-                    <div class="field-group">
-                        <label>RP 风格强制简洁 (STYLE_STRICT)</label>
-                        <select id="rp_style_strict">
-                            <option value="true">开启 (严格限制字数)</option>
-                            <option value="false">关闭 (允许更长的回复)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="st-line header-small"></div>
-                <h2>子空间通讯协议 (GEMINI AI 引擎)</h2>
-
-                <div class="field-group">
-                    <label>GEMINI API 密钥 (API_KEY)</label>
-                    <input type="password" id="gemini_api_key" placeholder="在此输入你的 Gemini API Key">
-                    <small>用于角色扮演 (RP) 与意图判断的后端密钥。</small>
-                </div>
-
-                <div class="field-group">
-                    <label>模型规格 (RP_MODEL)</label>
-                    <input type="text" id="gemini_rp_model" placeholder="gemini-2.0-flash-lite">
-                </div>
-
-                <div class="st-line header-small"></div>
-                <h2>安全防护层 (内容审核插件)</h2>
-
-                <div class="field-grid">
-                    <div class="field-group">
-                        <label>全局审核开关</label>
-                        <select id="moderation_enabled">
-                            <option value="false">禁用 (开发调试模式)</option>
-                            <option value="true">启用 (安全过滤模式)</option>
-                        </select>
-                    </div>
-                    <div class="field-group">
-                        <label>过滤引擎选择</label>
+                        <label>过滤引擎</label>
                         <select id="moderation_provider">
-                            <option value="local">本地词库 (无需 Key, 简单快速)</option>
-                            <option value="tencent">腾讯云 TMS (需要 Key, 智能精准)</option>
+                            <option value="local">本地词库</option>
+                            <option value="tencent">腾讯云 TMS</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label>审核开关</label>
+                        <select id="moderation_enabled">
+                            <option value="false">禁用</option>
+                            <option value="true">启用</option>
                         </select>
                     </div>
                 </div>
 
-                <div id="local-mod-info" class="field-group">
-                    <small>本地词库模式下，请在 VPS 的 <code>/app/data/keywords.txt</code> 中维护违禁词，每行一个。</small>
-                    <div style="margin-top: 10px;">
-                        <button class="st-btn"
-                            style="background: var(--lcars-blue); padding: 5px 15px; font-size: 0.8rem;"
-                            id="sync-keywords-btn">从云端同步数千个通用违禁词</button>
-                    </div>
-                </div>
-
-                <div id="tencent-auth-fields" class="field-grid">
-                    <div class="field-group">
-                        <label>腾讯云 SECRET_ID</label>
-                        <input type="password" id="tencent_secret_id">
-                    </div>
-                    <div class="field-group">
-                        <label>腾讯云 SECRET_KEY</label>
-                        <input type="password" id="tencent_secret_key">
-                    </div>
-                </div>
-
                 <div class="st-line header-small"></div>
-                <h2>指令分发链路 (端点配置)</h2>
-
-                <div class="field-group">
-                    <label>QQ 消息发送 API (SEND_ENDPOINT)</label>
-                    <input type="text" id="qq_send_endpoint" placeholder="http://ip:port/send_msg">
+                <h2>NAPCAT 核心参数</h2>
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>管理端口 (PORT)</label>
+                        <input type="number" id="napcat_port">
+                    </div>
+                    <div class="field-group">
+                        <label>管理 TOKEN</label>
+                        <input type="password" id="napcat_token">
+                    </div>
                 </div>
 
                 <footer class="controls">
                     <button class="st-btn save" id="save-btn">同步至主控中心</button>
                     <span id="status-msg"></span>
                 </footer>
+            </section>
+
+            <!-- 面板 4: 日志 -->
+            <section id="records" class="panel config-panel">
+                <div class="log-window" id="log-content">
+                    [02:24:00] 系统启动...
+                    [02:24:01] 等待日志流提取...
+                </div>
             </section>
         </main>
     </div>

@@ -14,12 +14,15 @@ DEFAULT_CONFIG = {
     "sender_type": os.getenv("SENDQ_SENDER", "mock"),
     "qq_send_endpoint": os.getenv("QQ_SEND_ENDPOINT", ""),
     "qq_send_token": os.getenv("QQ_SEND_TOKEN", ""),
-    "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
     "gemini_rp_model": os.getenv("GEMINI_RP_MODEL", "gemini-2.0-flash-lite"),
     "moderation_enabled": os.getenv("TENCENT_TMS_ENABLED", "false").lower() == "true",
-    "moderation_provider": os.getenv("MODERATION_PROVIDER", "local"), # New
+    "moderation_provider": os.getenv("MODERATION_PROVIDER", "local"), 
     "tencent_secret_id": os.getenv("TENCENT_SECRET_ID", ""),
     "tencent_secret_key": os.getenv("TENCENT_SECRET_KEY", ""),
+    # NapCat Proxy Settings
+    "napcat_host": os.getenv("NAPCAT_HOST", "napcat"),
+    "napcat_port": int(os.getenv("NAPCAT_PORT", "6099")),
+    "napcat_token": os.getenv("NAPCAT_TOKEN", ""), # WebUI logbin token
 }
 
 class ConfigManager:

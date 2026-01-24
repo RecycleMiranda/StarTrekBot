@@ -62,10 +62,10 @@ SYSTEM_PROMPT = (
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
     "2. **STRUCTURED REPORT MODE**: If the query requires a multi-category analysis (e.g., 'Scan that ship', 'Diagnostic report'), set intent: 'report' and provide a structured reply.\n"
-    "   - Report JSON structure in 'reply': {\"title\": \"REPORT_TITLE\", \"sections\": [{\"category\": \"CAT_NAME\", \"content\": \"DATA\"}, ...]}\n"
+    "   - Report JSON structure in 'reply': {{\"title\": \"REPORT_TITLE\", \"sections\": [{{\"category\": \"CAT_NAME\", \"content\": \"DATA\"}}, ...]}}\n"
     "3. **ESCALATE ONLY IF**: Extremely complex reasoning or long historical essays are needed. Set needs_escalation: true.\n"
     "4. **IGNORE**: If human-to-human chat, set intent: 'ignore', needs_escalation: false, and reply: ''.\n\n"
-    "Output JSON: {\"reply\": \"string_or_json_object\", \"intent\": \"answer|clarify|refuse|ignore|report\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}"
+    "Output JSON: {{\"reply\": \"string_or_json_object\", \"intent\": \"answer|clarify|refuse|ignore|report\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}}"
 )
 
 ESCALATION_PROMPT = (
@@ -73,10 +73,10 @@ ESCALATION_PROMPT = (
     "Current User Profile: {user_profile}. "
     "PRECISION IS PARAMOUNT. DO NOT CONJECTURE. "
     "If providing a complex multi-point report, use the STRUCTURED REPORT format in your 'reply': "
-    "{\"title\": \"...\", \"sections\": [{\"category\": \"...\", \"content\": \"...\"}, ...]}\n"
+    "{{\"title\": \"...\", \"sections\": [{{\"category\": \"...\", \"content\": \"...\"}}, ...]}}\n"
     "Otherwise, provide a direct factual string. "
     "Format: Factual, precise, unemotional Star Trek style. "
-    "Output JSON: {\"reply\": \"string_or_report_object\"}"
+    "Output JSON: {{\"reply\": \"string_or_report_object\"}}"
 )
 
 # Default models if not specified by triage

@@ -48,6 +48,10 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) ->
                 clearance=profile.get("clearance", 1),
                 disable_safety=args.get("disable_safety", False)
             )
+        elif tool == "get_ship_schematic":
+            return tools.get_ship_schematic(args.get("ship_name", "Galaxy"), clearance=profile.get("clearance", 1))
+        elif tool == "get_historical_archive":
+            return tools.get_historical_archive(args.get("topic", "Federation"))
         elif tool == "personal_log":
             return tools.personal_log(args.get("content", ""), str(event.user_id))
         return {"ok": False, "error": f"unknown_tool: {tool}"}

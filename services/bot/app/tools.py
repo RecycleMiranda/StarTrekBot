@@ -163,6 +163,83 @@ def reserve_holodeck(program_name: str, duration_hours: float, user_id: str, ran
             "remaining": qm.get_balance(user_id, rank)
         }
 
+def get_ship_schematic(ship_name: str, clearance: int = 1) -> dict:
+    """
+    Retrieves ship technical schematics. Requires Level 4+ for detailed specs.
+    """
+    ship_db = {
+        "Constitution": {
+            "class": "Heavy Cruiser",
+            "length": "289m",
+            "decks": 21,
+            "crew": 430,
+            "max_warp": 8.0,
+            "summary": "The flagship of the mid-23rd century, iconic for its exploration missions."
+        },
+        "Sovereign": {
+            "class": "Heavy Cruiser / Explorer",
+            "length": "685m",
+            "decks": 24,
+            "crew": 700,
+            "max_warp": 9.985,
+            "summary": "State-of-the-art combat and exploration vessel of the late 24th century."
+        },
+        "Galaxy": {
+            "class": "Explorer",
+            "length": "642m",
+            "decks": 42,
+            "crew": 1012,
+            "max_warp": 9.6,
+            "summary": "A massive deep-space explorer designed for long-term diplomatic and scientific missions."
+        }
+    }
+    
+    ship_key = next((k for k in ship_db if k.lower() in ship_name.lower()), "Generic")
+    
+    if clearance < 4 and ship_key != "Generic":
+        return {
+            "ok": False,
+            "message": f"Access denied. Technical schematics for {ship_key} class require Clearance Level 4. Current level: {clearance}.",
+            "clearance_required": 4
+        }
+        
+    data = ship_db.get(ship_key)
+    if not data:
+        return {"ok": False, "message": f"No records found for class: {ship_name}."}
+        
+    return {
+        "ok": True,
+        "message": f"RECORD RETRIEVED: {ship_key} Class {data['class']}. Length: {data['length']}. Max Warp: {data['max_warp']}. {data['summary']}",
+        "title": f"TECHNICAL SCHEMATIC: {ship_key} CLASS",
+        "sections": [
+            {"category": "General Specs", "content": f"Class: {data['class']}\nLength: {data['length']}\nDecks: {data['decks']}"},
+            {"category": "Tactical/Propulsion", "content": f"Max Warp: {data['max_warp']}\nCrew Compliment: {data['crew']}"},
+            {"category": "Mission Profile", "content": data['summary']}
+        ]
+    }
+
+def get_historical_archive(topic: str) -> dict:
+    """
+    Retrieves library computer historical records.
+    """
+    archives = {
+        "TOS": "The Original Series (2260s): Exploring the final frontier with Captain Kirk and Mr. Spock.",
+        "TNG": "The Next Generation (2360s): Strategic diplomacy and exploration under Captain Picard.",
+        "DS9": "Deep Space 9: Frontier life and the Dominion War on a Cardassian-built station.",
+        "VOY": "Voyager: The long journey from the Delta Quadrant back to Federation space.",
+        "Federation": "The United Federation of Planets: Founded in 2161 by Humans, Vulcans, Andorians, and Tellarites."
+    }
+    
+    found_key = next((k for k in archives if k.lower() in topic.lower()), None)
+    
+    if not found_key:
+        return {"ok": False, "message": "Insufficient data in historical archives for specified topic."}
+        
+    return {
+        "ok": True,
+        "message": f"RECORD RETRIEVED: {archives[found_key]}"
+    }
+
 def personal_log(content: str, user_id: str) -> dict:
     """
     Records a personal log. Grants random credits (2h cooldown).

@@ -124,3 +124,41 @@ def get_status() -> dict:
         "sdk_available": TENCENT_SDK_AVAILABLE,
         "region": REGION
     }
+
+# --- SECURITY PROTOCOL ALPHA (Legacy Feature Enhancment) ---
+
+OFFENSE_TRACKER: Dict[str, Dict] = {}
+
+async def enforce_shipboard_order(user_id: str, platform: str, group_id: str, result: dict) -> Optional[str]:
+    """
+    Enforces 'Security Protocol Alpha' based on ALAS clearance.
+    Returns a warning message if an offense is detected.
+    """
+    if result.get("allow"):
+        return None
+        
+    user_id = str(user_id)
+    now = asyncio.get_event_loop().time()
+    
+    if user_id not in OFFENSE_TRACKER:
+        OFFENSE_TRACKER[user_id] = {"count": 0, "last_offense": 0}
+        
+    tracker = OFFENSE_TRACKER[user_id]
+    
+    # Cooldown: reset count if no offense for 1 hour
+    if now - tracker["last_offense"] > 3600:
+        tracker["count"] = 0
+        
+    tracker["count"] += 1
+    tracker["last_offense"] = now
+    
+    label = result.get("raw", {}).get("label", "General Conduct")
+    
+    if tracker["count"] == 1:
+        return f"ALAS WARNING: Your recent transmission violates shipboard communication protocol [{label}]. Please maintain professional conduct."
+    elif tracker["count"] == 2:
+        return f"SECURITY PROTOCOL ALPHA: Multiple violations detected. Your communication channel is under monitoring by Security. Further violations will result in lockout."
+    else:
+        # For a real bot, we'd call a 'mute' API here. 
+        # For this skeleton, we just return the final notice.
+        return f"COMMUNICATIONS LOCKOUT: Protocol Alpha enforced. User {user_id} transmission capability suspended for 30 cycles due to repeated protocol violations."

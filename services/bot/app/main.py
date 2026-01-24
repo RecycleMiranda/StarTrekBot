@@ -362,14 +362,25 @@ async def post_ingest(request: Request):
     # a) Moderation (Input)
     mod_res = await moderation.moderate_text(text, "input", meta)
     if not mod_res["allow"]:
+        # SECURITY PROTOCOL ALPHA: Formal Warning/Lockout
+        user_id = meta.get("user_id")
+        platform = meta.get("platform", "qq")
+        group_id = meta.get("group_id")
+        
+        warning_msg = await moderation.enforce_shipboard_order(user_id, platform, group_id, mod_res)
+        
+        if warning_msg:
+            session_key = f"{platform}:{group_id or user_id}"
+            await send_queue.SendQueue.get_instance().enqueue_send(session_key, warning_msg, meta)
+
         return {
-            "code": 0, "message": "ok",
+            "code": 0, "message": "blocked_by_protocol",
             "data": {
                 "moderation": mod_res,
                 "router": None,
                 "final": {"route": "chat", "confidence": 0.5, "reason": "blocked_by_moderation"},
                 "rp": None,
-                "enqueued": None
+                "enqueued": True if warning_msg else False
             }
         }
 

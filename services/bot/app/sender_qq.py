@@ -23,9 +23,7 @@ class QQSender(Sender):
         if not group_id:
             raise RuntimeError("NO_GROUP_ID_IN_META")
 
-        # Build NapCat endpoint URL
         base_url = f"http://{self.host}:{self.port}"
-        endpoint = f"{base_url}/send_group_msg"
         
         headers = {}
         if self.token:
@@ -37,15 +35,33 @@ class QQSender(Sender):
             "message": text
         }
 
-        logger.info(f"[QQSender] Sending to {endpoint}: {text[:50]}...")
+        # Try multiple possible paths
+        paths = [
+            "/api/send_group_msg",
+            "/send_group_msg", 
+            "/v1/send_group_msg"
+        ]
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(endpoint, json=payload, headers=headers)
-            resp_json = response.json()
+            for path in paths:
+                endpoint = f"{base_url}{path}"
+                try:
+                    logger.info(f"[QQSender] Trying {endpoint}...")
+                    response = await client.post(endpoint, json=payload, headers=headers)
+                    
+                    if response.status_code == 404:
+                        continue
+                    
+                    resp_json = response.json()
+                    if resp_json.get("retcode") == 0 or resp_json.get("status") == "ok":
+                        logger.info(f"[QQSender] Successfully sent {send_item_id} via {path}")
+                        return
+                    else:
+                        logger.warning(f"[QQSender] {path} returned: {resp_json}")
+                except Exception as e:
+                    logger.warning(f"[QQSender] {path} failed: {e}")
+                    continue
             
-            if resp_json.get("retcode") == 0:
-                logger.info(f"[QQSender] Successfully sent {send_item_id}")
-            else:
-                logger.warning(f"[QQSender] Send failed: {resp_json}")
-                raise RuntimeError(f"SEND_FAILED: {resp_json.get('message', 'unknown')}")
+            raise RuntimeError("ALL_SEND_PATHS_FAILED")
+
 

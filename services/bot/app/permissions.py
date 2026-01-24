@@ -107,7 +107,7 @@ USER_PROFILES: Dict[str, UserProfile] = {
         "name": "AAAAA你米兰达🌈",
         "rank": "Admiral",
         "department": "SECTION_31",
-        "clearance": 4,
+        "clearance": 11,
         "station": "Command Center",
         "is_core_officer": True
     }

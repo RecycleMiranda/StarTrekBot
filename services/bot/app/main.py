@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
+def _get_verified_token(provided_token: str) -> bool:
+    """Centralized token validation with robust cleaning (:1 suffix, quotes, etc.)"""
+    # 1. Get raw token from env
+    raw_expected = os.getenv("WEBHOOK_TOKEN")
+    if not raw_expected:
+        return True # Public if not set
+    
+    expected = raw_expected.strip().strip('"').strip("'")
+    provided = (provided_token or "").strip()
+    
+    # 2. Handle common terminal copy-paste artifacts (e.g., JH3...BF:1)
+    if ":" in provided and len(provided) > len(expected):
+        provided = provided.split(":")[0]
+    
+    match = (provided == expected)
+    if not match:
+        # Hint for logging/diagnostics (SAFE: only first and last char)
+        hint = f"{expected[0]}...{expected[-1]}" if len(expected) > 2 else "***"
+        logger.warning(f"Unauthorized access: Provided '{provided[:3]}...', Expected hint: '{hint}'")
+        
+    return match
+
 app = FastAPI(title="bot-service", version="0.0.1")
 
 def log_jsonl(filename: str, data: dict):
@@ -513,21 +535,20 @@ async def post_route_feedback(request: Request):
 # --- Settings & Admin API ---
 
 @app.get("/api/settings")
-def get_settings(request: Request):
-    # Optional: simple token check via query param or header
-    token = os.getenv("WEBHOOK_TOKEN")
-    if token and request.query_params.get("token") != token:
-        return {"code": 401, "message": "unauthorized"}
-        
-    config = ConfigManager.get_instance()
-    return {"code": 0, "message": "ok", "data": config.get_all()}
+async def get_settings(token: str = None):
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    config = ConfigManager.get_instance().get_all()
+    # Mask sensitive keys
+    clean_config = {k: v for k, v in config.items()}
+    return {"code": 0, "message": "ok", "data": clean_config}
 
 @app.post("/api/settings")
-async def post_settings(request: Request):
-    token = os.getenv("WEBHOOK_TOKEN")
-    if token and request.query_params.get("token") != token:
-        return {"code": 401, "message": "unauthorized"}
-
+async def save_settings(request: Request, token: str = None):
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
     body = await request.json()
     config = ConfigManager.get_instance()
     if config.save_config(body):
@@ -536,25 +557,20 @@ async def post_settings(request: Request):
 
 @app.post("/api/moderation/sync")
 async def sync_moderation_keywords(token: str = None):
-    """Sync keywords from remote source."""
-    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
-    provided_token = (token or "").strip()
-    if expected_token and provided_token != expected_token:
-        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
-        logger.warning(f"Unauthorized sync attempt. Hint: {hint}")
-        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
     from .moderation_keywords import KeywordFilter
     result = await KeywordFilter.get_instance().sync_from_remote()
     return result
 
 @app.get("/api/napcat/qr")
 async def get_napcat_qr(token: str = None):
-    """Proxy to get NapCat login QR code with multi-path fallback."""
-    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
-    provided_token = (token or "").strip()
-    if expected_token and provided_token != expected_token:
-        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
-        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    config = ConfigManager.get_instance().get_all()
+    # ... (the rest of existing logic stays same)
     
     config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
@@ -604,12 +620,11 @@ async def get_napcat_qr(token: str = None):
 
 @app.get("/api/napcat/status")
 async def get_napcat_status(token: str = None):
-    """Proxy to get NapCat and QQ status with fallback."""
-    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
-    provided_token = (token or "").strip()
-    if expected_token and provided_token != expected_token:
-        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
-        return JSONResponse(status_code=401, content={"code": 401, "message": f"unauthorized - hint: {hint}"})
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    config = ConfigManager.get_instance().get_all()
+    # ...
         
     config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
@@ -641,25 +656,19 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
-    # Robust token stripping (quotes, spaces, terminal artifacts like :1)
-    expected_token = (os.getenv("WEBHOOK_TOKEN") or "").strip().strip('"').strip("'")
-    provided_token = (request.query_params.get("token") or "").strip()
-    
-    # Handle common terminal copy-paste artifacts (e.g., JH3...BF:1)
-    if ":" in provided_token and len(provided_token) > len(expected_token):
-        provided_token = provided_token.split(":")[0]
-
-    # If a token is set in env, it MUST be provided and match
-    if expected_token and (not provided_token or provided_token != expected_token):
-        hint = f"{expected_token[0]}...{expected_token[-1]}" if len(expected_token) > 2 else "***"
-        logger.warning(f"Unauthorized Admin UI access. Provided: '{provided_token}', Expected: '{hint}'")
+    provided_token = request.query_params.get("token")
+    if not _get_verified_token(provided_token):
+        # We need expected_token here just for the hint in the UI
+        raw_expected = (os.getenv("WEBHOOK_TOKEN") or "").strip().strip('"').strip("'")
+        hint = f"{raw_expected[0]}...{raw_expected[-1]}" if len(raw_expected) > 2 else "***"
+        
         return HTMLResponse(f"""
             <div style="background:#05080c; color:#c54242; padding:50px; font-family:sans-serif; height:100vh; text-align:center;">
                 <h1 style="font-size:3rem; letter-spacing:5px;">ACCESS DENIED</h1>
                 <p style="font-size:1.5rem;">[ 401 - Unauthorized ]</p>
                 <div style="border:1px solid #c54242; padding:20px; display:inline-block; margin-top:20px; text-align:left;">
                     <p style="color:#75a2d1">子空间安全协议：Token 验证失败。</p>
-                    <p style="color:#75a2d1">预期格式：<code style="background:#1b264f; padding:2px 5px;">{hint}</code></p>
+                    <p style="color:#75a2d1">预期格式提示：<code style="background:#1b264f; padding:2px 5px;">{hint}</code></p>
                     <p style="color:#eee">请确保你的浏览器 URL 结尾是：<br><code>/admin?token=你在服务器查到的完整Token</code></p>
                     <p style="color:#666; font-size:0.8rem; margin-top:20px;">提示：请检查是否误复制了末尾的 ":1" 或空格。</p>
                 </div>

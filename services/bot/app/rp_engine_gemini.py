@@ -88,7 +88,8 @@ SYSTEM_PROMPT = (
     "- If locking/unlocking command authority, use tool: 'lockdown_authority', args: {{\"state\": bool}}.\n"
     "- If restricting a user (e.g. 'Restrict @User for 10 minutes'), use tool: 'restrict_user', args: {{\"target_mention\": \"@User\", \"duration_minutes\": int}}.\n"
     "- If lifting a restriction, use tool: 'lift_user_restriction', args: {{\"target_mention\": \"@User\"}}.\n"
-    "- TARGETING: When a command targets a person (e.g., 'Restrict @XXX'), extract the mention string exactly as it appears in the text.\n"
+    "- If updating a person's profile (rank, clearance, station, department), use tool: 'update_user_profile', args: {{\"target_mention\": \"@User\", \"field\": \"rank|clearance|station|department\", \"value\": \"...\"}}.\n"
+    "- TARGETING: When a command targets a person (e.g., 'Restrict @XXX', 'Set @XXX to Level 10'), extract the mention string exactly.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
     "2. **STRUCTURED REPORT MODE**: If the query requires a multi-category analysis (e.g., 'Scan that ship', 'Diagnostic report'), set intent: 'report' and provide a structured reply.\n"
@@ -313,7 +314,7 @@ def _parse_response(text: str) -> Dict:
             allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
                        "get_ship_schematic", "get_historical_archive", 
                        "initiate_self_destruct", "authorize_sequence", "abort_self_destruct",
-                       "lockdown_authority", "restrict_user", "lift_user_restriction"]
+                       "lockdown_authority", "restrict_user", "lift_user_restriction", "update_user_profile"]
             if tool not in allowed:
                 return _fallback("invalid_tool")
             return {

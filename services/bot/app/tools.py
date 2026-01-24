@@ -373,3 +373,39 @@ def lift_user_restriction(target_mention: str, user_id: str, clearance: int) -> 
     target_id = target_id_match.group(0)
     lift_restriction(target_id)
     return {"ok": True, "message": f"ACCESS RESTORED: Restriction lifted for user {target_id}."}
+
+def update_user_profile(target_mention: str, field: str, value: str, user_id: str, clearance: int) -> dict:
+    """
+    Updates a specific field in a user's profile. Requires Level 12.
+    Allowed fields: rank, clearance, station, department, is_core_officer.
+    """
+    from .permissions import update_user_profile_data
+    
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Admiralty clearance (Level 12) required for personnel profile modification."}
+        
+    target_id_match = re.search(r"\d+", target_mention)
+    if not target_id_match:
+        return {"ok": False, "message": "Unable to identify target user profile."}
+        
+    target_id = target_id_match.group(0)
+    
+    # Field Validation
+    allowed_fields = ["rank", "clearance", "station", "department", "is_core_officer"]
+    if field not in allowed_fields:
+        return {"ok": False, "message": f"Invalid profile field: {field}. Allowed: {', '.join(allowed_fields)}"}
+        
+    # Synchronization logic: If rank is updated, clearance should usually follow (AI handles this via prompt mostly, but we can nudge)
+    updates = {field: value}
+    
+    # Special handling for boolean
+    if field == "is_core_officer":
+        updates[field] = str(value).lower() == "true"
+        
+    update_user_profile_data(target_id, updates)
+    
+    return {
+        "ok": True, 
+        "message": f"PERSONNEL RECORD UPDATED: User {target_id}, Field: {field}, New Value: {value}. Protocols refreshed.",
+        "target_id": target_id
+    }

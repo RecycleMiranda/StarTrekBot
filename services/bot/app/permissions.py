@@ -198,3 +198,20 @@ def format_profile_for_ai(profile: UserProfile) -> str:
         f"Core Officer: {'YES' if profile['is_core_officer'] else 'NO'}, "
         f"Clearance Level: {profile['clearance']}"
     )
+
+def update_user_profile_data(user_id: str, updates: dict):
+    """Updates or creates a user profile in memory."""
+    user_id = str(user_id)
+    if user_id not in USER_PROFILES:
+        # Clone default
+        USER_PROFILES[user_id] = DEFAULT_PROFILE.copy()
+        
+    for key, value in updates.items():
+        if key in USER_PROFILES[user_id]:
+            # Type casting for clearance
+            if key == "clearance":
+                try:
+                    value = int(value)
+                except:
+                    continue
+            USER_PROFILES[user_id][key] = value

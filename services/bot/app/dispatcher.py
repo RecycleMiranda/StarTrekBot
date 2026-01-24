@@ -5,7 +5,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from .models import InternalEvent
 from .config_manager import ConfigManager
-from . import router, send_queue, rp_engine_gemini
+from . import router
+import send_queue
+import rp_engine_gemini
+import permissions
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +88,22 @@ def handle_event(event: InternalEvent):
                 )
                 return True
 
+            # Fetch Security Clearance
+            clearance_level = permissions.get_user_clearance(event.user_id)
+            clearance_label = permissions.get_clearance_label(clearance_level)
+
             # Generate AI reply in a separate thread to avoid event loop conflict
             future = _executor.submit(
                 _run_async,
                 rp_engine_gemini.generate_computer_reply(
                     trigger_text=event.text,
                     context=router.get_session_context(session_id),
-                    meta={"session_id": session_id, "user_id": event.user_id}
+                    meta={
+                        "session_id": session_id, 
+                        "user_id": event.user_id,
+                        "clearance_level": clearance_level,
+                        "clearance_label": clearance_label
+                    }
                 )
             )
             result = future.result(timeout=15)  # 15 second timeout
@@ -153,6 +165,9 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
     """
     Background handler for escalated queries - calls stronger model and sends follow-up message.
     """
+    clearance_level = permissions.get_user_clearance(user_id)
+    clearance_label = permissions.get_clearance_label(clearance_level)
+    
     import time
     time.sleep(0.5)  # Small delay to ensure first message is sent first
     
@@ -162,7 +177,10 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
         # Call the stronger model with context
         context = router.get_session_context(session_key.replace("qq:", "qq:")) # key is session_id
         escalation_result = _run_async(
-            rp_engine_gemini.generate_escalated_reply(query, is_chinese, requested_model, context)
+            rp_engine_gemini.generate_escalated_reply(
+                query, is_chinese, requested_model, context, 
+                meta={"clearance_level": clearance_level, "clearance_label": clearance_label}
+            )
         )
         
         logger.info(f"[Dispatcher] Escalation result: {escalation_result}")

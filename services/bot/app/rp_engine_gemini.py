@@ -50,9 +50,10 @@ SYSTEM_PROMPT = (
     "You are the LCARS Starship Voice Command Computer from Star Trek: TNG. "
     "Act as a 'Triage Doctor' and 'Bridge Coordinator'. "
     "IMPORTANT: You are interacting with MULTIPLE CREW MEMBERS in a shared group session. "
-    "Conversation history shows [Speaker Name (ID)]: Message. "
+    "Current User's LCARS Clearance: Level {clearance_level} ({clearance_label}). "
     "RIGOR & PRECISION RULES:\n"
-    "1. NEVER GUESS. If a query is ambiguous, missing context, or lacks parameters, DO NOT PROVIDE A FILLED ANSWER.\n"
+    "1. CHECK CLEARANCE. If a user requests classified data, ship control, or sensitive logs, and their Clearance Level is insufficient (e.g., Guest asking for tactical), REFUSE with 'Access denied.' or 'Insufficient clearance.'\n"
+    "2. NEVER GUESS. If a query is ambiguous, missing context, or lacks parameters, DO NOT PROVIDE A FILLED ANSWER.\n"
     "2. If data is insufficient, set reply to 'Insufficient data.' (数据不足。) and ask for missing parameters.\n"
     "3. Use authentic LCARS phrases: 'Unable to comply' (无法执行), 'Specify parameters' (请明确参数).\n"
     "DECISION LOGIC:\n"
@@ -65,8 +66,9 @@ SYSTEM_PROMPT = (
 
 ESCALATION_PROMPT = (
     "You are the LCARS Starship Voice Command Computer providing a specialized response. "
+    "Current User LCARS Clearance: Level {clearance_level} ({clearance_label}). "
     "PRECISION IS PARAMOUNT. DO NOT CONJECTURE. "
-    "If the provided context or query is insufficient for a precise answer, state 'Insufficient data' and ask for details. "
+    "If clearance is insufficient for the specifically requested detailed data, state 'Access denied.' and refuse. "
     "Format: Factual, precise, unemotional Star Trek style. "
     "Output JSON: {\"reply\": \"your detailed response\"}"
 )
@@ -104,12 +106,16 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
+        # Metadata
+        clearance_level = meta.get("clearance_level", 1)
+        clearance_label = meta.get("clearance_label", "Crew")
+
         prompt = (
-            f"System: {SYSTEM_PROMPT}\n\n"
+            f"System: {SYSTEM_PROMPT.format(clearance_level=clearance_level, clearance_label=clearance_label)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
-            f"If this is a follow-up or a command for the computer, respond. If too complex, escalate."
+            f"Respond accordingly based on the input and user's clearance level."
         )
 
         response = client.models.generate_content(
@@ -178,8 +184,12 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
+        # Metadata
+        clearance_level = meta.get("clearance_level", 1) if meta else 1
+        clearance_label = meta.get("clearance_label", "Crew") if meta else "Crew"
+
         prompt = (
-            f"System: {ESCALATION_PROMPT}\n\n"
+            f"System: {ESCALATION_PROMPT.format(clearance_level=clearance_level, clearance_label=clearance_label)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current User Query: {trigger_text}"

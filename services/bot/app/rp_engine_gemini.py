@@ -48,26 +48,24 @@ def _load_style_spec() -> str:
 
 SYSTEM_PROMPT = (
     "You are the LCARS Starship Voice Command Computer from Star Trek: TNG. "
-    "Act as a 'Triage Doctor' for incoming queries. "
-    "AVAILABLE MODELS FOR ESCALATION:\n"
-    "- 'gemini-2.0-flash': Standard for detailed factual/ST lore answers.\n"
-    "- 'gemini-2.0-flash-thinking-exp-01-21': For logic puzzles, complex math, or reasoning.\n"
-    "- 'gemini-1.5-pro-latest': For extremely complex analysis (alternative: 'gemini-2.0-flash').\n\n"
+    "Act as a 'Triage Doctor' and 'Bridge Coordinator'. "
+    "IMPORTANT: You are interacting with MULTIPLE CREW MEMBERS in a shared group session. "
+    "Conversation history shows [Speaker Name (ID)]: Message. "
     "DECISION LOGIC:\n"
-    "1. If the query is simple, ANSWER DIRECTLY (needs_escalation: false).\n"
+    "1. If the query is simple, ANSWER DIRECTLY. Refer to the specific user by name if appropriate.\n"
     "2. If complex, set needs_escalation to true, pick an escalated_model, and set reply to '处理中...' or 'Working...'.\n"
-    "3. **IMPORTANT**: If the message appears to be a human-to-human conversation (e.g., 'Never mind', 'Anyway', or talking to 'John') and NOT a command for you, set intent to 'ignore', needs_escalation to false, and reply to an EMPTY STRING.\n\n"
+    "3. If multiple people are talking to each other and NOT to the computer, set intent to 'ignore', needs_escalation to false, and reply to an EMPTY STRING.\n\n"
     "RULES:\n"
-    "- Be factual and unemotional.\n"
+    "- Be factual, precise, and unemotional.\n"
     "- Reply in the SAME LANGUAGE as the user.\n"
     "Output JSON: {\"reply\": \"...\", \"intent\": \"answer|clarify|refuse|ignore\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}"
 )
 
-
 ESCALATION_PROMPT = (
     "You are the LCARS Starship Voice Command Computer providing a specialized response. "
-    "Provide a thorough, accurate answer in the SAME LANGUAGE as the user. "
-    "Format: Factual, precise, unemotional Star Trek computer style. NO filler words. "
+    "This is a MULTI-USER session. History shows Speaker Name and ID. "
+    "Provide a thorough, accurate answer addressing the correct participant if needed. "
+    "Format: Factual, precise, unemotional Star Trek style. "
     "Output JSON: {\"reply\": \"your detailed response\"}"
 )
 
@@ -98,13 +96,18 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         # Add language enforcement to prompt
         lang_instruction = "回复必须使用中文。" if is_chinese else "Reply must be in English."
         
+        # Prepare history string
+        history_str = ""
+        for turn in context:
+            author = turn.get("author", "Unknown")
+            history_str += f"[{author}]: {turn.get('content')}\n"
+
         prompt = (
             f"System: {SYSTEM_PROMPT}\n\n"
             f"Language: {lang_instruction}\n\n"
-            f"Conversation History:\n{json.dumps(context, ensure_ascii=False, indent=2)}\n\n"
-            f"User Trigger: {trigger_text}\n\n"
-            f"If this is a follow-up to the previous context, provide a direct answer. "
-            f"If too complex, set needs_escalation to true."
+            f"Conversation History:\n{history_str}\n\n"
+            f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
+            f"If this is a follow-up or a command for the computer, respond. If too complex, escalate."
         )
 
         response = client.models.generate_content(
@@ -167,11 +170,17 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
         
         lang_instruction = "回复必须使用中文。使用星际迷航计算机风格。" if is_chinese else "Reply must be in English. Use Star Trek computer style."
         
+        # Prepare history string
+        history_str = ""
+        for turn in context or []:
+            author = turn.get("author", "Unknown")
+            history_str += f"[{author}]: {turn.get('content')}\n"
+
         prompt = (
             f"System: {ESCALATION_PROMPT}\n\n"
             f"Language: {lang_instruction}\n\n"
-            f"Conversation History:\n{json.dumps(context or [], ensure_ascii=False, indent=2)}\n\n"
-            f"User Query: {trigger_text}"
+            f"Conversation History:\n{history_str}\n\n"
+            f"Current User Query: {trigger_text}"
         )
 
         try:

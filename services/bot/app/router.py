@@ -34,16 +34,19 @@ def get_session_context(session_id: str) -> List[Dict]:
         return []
     return state["last_texts"]
 
-def add_session_history(session_id: str, role: str, content: str):
+def add_session_history(session_id: str, role: str, content: str, author: Optional[str] = None):
     """
-    Manually add a turn to the session history (used for AI replies).
+    Manually add a turn to the session history (used for AI replies and user turns).
     """
     state = _session_states.get(session_id)
     if not state:
-        # Don't create state just for AI reply if no user state exists
         return
         
-    state["last_texts"].append({"role": role, "content": content})
+    state["last_texts"].append({
+        "role": role, 
+        "content": content,
+        "author": author or ("Computer" if role == "assistant" else "Unknown")
+    })
     state["last_texts"] = state["last_texts"][-MAX_HISTORY:]
 
 def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict:
@@ -54,8 +57,15 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
         "last_texts": []
     })
 
-    # Update history with user turn
-    state["last_texts"].append({"role": "user", "content": text})
+    # Identifiers: Use Nickname/Card and include QQ ID for unique identification
+    event_raw = meta.get("event_raw", {}) if meta else {}
+    sender = event_raw.get("sender", {})
+    user_id = str(event_raw.get("user_id", "Unknown"))
+    name = sender.get("card") or sender.get("nickname") or user_id
+    author = f"{name} (ID:{user_id})"
+
+    # Update history with user turn and author attribution
+    state["last_texts"].append({"role": "user", "content": text, "author": author})
     state["last_texts"] = state["last_texts"][-MAX_HISTORY:]
 
     # Check expiration

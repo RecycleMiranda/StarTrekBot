@@ -55,9 +55,12 @@ def handle_event(event: InternalEvent):
     # Build session ID
     session_id = f"{event.platform}:{event.group_id or event.user_id}"
     
-    # Route the message
+    # Route the message with full event meta for attribution
     try:
-        route_result = router.route_event(session_id, event.text, {"event": event.model_dump()})
+        route_result = router.route_event(session_id, event.text, {
+            "event": event.model_dump(),
+            "event_raw": event.raw
+        })
         logger.info(f"[Dispatcher] Route result: {route_result}")
         
         # Check if we should respond (computer mode or high confidence)
@@ -118,7 +121,7 @@ def handle_event(event: InternalEvent):
                 # Add AI reply to history for context in next turn (only if not escalating, 
                 # as escalation will send a better answer soon)
                 if not result.get("needs_escalation"):
-                    router.add_session_history(session_id, "assistant", reply_text)
+                    router.add_session_history(session_id, "assistant", reply_text, "Computer")
                 
                 # Check if escalation is needed - spawn background task for follow-up
                 if result.get("needs_escalation"):
@@ -181,7 +184,7 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
             logger.info(f"[Dispatcher] Escalated message enqueued: {enqueue_result}")
             
             # Record the final escalated answer in history
-            router.add_session_history(session_key.replace("qq:", "qq:"), "assistant", reply_text)
+            router.add_session_history(session_key.replace("qq:", "qq:"), "assistant", reply_text, "Computer")
         else:
             logger.warning(f"[Dispatcher] Escalation returned no reply: {escalation_result}")
             

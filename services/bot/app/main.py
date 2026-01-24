@@ -584,8 +584,11 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
-    # ... (existing code omitted for brevity but preserved)
-    pass
+    admin_index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(admin_index):
+        with open(admin_index, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Admin UI Source Not Found</h1>"
 
 @app.get("/admin/napcat")
 def redirect_to_napcat(request: Request):

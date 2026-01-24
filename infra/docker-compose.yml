@@ -4,10 +4,14 @@ services:
       context: ../services/bot
     env_file:
       - ../services/bot/.env.example
+    environment:
+      - NAPCAT_HOST=napcat
     volumes:
       - /opt/StarTrekBot/data:/app/data
     ports:
       - "8080:8080"
+    networks:
+      - trek-net
     restart: unless-stopped
 
   napcat:
@@ -15,9 +19,14 @@ services:
     container_name: napcat
     restart: always
     environment:
-      - ACCOUNT=${QQ_ACCOUNT} # 可在 .env 中设置
+      - ACCOUNT=${QQ_ACCOUNT}
     volumes:
       - ./napcat/config:/app/napcat/config
-    depends_on:
-      - bot
-    network_mode: "host" # 使用 host 模式方便 NapCat 直接访问 8080 端口，或通过 Docker 网络
+    ports:
+      - "6099:6099" # Keep 6099 open for legacy or backup access
+    networks:
+      - trek-net
+
+networks:
+  trek-net:
+    driver: bridge

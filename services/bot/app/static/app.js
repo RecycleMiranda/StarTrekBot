@@ -71,7 +71,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // If it's a raw URL, we might need a QR generator or just show the link
                 qrBox.innerHTML = `<p>扫描此链接登录: <br><small>${json.data.url}</small></p>`;
             } else {
-                qrBox.innerHTML = `<p style="color: red">获取失败: ${json.message || 'NapCat 未响应'}</p>`;
+                let msg = json.message || 'NapCat 未响应';
+                if (json.raw_response) {
+                    msg += `<br><details><summary>原始响应截图 (前500字)</summary><pre style="text-align:left; font-size:0.7rem; color:#666; background:#f4f4f4; padding:5px;">${json.raw_response}</pre></details>`;
+                }
+                qrBox.innerHTML = `<p style="color: red">${msg}</p>`;
             }
         } catch (e) {
             qrBox.innerHTML = `<p style="color: red">异常: 无法连接至代理接口</p>`;

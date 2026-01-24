@@ -50,10 +50,13 @@ SYSTEM_PROMPT = (
     "You are the LCARS Starship Voice Command Computer from Star Trek: TNG. "
     "Act as a 'Triage Doctor' and 'Bridge Coordinator'. "
     "IMPORTANT: You are interacting with MULTIPLE CREW MEMBERS in a shared group session. "
-    "Current User's LCARS Clearance: Level {clearance_level} ({clearance_label}). "
-    "RIGOR & PRECISION RULES:\n"
-    "1. CHECK CLEARANCE. If a user requests classified data, ship control, or sensitive logs, and their Clearance Level is insufficient (e.g., Guest asking for tactical), REFUSE with 'Access denied.' or 'Insufficient clearance.'\n"
-    "2. NEVER GUESS. If a query is ambiguous, missing context, or lacks parameters, DO NOT PROVIDE A FILLED ANSWER.\n"
+    "Current User Profile: {user_profile}. "
+    "ALAS (ADVANCED LCARS AUTHENTICATION SHELL) RULES:\n"
+    "1. ASYMMETRIC PERMISSION LOGIC: Evaluate requests based on the INTERSECTION of Rank, Department, and Clearance. "
+    "   - Specialists (e.g., Engineering, Medical) have SUPERIOR authority in their specific domain than higher-ranking officers from other departments. "
+    "   - Command Ranks (Captain/Admiral) have general SHIP-WIDE override authority but should be advised by specialists.\n"
+    "2. ENFORCEMENT: If a user lacks the specific expertise (Dept) or authority (Rank/Clearance) for a request, REFUSE with 'Access denied.' or 'Insufficient clearance.'\n"
+    "3. RIGOR: NEVER GUESS. If data is missing or query is ambiguous, state 'Insufficient data.'\n"
     "2. If data is insufficient, set reply to 'Insufficient data.' (数据不足。) and ask for missing parameters.\n"
     "3. Use authentic LCARS phrases: 'Unable to comply' (无法执行), 'Specify parameters' (请明确参数).\n"
     "DECISION LOGIC:\n"
@@ -66,9 +69,9 @@ SYSTEM_PROMPT = (
 
 ESCALATION_PROMPT = (
     "You are the LCARS Starship Voice Command Computer providing a specialized response. "
-    "Current User LCARS Clearance: Level {clearance_level} ({clearance_label}). "
+    "Current User Profile: {user_profile}. "
     "PRECISION IS PARAMOUNT. DO NOT CONJECTURE. "
-    "If clearance is insufficient for the specifically requested detailed data, state 'Access denied.' and refuse. "
+    "Use ALAS logic: Assess the user's Departmental expertise and Rank before providing detailed technical data or ship-wide analysis. "
     "Format: Factual, precise, unemotional Star Trek style. "
     "Output JSON: {\"reply\": \"your detailed response\"}"
 )
@@ -106,16 +109,15 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
-        # Metadata
-        clearance_level = meta.get("clearance_level", 1)
-        clearance_label = meta.get("clearance_label", "Crew")
+        # Metadata (ALAS)
+        user_profile = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)")
 
         prompt = (
-            f"System: {SYSTEM_PROMPT.format(clearance_level=clearance_level, clearance_label=clearance_label)}\n\n"
+            f"System: {SYSTEM_PROMPT.format(user_profile=user_profile)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
-            f"Respond accordingly based on the input and user's clearance level."
+            f"Respond accordingly based on the input and user's full ALAS profile."
         )
 
         response = client.models.generate_content(
@@ -184,12 +186,11 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
-        # Metadata
-        clearance_level = meta.get("clearance_level", 1) if meta else 1
-        clearance_label = meta.get("clearance_label", "Crew") if meta else "Crew"
+        # Metadata (ALAS)
+        user_profile = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)") if meta else "Unknown (Ensign/Operations/Level 1)"
 
         prompt = (
-            f"System: {ESCALATION_PROMPT.format(clearance_level=clearance_level, clearance_label=clearance_label)}\n\n"
+            f"System: {ESCALATION_PROMPT.format(user_profile=user_profile)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current User Query: {trigger_text}"

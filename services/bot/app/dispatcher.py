@@ -88,9 +88,11 @@ def handle_event(event: InternalEvent):
                 )
                 return True
 
-            # Fetch Security Clearance
-            clearance_level = permissions.get_user_clearance(event.user_id)
-            clearance_label = permissions.get_clearance_label(clearance_level)
+            # Fetch full ALAS User Profile
+            sender = event.raw.get("sender", {})
+            nickname = sender.get("card") or sender.get("nickname")
+            user_profile = permissions.get_user_profile(event.user_id, nickname)
+            profile_str = permissions.format_profile_for_ai(user_profile)
 
             # Generate AI reply in a separate thread to avoid event loop conflict
             future = _executor.submit(
@@ -101,8 +103,7 @@ def handle_event(event: InternalEvent):
                     meta={
                         "session_id": session_id, 
                         "user_id": event.user_id,
-                        "clearance_level": clearance_level,
-                        "clearance_label": clearance_label
+                        "user_profile": profile_str
                     }
                 )
             )
@@ -165,8 +166,8 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
     """
     Background handler for escalated queries - calls stronger model and sends follow-up message.
     """
-    clearance_level = permissions.get_user_clearance(user_id)
-    clearance_label = permissions.get_clearance_label(clearance_level)
+    user_profile = permissions.get_user_profile(user_id)
+    profile_str = permissions.format_profile_for_ai(user_profile)
     
     import time
     time.sleep(0.5)  # Small delay to ensure first message is sent first
@@ -179,7 +180,7 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
         escalation_result = _run_async(
             rp_engine_gemini.generate_escalated_reply(
                 query, is_chinese, requested_model, context, 
-                meta={"clearance_level": clearance_level, "clearance_label": clearance_label}
+                meta={"user_profile": profile_str}
             )
         )
         

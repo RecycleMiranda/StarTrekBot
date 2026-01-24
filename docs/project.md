@@ -8,6 +8,7 @@
 - 2026-01-25: health supports HEAD
 - 2026-01-25: support OneBot v11 reverse websocket
 - 2026-01-25: bilingual README (CN/EN)
+- 2026-01-25: update VPS deployment info (IP/Domain)
 
 ## Milestones
 - M0: local skeleton + docker

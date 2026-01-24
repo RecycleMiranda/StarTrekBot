@@ -82,11 +82,25 @@ body {
     color: var(--lcars-orange);
 }
 
+h2 {
+    font-size: 1.2rem;
+    color: var(--lcars-violet);
+    margin: 30px 0 15px 0;
+    text-transform: uppercase;
+}
+
 .st-line {
     height: 15px;
     background: var(--lcars-blue);
     border-radius: 0 100px 100px 0;
     margin-bottom: 30px;
+}
+
+.st-line.header-small {
+    height: 8px;
+    background: var(--lcars-gold);
+    margin-bottom: 10px;
+    opacity: 0.6;
 }
 
 .config-panel {
@@ -116,7 +130,8 @@ label {
     text-transform: uppercase;
 }
 
-input, select {
+input,
+select {
     width: 100%;
     background: #222;
     border: 1px solid #444;
@@ -161,5 +176,10 @@ small {
     font-size: 0.9rem;
 }
 
-.success { color: #00ff00; }
-.error { color: #ff0000; }
+.success {
+    color: #00ff00;
+}
+
+.error {
+    color: #ff0000;
+}

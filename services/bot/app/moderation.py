@@ -14,13 +14,15 @@ try:
 except ImportError:
     TENCENT_SDK_AVAILABLE = False
 
+from .config_manager import ConfigManager
+
 # Config
-MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "false").lower() == "true"
-SECRET_ID = os.getenv("TENCENT_SECRET_ID")
-SECRET_KEY = os.getenv("TENCENT_SECRET_KEY")
 REGION = os.getenv("TENCENT_REGION", "ap-guangzhou")
 BIZ_TYPE = os.getenv("TENCENT_TMS_BIZTYPE")
 TIMEOUT = int(os.getenv("MODERATION_TIMEOUT_SECONDS", "3"))
+
+def get_config():
+    return ConfigManager.get_instance()
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +37,35 @@ async def moderate_text(text: str, stage: str = "input", meta: Optional[dict] = 
     Moderates text using Tencent Cloud TMS.
     Returns a normalized moderation result.
     """
-    if not MODERATION_ENABLED:
+    config = get_config()
+    enabled = config.get("moderation_enabled", False)
+    secret_id = config.get("tencent_secret_id")
+    secret_key = config.get("tencent_secret_key")
+
+    if not enabled:
         return _result(True, "pass", RISK_NONE, "moderation_disabled", "disabled")
 
     if not TENCENT_SDK_AVAILABLE:
         logger.warning("tencentcloud-sdk-python-tms not installed but moderation enabled.")
         return _result(True, "pass", RISK_NONE, "sdk_missing", "error")
 
-    if not SECRET_ID or not SECRET_KEY:
+    if not secret_id or not secret_key:
         logger.warning("Tencent Cloud credentials not configured.")
         return _result(True, "pass", RISK_NONE, "not_configured", "error")
 
     try:
-        # Tencent SDK is synchronous, wrap in executor for async safety
+        # Pass keys to sync method
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _call_tms_sync, text)
+        result = await loop.run_in_executor(None, _call_tms_sync, text, secret_id, secret_key)
         return result
     except Exception as e:
         logger.error(f"Tencent TMS moderation failed: {e}")
         return _result(True, "pass", RISK_NONE, str(e), "error")
 
-def _call_tms_sync(text: str) -> dict:
+def _call_tms_sync(text: str, secret_id: str, secret_key: str) -> dict:
     """Synchronous call to Tencent TMS SDK"""
     try:
-        cred = credential.Credential(SECRET_ID, SECRET_KEY)
+        cred = credential.Credential(secret_id, secret_key)
         http_profile = HttpProfile()
         http_profile.reqTimeout = TIMEOUT
         
@@ -100,10 +107,14 @@ def _result(allow: bool, action: str, risk: int, reason: str, provider: str, raw
     }
 
 def get_status() -> dict:
+    config = get_config()
+    enabled = config.get("moderation_enabled", False)
+    secret_id = config.get("tencent_secret_id")
+    secret_key = config.get("tencent_secret_key")
     return {
-        "enabled": MODERATION_ENABLED,
+        "enabled": enabled,
         "sdk_available": TENCENT_SDK_AVAILABLE,
-        "configured": bool(SECRET_ID and SECRET_KEY),
+        "configured": bool(secret_id and secret_key),
         "region": REGION,
-        "provider": "tencent_tms" if MODERATION_ENABLED else "disabled"
+        "provider": "tencent_tms" if enabled else "disabled"
     }

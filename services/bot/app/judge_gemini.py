@@ -4,10 +4,13 @@ import httpx
 import logging
 from typing import Optional, List, Dict
 
-# Config
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+from .config_manager import ConfigManager
+
+# Config (Static env fallback for non-sensitive params)
 GEMINI_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "3.0"))
+
+def get_config():
+    return ConfigManager.get_instance()
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +25,14 @@ async def judge_intent(trigger: Dict, context: List[Dict], meta: Optional[Dict] 
     """
     Calls Gemini to perform secondary intent classification.
     """
-    if not GEMINI_API_KEY:
+    config = get_config()
+    api_key = config.get("gemini_api_key", "")
+    model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+
+    if not api_key:
         raise ValueError("GEMINI_API_KEY_NOT_CONFIGURED")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{DEFAULT_GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
     prompt = f"System: {SYSTEM_INSTRUCTION}\n\nContext: {json.dumps(context, ensure_ascii=False)}\nMeta: {json.dumps(meta or {}, ensure_ascii=False)}\nTrigger: {json.dumps(trigger, ensure_ascii=False)}"
     

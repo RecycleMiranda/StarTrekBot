@@ -58,14 +58,15 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
     """
     Generates a Starship Computer style reply using Gemini.
     """
-    if not GEMINI_API_KEY:
-        return _fallback("rp_disabled")
-    
     config = get_config()
+    api_key = config.get("gemini_api_key", "")
     model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
 
+    if not api_key:
+        return _fallback("rp_disabled (missing api key)")
+
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key)
         style_spec = _load_style_spec()
         
         prompt = (
@@ -184,7 +185,7 @@ def _fallback(reason: str) -> Dict:
 def get_status() -> Dict:
     config = get_config()
     return {
-        "configured": bool(GEMINI_API_KEY),
+        "configured": bool(config.get("gemini_api_key")),
         "model": config.get("gemini_rp_model", "gemini-2.0-flash-lite"),
         "timeout": TIMEOUT,
         "max_output_tokens": MAX_TOKENS,

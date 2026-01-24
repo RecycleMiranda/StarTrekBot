@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('sender_type').value = data.sender_type || 'mock';
                 document.getElementById('rp_style_strict').value = String(data.rp_style_strict);
                 document.getElementById('qq_send_endpoint').value = data.qq_send_endpoint || '';
+                // New Fields
+                document.getElementById('gemini_api_key').value = data.gemini_api_key || '';
+                document.getElementById('gemini_rp_model').value = data.gemini_rp_model || 'gemini-2.0-flash-lite';
+                document.getElementById('moderation_enabled').value = String(data.moderation_enabled);
+                document.getElementById('tencent_secret_id').value = data.tencent_secret_id || '';
+                document.getElementById('tencent_secret_key').value = data.tencent_secret_key || '';
+
                 showStatus('主控系统连接成功', 'success');
             } else if (json.code === 401) {
                 showStatus('身份认证失败，请检查 URL 中的 Token', 'error');
@@ -34,7 +41,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             computer_prefix: document.getElementById('computer_prefix').value,
             sender_type: document.getElementById('sender_type').value,
             rp_style_strict: document.getElementById('rp_style_strict').value === 'true',
-            qq_send_endpoint: document.getElementById('qq_send_endpoint').value
+            qq_send_endpoint: document.getElementById('qq_send_endpoint').value,
+            // New Fields
+            gemini_api_key: document.getElementById('gemini_api_key').value,
+            gemini_rp_model: document.getElementById('gemini_rp_model').value,
+            moderation_enabled: document.getElementById('moderation_enabled').value === 'true',
+            tencent_secret_id: document.getElementById('tencent_secret_id').value,
+            tencent_secret_key: document.getElementById('tencent_secret_key').value
         };
 
         try {

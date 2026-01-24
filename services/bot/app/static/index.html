@@ -57,6 +57,47 @@
                     </div>
                 </div>
 
+                <div class="st-line header-small"></div>
+                <h2>SUBSPACE COMMUNICATIONS (GEMINI AI)</h2>
+
+                <div class="field-group">
+                    <label>GEMINI_API_KEY</label>
+                    <input type="password" id="gemini_api_key" placeholder="在此输入你的 Gemini API Key">
+                    <small>建议使用多模型通用的 API KEY。</small>
+                </div>
+
+                <div class="field-group">
+                    <label>GEMINI_RP_MODEL</label>
+                    <input type="text" id="gemini_rp_model" placeholder="gemini-2.0-flash-lite">
+                </div>
+
+                <div class="st-line header-small"></div>
+                <h2>SECURITY PROTOCOLS (CONTENT MODERATION)</h2>
+
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>启用内容审核</label>
+                        <select id="moderation_enabled">
+                            <option value="false">关闭 (仅限内测)</option>
+                            <option value="true">开启 (接入腾讯 TMS)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>TENCENT_SECRET_ID</label>
+                        <input type="password" id="tencent_secret_id">
+                    </div>
+                    <div class="field-group">
+                        <label>TENCENT_SECRET_KEY</label>
+                        <input type="password" id="tencent_secret_key">
+                    </div>
+                </div>
+
+                <div class="st-line header-small"></div>
+                <h2>SUBSPACE LINK (ENDPOINT CONFIG)</h2>
+
                 <div class="field-group">
                     <label>QQ 发送端点 (QQ_SEND_ENDPOINT)</label>
                     <input type="text" id="qq_send_endpoint" placeholder="http://ip:port/send_msg">

@@ -1,0 +1,9 @@
+services:
+  bot:
+    build:
+      context: ../services/bot
+    env_file:
+      - ../services/bot/.env.example
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

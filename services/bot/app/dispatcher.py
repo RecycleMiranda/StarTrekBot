@@ -1,9 +1,9 @@
 import os
 import logging
-from .models import InternalEvent
-
+import asyncio
 from .models import InternalEvent
 from .config_manager import ConfigManager
+from . import router, send_queue
 
 logger = logging.getLogger(__name__)
 
@@ -33,5 +33,33 @@ def handle_event(event: InternalEvent):
 
     logger.info(f"[Dispatcher] Handling Event: {event.model_dump_json(indent=2)}")
     
-    # Placeholder for further logic
-    return True
+    # Skip empty messages
+    if not event.text or not event.text.strip():
+        logger.info("[Dispatcher] Empty message, skipping.")
+        return False
+    
+    # Build session ID
+    session_id = f"{event.platform}:{event.group_id or event.user_id}"
+    
+    # Route the message and get response
+    try:
+        result = router.route_event(session_id, event.text, {"event": event.model_dump()})
+        
+        if result and result.get("reply"):
+            reply_text = result["reply"]
+            logger.info(f"[Dispatcher] Got reply: {reply_text[:100]}...")
+            
+            # Enqueue the response
+            sq = send_queue.SendQueue.get_instance()
+            sq.enqueue({
+                "group_id": event.group_id,
+                "user_id": event.user_id,
+                "message": reply_text
+            })
+            return True
+        else:
+            logger.info("[Dispatcher] No reply from router.")
+    except Exception as e:
+        logger.error(f"[Dispatcher] Error processing message: {e}")
+    
+    return False

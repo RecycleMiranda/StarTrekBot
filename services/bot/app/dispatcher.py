@@ -54,7 +54,48 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) ->
             return tools.get_historical_archive(args.get("topic", "Federation"))
         elif tool == "personal_log":
             return tools.personal_log(args.get("content", ""), str(event.user_id))
+            
+        # --- Self-Destruct & Auth ---
+        elif tool == "initiate_self_destruct":
+            res = tools.initiate_self_destruct(
+                args.get("seconds", 60), 
+                args.get("silent", False), 
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id
+            )
+            if res.get("authorized"):
+                from .self_destruct import get_destruct_manager
+                dm = get_destruct_manager()
+                asyncio.create_task(dm.start_sequence(session_id, args.get("seconds", 60), args.get("silent", False), _destruct_notify))
+            return res
+            
+        elif tool == "authorize_sequence":
+            res = tools.authorize_sequence(
+                args.get("action_type", "SELF_DESTRUCT"), 
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id
+            )
+            if res.get("authorized") and args.get("action_type") == "SELF_DESTRUCT":
+                from .self_destruct import get_destruct_manager
+                dm = get_destruct_manager()
+                meta = res.get("metadata", {})
+                asyncio.create_task(dm.start_sequence(session_id, meta.get("duration", 60), meta.get("silent", False), _destruct_notify))
+            return res
+            
+        elif tool == "abort_self_destruct":
+            return tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
+            
         return {"ok": False, "error": f"unknown_tool: {tool}"}
+
+async def _destruct_notify(session_id: str, message: str):
+    """Sends background countdown messages to the chat platform."""
+    from .send_queue import SendQueue
+    sq = SendQueue.get_instance()
+    # Mock meta for background send
+    meta = {"from_computer": True, "priority": "high"}
+    await sq.enqueue_send(session_id, message, meta)
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")
         return {"ok": False, "error": str(e)}

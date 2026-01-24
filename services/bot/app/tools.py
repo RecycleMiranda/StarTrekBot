@@ -249,3 +249,62 @@ def personal_log(content: str, user_id: str) -> dict:
     
     result = qm.record_log(user_id)
     return result
+
+# --- SELF-DESTRUCT & AUTH TOOLS ---
+
+def initiate_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Initiates the self-destruct sequence. Requires either Level 12 or 3x Level 8 signatures.
+    """
+    from .auth_system import get_auth_system
+    auth = get_auth_system()
+    
+    metadata = {"duration": seconds, "silent": silent}
+    res = auth.request_action(session_id, "SELF_DESTRUCT", user_id, clearance, metadata)
+    
+    if res.get("authorized"):
+        # We need to trigger this via dispatcher/manager
+        return {"ok": True, "authorized": True, "metadata": metadata, "message": f"CRITICAL: Self-destruct sequence authorized for {seconds} seconds."}
+    
+    return res
+
+def authorize_sequence(action_type: str, user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Adds a signature to a pending authorization sequence.
+    """
+    from .auth_system import get_auth_system
+    auth = get_auth_system()
+    
+    return auth.vouch_for_action(session_id, action_type, user_id, clearance)
+
+def abort_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Aborts an active self-destruct sequence.
+    """
+    # Requires Level 8+ to even try, Level 12 to solo abort
+    from .auth_system import get_auth_system
+    from .self_destruct import get_destruct_manager
+    
+    auth = get_auth_system()
+    dm = get_destruct_manager()
+    
+    # Abort also requires Level 12 solo or Level 8+ multi-sig auth if we want to be strict,
+    # but for simplicity let's allow Level 12 solo or Level 8+ current sequence request.
+    if clearance >= 12:
+        asyncio.create_task(dm.abort_sequence(session_id))
+        return {"ok": True, "message": "SELF-DESTRUCT ABORTED: Command override by Level 12 officer."}
+    
+    if clearance < 8:
+        return {"ok": False, "message": "ACCESS DENIED: Insufficient clearance to abort self-destruct."}
+        
+    # Kick off an 'ABORT' auth sequence? No, let's keep it simple: 
+    # Just allow Level 8+ to cancel it for now as per user request (cancel also needs多人授权? 
+    # User said: "如果一个人的权限是十二级，那么他就可以一个人启动自毁，或者取消自毁，而如果没有的话，那就需要多人授权... 取消也是")
+    
+    # Let's use the same auth system for the ABORT action too
+    res = auth.request_action(session_id, "ABORT_DESTRUCT", user_id, clearance, {})
+    if res.get("authorized"):
+        asyncio.create_task(dm.abort_sequence(session_id))
+        return {"ok": True, "message": "SELF-DESTRUCT ABORTED: Multi-signature authorization complete."}
+    
+    return res

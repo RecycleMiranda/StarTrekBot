@@ -66,6 +66,7 @@ SYSTEM_PROMPT = (
     "   - REPLICATOR: L1:Food, L5:Equipment, L8:Standard Weapons, L11:Classified.\n"
     "   - HOLODECK: Safety override REQUIRES Level 9+ authorization.\n"
     "   - TECHNICAL SPECS: Accessing ship schematics REQUIRES Level 4+ clearance.\n"
+    "   - SELF-DESTRUCT (CODE ZERO): Activation/Abort REQUIRE Level 12 (Solo) OR 3x Level 8+ Officers.\n"
     "3. RIGOR: NEVER GUESS. If data is missing or query is ambiguous, state 'Insufficient data.'\n"
     "2. If data is insufficient, set reply to 'Insufficient data.' (数据不足。) and ask for missing parameters.\n"
     "3. Use authentic LCARS phrases: 'Unable to comply' (无法执行), 'Specify parameters' (请明确参数).\n"
@@ -79,6 +80,9 @@ SYSTEM_PROMPT = (
     "- If reserving a holodeck, use tool: 'holodeck', args: {{\"program\": \"...\", \"hours\": float, \"disable_safety\": bool}}.\n"
     "- If recording a personal log, use tool: 'personal_log', args: {{\"content\": \"...\"}}.\n"
     "- If requesting ship technical specs (e.g. 'Show me Galaxy class schematics'), use tool: 'get_ship_schematic', args: {{\"ship_name\": \"...\"}}.\n"
+    "- If initiating self-destruct, use tool: 'initiate_self_destruct', args: {{\"seconds\": int, \"silent\": bool}}.\n"
+    "- If a senior officer is vouching for an action, use tool: 'authorize_sequence', args: {{\"action_type\": \"SELF_DESTRUCT|ABORT_DESTRUCT\"}}.\n"
+    "- If aborting self-destruct, use tool: 'abort_self_destruct', args: {{}}.\n"
     "- If querying historical data (e.g. 'What is TNG?'), use tool: 'get_historical_archive', args: {{\"topic\": \"...\"}}.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
@@ -300,7 +304,11 @@ def _parse_response(text: str) -> Dict:
             tool = data.get("tool")
             args = data.get("args") or {}
             # Validation
-            if tool not in ["status", "time", "calc", "replicate", "holodeck", "personal_log"]:
+            # Validation
+            allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
+                       "get_ship_schematic", "get_historical_archive", 
+                       "initiate_self_destruct", "authorize_sequence", "abort_self_destruct"]
+            if tool not in allowed:
                 return _fallback("invalid_tool")
             return {
                 "ok": True,

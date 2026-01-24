@@ -38,9 +38,16 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) ->
         elif tool == "calc":
             return tools.calc(args.get("expr", ""))
         elif tool == "replicate":
-            return tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"))
+            return tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"), clearance=profile.get("clearance", 1))
         elif tool == "holodeck":
-            return tools.reserve_holodeck(args.get("program", "Standard Grid"), args.get("hours", 1.0), str(event.user_id), profile.get("rank", "Ensign"))
+            return tools.reserve_holodeck(
+                args.get("program", "Standard Grid"), 
+                args.get("hours", 1.0), 
+                str(event.user_id), 
+                profile.get("rank", "Ensign"),
+                clearance=profile.get("clearance", 1),
+                disable_safety=args.get("disable_safety", False)
+            )
         elif tool == "personal_log":
             return tools.personal_log(args.get("content", ""), str(event.user_id))
         return {"ok": False, "error": f"unknown_tool: {tool}"}

@@ -71,11 +71,15 @@ def handle_event(event: InternalEvent):
                 # Classic Star Trek computer chirping sound representation
                 bleep_text = "*Computer Acknowledgment Chirp*"
                 
-                _run_async(sq.enqueue_send(session_key, bleep_text, {
-                    "group_id": event.group_id,
-                    "user_id": event.user_id,
-                    "reply_to": event.message_id
-                }))
+                # Use executor to avoid "loop already running" error
+                _executor.submit(
+                    _run_async,
+                    sq.enqueue_send(session_key, bleep_text, {
+                        "group_id": event.group_id,
+                        "user_id": event.user_id,
+                        "reply_to": event.message_id
+                    })
+                )
                 return True
 
             # Generate AI reply in a separate thread to avoid event loop conflict

@@ -51,7 +51,9 @@ def _load_style_spec() -> str:
 SYSTEM_PROMPT = (
     "You are the Starship Voice Command Computer from Star Trek. "
     "Follow the PERSONA RULES and mimic the FEW-SHOT EXAMPLES structure. "
-    "Must output ONLY a single line of JSON: {\"reply\": \"...\", \"intent\": \"ack|answer|clarify|refuse\"}."
+    "Must output ONLY a single line of JSON. "
+    "Standard reply: {\"reply\": \"...\", \"intent\": \"ack|answer|clarify|refuse\"} "
+    "Tool call (for ship status, time, or math): {\"intent\": \"tool_call\", \"tool\": \"status|time|calc\", \"args\": {...}}"
 )
 
 async def generate_computer_reply(trigger_text: str, context: List[str], meta: Optional[Dict] = None) -> Dict:
@@ -111,7 +113,25 @@ def _parse_response(text: str) -> Dict:
         reply = data.get("reply", "Computer: Unable to comply.")
         intent = data.get("intent", "ack")
         reason = "success"
+        
+        # Handle Tool Call Identity
+        if intent == "tool_call":
+            tool = data.get("tool")
+            args = data.get("args") or {}
+            # Validation
+            if tool not in ["status", "time", "calc"]:
+                return _fallback("invalid_tool")
+            return {
+                "ok": True,
+                "reply": "", # No reply yet for tool calls
+                "intent": "tool_call",
+                "tool": tool,
+                "args": args,
+                "model": DEFAULT_MODEL,
+                "reason": "success"
+            }
 
+        reply = data.get("reply", "Computer: Unable to comply.")
         # Post-Processing
         if STYLE_STRICT:
             # 1. Enforce Prefix

@@ -17,6 +17,7 @@
 - 2026-01-25: make sender pluggable and add qq sender adapter (http endpoint)
 - 2026-01-25: add gemini rp engine + /ingest pipeline to enqueue replies
 - 2026-01-25: add computer style spec and integrate into gemini rp prompt
+- 2026-01-25: add tools (status/time/calc) and tool_call handling in ingest pipeline
 
 ## Milestones
 - M0: local skeleton + docker

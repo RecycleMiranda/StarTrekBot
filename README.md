@@ -110,6 +110,10 @@ curl -X POST https://startrekbot.miranda5799.top/judge \
      -H "Content-Type: application/json" \
      -d '{"text": "Computer, scan for life forms", "context": ["We are entering the system"]}'
 ```
+- **意图分发** (Router): 结合规则引擎与 Gemini Judge
+- **安全审核** (Moderation): 接入腾讯内容安全 TMS
+- **星舰控制** (Tools): 本地工具集 (Status/Time/Calc) 支持 AI 工具调用
+- **异步发送** (Send Queue): 全局限速 (RPS) 与 Session 冷却
 
 **测试安全审核 (Moderation)**
 ```bash
@@ -131,14 +135,24 @@ curl https://startrekbot.miranda5799.top/send/status
 ```
 *(注：发送记录会记录在 VPS 的 `/app/data/send_log.jsonl` 中)*
 
+**测试本地工具 (Tools)**
+- 状态 / Status: `curl https://startrekbot.miranda5799.top/tools/status`
+- 时间 / Time: `curl https://startrekbot.miranda5799.top/tools/time`
+- 计算 / Calc: 
+```bash
+curl -X POST https://startrekbot.miranda5799.top/tools/calc \
+     -H "Content-Type: application/json" \
+     -d '{"expr": "1024 * 2 / (8 + 8)"}'
+```
+
 **测试统一入口 (Ingest Pipeline)**
-- 模拟接收消息并自动回复:
+- 模拟接收消息并自动回复 (支持工具调用):
 ```bash
 curl -X POST https://startrekbot.miranda5799.top/ingest \
      -H "Content-Type: application/json" \
-     -d '{"session_id": "user1", "text": "Computer, report sensor status."}'
+     -d '{"session_id": "user1", "text": "Computer, report shield status."}'
 ```
-*(注：如果识别为 computer 条目，回复将自动进入发送队列)*
+*(注：如果识别为 tool_call，系统将执行本地工具并使用模板回复)*
 *(注：若 `MODERATION_ENABLED=true` 且包含敏感词，将返回 `allow: false`)*
 
 ### 个人号接入 (OneBot v11)

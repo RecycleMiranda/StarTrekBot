@@ -5,7 +5,7 @@ import logging
 import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini
+from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini, tools
 from .sender_mock import MockSender
 from .sender_qq import QQSender
 
@@ -312,12 +312,36 @@ async def post_ingest(request: Request):
             
         rp_res = await rp_engine_gemini.generate_computer_reply(text, context, meta)
         
+        final_text = rp_res["reply"]
+        tool_info = None
+
+        # Handle Tool Call Pipeline
+        if rp_res.get("intent") == "tool_call":
+            tool_name = rp_res.get("tool")
+            tool_args = rp_res.get("args") or {}
+            
+            if tool_name == "status":
+                s = tools.get_status()
+                final_text = f"Computer: Shields at {s['shields_percent']}%. Alert status {s['alert']}. Warp factor {s['warp_factor']}."
+                tool_info = {"name": "status", "args": tool_args, "res": s}
+            elif tool_name == "time":
+                t = tools.get_time()
+                final_text = f"Computer: Current time is {t['iso']} ({t['tz']})."
+                tool_info = {"name": "time", "args": tool_args, "res": t}
+            elif tool_name == "calc":
+                c = tools.calc(tool_args.get("expr", ""))
+                if c["ok"]:
+                    final_text = f"Computer: Result is {c['result']}."
+                else:
+                    final_text = "Computer: Unable to compute that expression."
+                tool_info = {"name": "calc", "args": tool_args, "res": c}
+
         # d) Enqueue
         session_key = meta.get("group_id") or session_id
         meta["session_key"] = session_key
         
         sq = send_queue.SendQueue.get_instance()
-        enqueued = await sq.enqueue_send(session_key, rp_res["reply"], meta)
+        enqueued = await sq.enqueue_send(session_key, final_text, meta)
 
     return {
         "code": 0,
@@ -327,6 +351,7 @@ async def post_ingest(request: Request):
             "router": route_res["router"],
             "final": final,
             "rp": rp_res,
+            "tool": tool_info,
             "enqueued": enqueued
         }
     }
@@ -412,6 +437,23 @@ def get_send_status():
     """
     sq = send_queue.SendQueue.get_instance()
     return {"code": 0, "message": "ok", "data": sq.get_status()}
+
+@app.get("/tools/status")
+def get_tool_status():
+    """Direct access to ship status tool."""
+    return {"code": 0, "message": "ok", "data": tools.get_status()}
+
+@app.get("/tools/time")
+def get_tool_time():
+    """Direct access to system time tool."""
+    return {"code": 0, "message": "ok", "data": tools.get_time()}
+
+@app.post("/tools/calc")
+async def post_tool_calc(request: Request):
+    """Direct access to calculation tool."""
+    body = await request.json()
+    res = tools.calc(body.get("expr", ""))
+    return {"code": 0, "message": "ok", "data": res}
 
 @app.post("/route/feedback")
 async def post_route_feedback(request: Request):

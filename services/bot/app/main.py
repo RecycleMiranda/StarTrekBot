@@ -534,12 +534,9 @@ async def sync_moderation_keywords(token: str = None):
     if expected_token and (not token or token.strip() != expected_token.strip()):
         logger.warning(f"Unauthorized API access attempt. Hint: expected starts with '{expected_token[:3]}...'")
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
-    
-import json # Added this import for json.JSONDecodeError
-
-# ... (rest of the imports)
-
-# ... (rest of the code before get_napcat_qr)
+    from .moderation_keywords import KeywordFilter
+    result = await KeywordFilter.get_instance().sync_from_remote()
+    return result
 
 @app.get("/api/napcat/qr")
 async def get_napcat_qr(token: str = None):
@@ -564,21 +561,28 @@ async def get_napcat_qr(token: str = None):
         last_error = ""
         for path in paths:
             target_url = f"{base_url}{path}"
-            logger.info(f"Probing NapCat QR at: {target_url}")
-            try:
-                resp = await client.post(target_url, headers=headers)
-                if resp.status_code == 200:
-                    try:
-                        data = resp.json()
-                        logger.info(f"Successfully fetched QR from {path}")
-                        return data
-                    except:
-                        last_error = f"Path {path} returned non-JSON (HTML/Text)"
-                        continue
+            # Try both "Bearer token" and raw "token"
+            for auth_style in ["Bearer", "Raw"]:
+                header_val = config['napcat_token'].strip()
+                if auth_style == "Bearer":
+                    headers = {"Authorization": f"Bearer {header_val}"} if header_val else {}
                 else:
-                    last_error = f"Path {path} returned status {resp.status_code}"
-            except Exception as e:
-                last_error = f"Path {path} connection error: {e}"
+                    headers = {"Authorization": header_val} if header_val else {}
+
+                try:
+                    resp = await client.post(target_url, headers=headers)
+                    if resp.status_code == 200:
+                        try:
+                            return resp.json()
+                        except:
+                            last_error = f"Path {path} ({auth_style}) non-JSON"
+                            continue
+                    elif resp.status_code == 401:
+                        last_error = f"Auth failed at {path} with style {auth_style}"
+                    else:
+                        last_error = f"Path {path} ({auth_style}) status {resp.status_code}"
+                except Exception as e:
+                    last_error = f"Path {path} connection error: {e}"
         
         return {
             "code": 1, 

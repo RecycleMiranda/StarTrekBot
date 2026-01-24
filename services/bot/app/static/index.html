@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starship Admin - LCARS Control</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="lcars-container">
+        <!-- Sidebar / Header Hook -->
+        <div class="sidebar">
+            <div class="elbow-top-left"></div>
+            <div class="menu-items">
+                <div class="menu-btn active">SETTINGS</div>
+                <div class="menu-btn">LOGS</div>
+                <div class="menu-btn">STATUS</div>
+            </div>
+            <div class="elbow-bottom-left"></div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="content">
+            <header class="main-header">
+                <h1>STARSHIP COMPUTER CONFIGURATION</h1>
+                <div class="st-line"></div>
+            </header>
+
+            <section class="config-panel">
+                <div class="field-group">
+                    <label>BOT_ENABLED_GROUPS</label>
+                    <input type="text" id="enabled_groups" placeholder="e.g. 123456,789012 or *">
+                    <small>Comma-separated group IDs to allow. Use * for all.</small>
+                </div>
+
+                <div class="field-group">
+                    <label>COMPUTER_PREFIX</label>
+                    <input type="text" id="computer_prefix" placeholder="e.g. Computer:">
+                </div>
+
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>SENDER_TYPE</label>
+                        <select id="sender_type">
+                            <option value="mock">MOCK (LOG ONLY)</option>
+                            <option value="qq">QQ (HTTP ADAPTER)</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label>STYLE_STRICT</label>
+                        <select id="rp_style_strict">
+                            <option value="true">ENABLED</option>
+                            <option value="false">DISABLED</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label>QQ_SEND_ENDPOINT</label>
+                    <input type="text" id="qq_send_endpoint" placeholder="http://...">
+                </div>
+
+                <footer class="controls">
+                    <button class="st-btn save" id="save-btn">SAVE CONFIG</button>
+                    <span id="status-msg"></span>
+                </footer>
+            </section>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

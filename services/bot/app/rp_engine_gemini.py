@@ -6,19 +6,17 @@ from typing import Optional, List, Dict
 from google import genai
 from google.genai import types
 
-# Config
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Using the user's provided default (even though 2.5 isn't public, it's configurable)
-DEFAULT_MODEL = os.getenv("GEMINI_RP_MODEL", "gemini-2.0-flash-lite")
+# Config is now handled via ConfigManager and dynamic lookups
 TIMEOUT = int(os.getenv("GEMINI_RP_TIMEOUT_SECONDS", "10"))
 MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "160"))
 TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
 
+from .config_manager import ConfigManager
+
 logger = logging.getLogger(__name__)
 
-# Suffixing/Trimming Config
-COMPUTER_PREFIX = os.getenv("COMPUTER_PREFIX", "Computer:")
-STYLE_STRICT = os.getenv("RP_STYLE_STRICT", "true").lower() == "true"
+def get_config():
+    return ConfigManager.get_instance()
 
 _STYLE_CACHE: Dict[str, str] = {}
 
@@ -62,6 +60,9 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
     """
     if not GEMINI_API_KEY:
         return _fallback("rp_disabled")
+    
+    config = get_config()
+    model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
 
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -81,7 +82,7 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
         # google-genai 0.3.0 has client.models.generate_content
         
         response = client.models.generate_content(
-            model=DEFAULT_MODEL,
+            model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=MAX_TOKENS,
@@ -113,6 +114,10 @@ def _parse_response(text: str) -> Dict:
         reply = data.get("reply", "Computer: Unable to comply.")
         intent = data.get("intent", "ack")
         reason = "success"
+        config = get_config()
+        model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+        computer_prefix = config.get("computer_prefix", "Computer:")
+        style_strict = config.get("rp_style_strict", True)
         
         # Handle Tool Call Identity
         if intent == "tool_call":
@@ -127,16 +132,16 @@ def _parse_response(text: str) -> Dict:
                 "intent": "tool_call",
                 "tool": tool,
                 "args": args,
-                "model": DEFAULT_MODEL,
+                "model": model,
                 "reason": "success"
             }
 
         reply = data.get("reply", "Computer: Unable to comply.")
         # Post-Processing
-        if STYLE_STRICT:
+        if style_strict:
             # 1. Enforce Prefix
-            if COMPUTER_PREFIX and not reply.startswith(COMPUTER_PREFIX):
-                reply = f"{COMPUTER_PREFIX} {reply}"
+            if computer_prefix and not reply.startswith(computer_prefix):
+                reply = f"{computer_prefix} {reply}"
             
             # 2. Enforce Brevity (Simple sentence counting and length)
             sentences = re.split(r'([.。!！?？])', reply)
@@ -158,7 +163,7 @@ def _parse_response(text: str) -> Dict:
             "ok": True,
             "reply": reply,
             "intent": intent,
-            "model": DEFAULT_MODEL,
+            "model": model,
             "reason": reason
         }
     except json.JSONDecodeError:
@@ -166,20 +171,23 @@ def _parse_response(text: str) -> Dict:
         return _fallback("parse_error")
 
 def _fallback(reason: str) -> Dict:
+    config = get_config()
+    model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
     return {
         "ok": False,
         "reply": "Computer: Unable to comply.",
         "intent": "refuse",
-        "model": DEFAULT_MODEL,
+        "model": model,
         "reason": reason
     }
 
 def get_status() -> Dict:
+    config = get_config()
     return {
         "configured": bool(GEMINI_API_KEY),
-        "model": DEFAULT_MODEL,
+        "model": config.get("gemini_rp_model", "gemini-2.0-flash-lite"),
         "timeout": TIMEOUT,
         "max_output_tokens": MAX_TOKENS,
-        "prefix": COMPUTER_PREFIX,
-        "strict": STYLE_STRICT
+        "prefix": config.get("computer_prefix", "Computer:"),
+        "strict": config.get("rp_style_strict", True)
     }

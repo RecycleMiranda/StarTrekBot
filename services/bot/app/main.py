@@ -6,6 +6,9 @@ import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
 from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini, tools
+from .config_manager import ConfigManager
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from .sender_mock import MockSender
 from .sender_qq import QQSender
 
@@ -30,9 +33,11 @@ def log_jsonl(filename: str, data: dict):
 @app.on_event("startup")
 async def startup_event():
     """
-    Initialize sender and start the background worker.
+    Initialize config, sender and start the background worker.
     """
-    sender_type = os.getenv("SENDQ_SENDER", "mock").lower()
+    config = ConfigManager.get_instance()
+    sender_type = config.get("sender_type", "mock").lower()
+    
     if sender_type == "qq":
         sender = QQSender()
         logger.info("Initializing QQSender adapter.")
@@ -42,7 +47,7 @@ async def startup_event():
 
     sq = send_queue.SendQueue.get_instance(sender=sender)
     asyncio.create_task(sq.worker_loop())
-    logger.info(f"Startup complete: SendQueue worker launched with {sender_type} sender.")
+    logger.info(f"Startup complete: SendQueue worker launched with {sender_type} sender (Persistent Config).")
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -495,3 +500,40 @@ async def post_route_feedback(request: Request):
     log_jsonl("router_feedback.jsonl", log_data)
 
     return {"code": 0, "message": "ok", "data": None}
+
+# --- Settings & Admin API ---
+
+@app.get("/api/settings")
+def get_settings(request: Request):
+    # Optional: simple token check via query param or header
+    token = os.getenv("WEBHOOK_TOKEN")
+    if token and request.query_params.get("token") != token:
+        return {"code": 401, "message": "unauthorized"}
+        
+    config = ConfigManager.get_instance()
+    return {"code": 0, "message": "ok", "data": config.get_all()}
+
+@app.post("/api/settings")
+async def post_settings(request: Request):
+    token = os.getenv("WEBHOOK_TOKEN")
+    if token and request.query_params.get("token") != token:
+        return {"code": 401, "message": "unauthorized"}
+
+    body = await request.json()
+    config = ConfigManager.get_instance()
+    if config.save_config(body):
+        return {"code": 0, "message": "ok", "data": config.get_all()}
+    return {"code": 1, "message": "failed to save settings"}
+
+# Serve static files for Admin UI
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/admin", response_class=HTMLResponse)
+def get_admin():
+    admin_index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(admin_index):
+        with open(admin_index, "r", encoding="utf-8") as f:
+            return f.read()
+    return "Admin UI not found. Please build/place static files in services/bot/app/static/"

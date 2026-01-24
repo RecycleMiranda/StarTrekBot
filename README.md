@@ -116,6 +116,7 @@ curl -X POST https://startrekbot.miranda5799.top/judge \
 - **安全审核** (Moderation): 接入腾讯内容安全 TMS
 - **星舰控制** (Tools): 本地工具集 (Status/Time/Calc) 支持 AI 工具调用
 - **异步发送** (Send Queue): 全局限速 (RPS) 与 Session 冷却
+- **管理面板** (Admin UI): 基于 LCARS 风格的 Web 管理后台
 
 **测试安全审核 (Moderation)**
 ```bash
@@ -136,6 +137,16 @@ curl -X POST https://startrekbot.miranda5799.top/send/enqueue \
 curl https://startrekbot.miranda5799.top/send/status
 ```
 *(注：发送记录会记录在 VPS 的 `/app/data/send_log.jsonl` 中)*
+
+### 管理面板 / Admin Web UI (M5)
+可以通过浏览器访问星舰管理面板，在线修改群聊白名单、前缀等设置，无需重启服务。
+- **URL**: `https://your-domain.top/admin?token=你的WEBHOOK_TOKEN`
+- **功能**:
+  - 管理 `BOT_ENABLED_GROUPS` (群聊白名单)
+  - 修改 `COMPUTER_PREFIX` (计算机前缀)
+  - 切换 `SENDER_TYPE` (Mock/QQ)
+  - 配置 `QQ_SEND_ENDPOINT`
+- **持久化**: 设置将保存至 `/app/data/settings.json`。
 
 **测试本地工具 (Tools)**
 - 状态 / Status: `curl https://startrekbot.miranda5799.top/tools/status`

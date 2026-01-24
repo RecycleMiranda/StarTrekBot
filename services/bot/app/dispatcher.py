@@ -2,26 +2,26 @@ import os
 import logging
 from .models import InternalEvent
 
-logger = logging.getLogger(__name__)
+from .models import InternalEvent
+from .config_manager import ConfigManager
 
-# Config
-# Should be a comma-separated list of group IDs, e.g., "123456,789012"
-ENABLED_GROUPS_RAW = os.getenv("BOT_ENABLED_GROUPS", "").strip()
-ENABLED_GROUPS = [g.strip() for g in ENABLED_GROUPS_RAW.split(",") if g.strip()]
+logger = logging.getLogger(__name__)
 
 def is_group_enabled(group_id: str | None) -> bool:
     """
-    Checks if the given group_id is in the whitelist.
-    Private messages (group_id is None) are allowed by default.
+    Checks if the given group_id is in the whitelist via ConfigManager.
     """
     if group_id is None:
         return True
     
-    # If whitelist is empty or contains wildcard "*", allow all groups
-    if not ENABLED_GROUPS or "*" in ENABLED_GROUPS:
+    config = ConfigManager.get_instance()
+    whitelist_raw = config.get("enabled_groups", "*")
+    whitelist = [g.strip() for g in whitelist_raw.split(",") if g.strip()]
+    
+    if not whitelist or "*" in whitelist:
         return True
         
-    return str(group_id) in ENABLED_GROUPS
+    return str(group_id) in whitelist
 
 def handle_event(event: InternalEvent):
     """

@@ -4,7 +4,7 @@ import json
 import logging
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router, judge_gemini
+from . import dispatcher, router, judge_gemini, moderation
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -104,6 +104,43 @@ async def post_route(request: Request):
     text = body.get("text", "")
     meta = body.get("meta") or {}
 
+    # 0. Moderation Gate (First Pass)
+    mod_res = await moderation.moderate_text(text, "input", meta)
+    if not mod_res["allow"]:
+        # Blocked
+        log_data = {
+            "ts": int(time.time()),
+            "session_id": session_id,
+            "text": text,
+            "pred_route": "chat",
+            "confidence": 0.5,
+            "reason": "blocked_by_moderation",
+            "moderation": {
+                "allow": mod_res["allow"],
+                "action": mod_res["action"],
+                "risk_level": mod_res["risk_level"],
+                "reason": mod_res["reason"]
+            },
+            "meta": meta,
+            "final_route": "chat",
+            "final_confidence": 0.5,
+            "final_reason": "blocked_by_moderation"
+        }
+        log_jsonl("router_log.jsonl", log_data)
+        return {
+            "code": 0, "message": "ok",
+            "data": {
+                "moderation": mod_res,
+                "router": None,
+                "judge": None,
+                "final": {
+                    "route": "chat",
+                    "confidence": 0.5,
+                    "reason": "blocked_by_moderation"
+                }
+            }
+        }
+
     # 1. First pass: Rule-based router
     r_res = router.route_event(session_id, text, meta)
     
@@ -161,6 +198,11 @@ async def post_route(request: Request):
         "mode_active": r_res["mode"]["active"],
         "expires_at": r_res["mode"]["expires_at"],
         "meta": meta,
+        "moderation": {
+            "allow": mod_res["allow"],
+            "action": mod_res["action"],
+            "risk_level": mod_res["risk_level"]
+        },
         "judge_called": judge_called,
         "judge_route": j_res["route"] if j_res else None,
         "judge_confidence": j_res["confidence"] if j_res else None,
@@ -176,6 +218,7 @@ async def post_route(request: Request):
         "code": 0,
         "message": "ok",
         "data": {
+            "moderation": mod_res,
             "router": r_res,
             "judge": j_res,
             "final": {
@@ -210,6 +253,26 @@ async def post_judge(request: Request):
     except Exception as e:
         logger.error(f"Internal Judge error: {e}")
         return {"code": 500, "message": "internal_judge_error", "data": None}
+
+@app.post("/moderation/check")
+async def post_moderation_check(request: Request):
+    """
+    Direct endpoint to test content moderation.
+    """
+    body = await request.json()
+    text = body.get("text", "")
+    stage = body.get("stage", "input")
+    meta = body.get("meta") or {}
+    
+    res = await moderation.moderate_text(text, stage, meta)
+    return {"code": 0, "message": "ok", "data": res}
+
+@app.get("/moderation/health")
+def get_moderation_health():
+    """
+    Check moderation service status.
+    """
+    return {"code": 0, "message": "ok", "data": moderation.get_status()}
 
 @app.post("/route/feedback")
 async def post_route_feedback(request: Request):

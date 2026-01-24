@@ -20,6 +20,18 @@
   - **IP**: `104.194.88.246`
   - **域名**: `https://startrekbot.miranda5799.top`
 
+### 配置安全审核 / Moderation Config
+在 VPS 的 `infra/docker-compose.override.yml` 中添加腾讯云 TMS 密钥：
+```yaml
+services:
+  bot:
+    environment:
+      - MODERATION_ENABLED=true
+      - TENCENT_SECRET_ID=你的SECRET_ID
+      - TENCENT_SECRET_KEY=你的SECRET_KEY
+      - TENCENT_REGION=ap-guangzhou
+```
+
 ### 配置 Gemini Judge / Gemini Judge Config
 为了提高分发准度，请在 VPS 的 `infra/docker-compose.override.yml` 中添加 API Key：
 ```yaml
@@ -68,6 +80,14 @@ curl -X POST https://startrekbot.miranda5799.top/judge \
      -H "Content-Type: application/json" \
      -d '{"text": "Computer, scan for life forms", "context": ["We are entering the system"]}'
 ```
+
+**测试安全审核 (Moderation)**
+```bash
+curl -X POST https://startrekbot.miranda5799.top/moderation/check \
+     -H "Content-Type: application/json" \
+     -d '{"text": "正常文本测试", "stage": "input"}'
+```
+*(注：若 `MODERATION_ENABLED=true` 且包含敏感词，将返回 `allow: false`)*
 
 ### 个人号接入 (OneBot v11)
 连接个人 QQ 账号，建议使用 **NapCatQQ**:

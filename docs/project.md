@@ -12,6 +12,7 @@
 - 2026-01-25: integrate NapCatQQ into docker-compose
 - 2026-01-25: add router endpoints (/route + feedback) with TTL + jsonl logs + data volume mount
 - 2026-01-25: add gemini judge for router with timeout fallback to chat
+- 2026-01-25: add moderation module with tencent tms integration + /moderation/check + input gate in /route
 
 ## Milestones
 - M0: local skeleton + docker

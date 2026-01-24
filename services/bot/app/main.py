@@ -683,18 +683,4 @@ def redirect_to_napcat(request: Request):
         </body></html>
     """)
 
-    admin_index = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(admin_index):
-        with open(admin_index, "r", encoding="utf-8") as f:
-            return f.read()
-    
-    # Debug info for the user if it fails
-    return f"""
-    <html><body>
-    <h1>Admin UI not found</h1>
-    <p>Looked at: <code>{admin_index}</code></p>
-    <p>Current directory: <code>{os.getcwd()}</code></p>
-    <p>File path: <code>{__file__}</code></p>
-    <p>Please ensure <code>services/bot/app/static</code> exists and is copied correctly.</p>
-    </body></html>
-    """
+    pass

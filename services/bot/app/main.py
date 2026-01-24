@@ -570,9 +570,6 @@ async def get_napcat_qr(token: str = None):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
     config = ConfigManager.get_instance().get_all()
-    # ... (the rest of existing logic stays same)
-    
-    config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
     headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}
     
@@ -623,9 +620,6 @@ async def get_napcat_status(token: str = None):
     if not _get_verified_token(token):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
-    config = ConfigManager.get_instance().get_all()
-    # ...
-        
     config = ConfigManager.get_instance().get_all()
     base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
     headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}

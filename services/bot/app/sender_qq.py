@@ -29,10 +29,16 @@ class QQSender(Sender):
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
+        # Prepare message text with quote/reply if requested
+        message_to_send = text
+        reply_to = meta.get("reply_to")
+        if reply_to:
+            message_to_send = f"[CQ:reply,id={reply_to}]{message_to_send}"
+
         # OneBot v11 format
         payload = {
             "group_id": int(group_id),
-            "message": text
+            "message": message_to_send
         }
 
         # Try paths - /send_group_msg works for NapCat

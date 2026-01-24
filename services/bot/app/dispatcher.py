@@ -88,7 +88,8 @@ def handle_event(event: InternalEvent):
                     _run_async,
                     sq.enqueue_send(session_key, reply_text, {
                         "group_id": event.group_id,
-                        "user_id": event.user_id
+                        "user_id": event.user_id,
+                        "reply_to": event.message_id
                     })
                 )
                 enqueue_result = enqueue_future.result(timeout=5)
@@ -103,7 +104,8 @@ def handle_event(event: InternalEvent):
                         result.get("is_chinese", False),
                         event.group_id,
                         event.user_id,
-                        session_key
+                        session_key,
+                        event.message_id
                     )
                 
                 return True
@@ -118,7 +120,7 @@ def handle_event(event: InternalEvent):
     return False
 
 
-def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str, session_key: str):
+def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str, session_key: str, original_message_id: str):
     """
     Background handler for escalated queries - calls stronger model and sends follow-up message.
     """
@@ -145,7 +147,8 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
                 sq.enqueue_send(session_key, reply_text, {
                     "group_id": group_id,
                     "user_id": user_id,
-                    "is_escalated": True
+                    "is_escalated": True,
+                    "reply_to": original_message_id
                 })
             )
             logger.info(f"[Dispatcher] Escalated message enqueued: {enqueue_result}")

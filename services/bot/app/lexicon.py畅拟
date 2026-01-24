@@ -1,0 +1,60 @@
+"""
+STARFLEET CANONICAL LEXICON (TECHNICAL MANUAL ALIGNMENT)
+Source: Star Trek: The Next Generation & Deep Space Nine Technical Manuals.
+"""
+
+CANONICAL_TERMINOLOGY = {
+    # Ship Systems
+    "Warp Drive": "曲速驱动器/曲速引擎",
+    "Impulse Drive": "冲量驱动器/脉冲引擎",
+    "Warp Core": "曲速核心",
+    "Nacelle": "引擎舱",
+    "Deflector Shield": "偏转护盾",
+    "Structural Integrity Field": "结构完整性场 (SIF)",
+    "Inertial Dampers": "惯性阻尼器",
+    "EPS Grid": "电浆能源系统 (EPS)",
+    "Jefferies Tube": "杰弗里斯管",
+    
+    # Weaponry & Defense
+    "Phasers": "相位波器/相位枪",
+    "Photon Torpedo": "光子鱼雷",
+    "Quantum Torpedo": "量子鱼雷",
+    "Cloaking Device": "隐形装置",
+    "Tractor Beam": "牵引束",
+    
+    # Personnel Equipment
+    "Transporter": "传送器",
+    "Replicator": "复制器",
+    "Holodeck": "全息甲板",
+    "PADD": "个人访问显示设备 (PADD)",
+    "Tricorder": "三录仪",
+    "Combadge": "通信徽章",
+    
+    # Science & Metrics
+    "Gigaquad": "吉咖千卡 (Gigaquad)",
+    "Cochrane": "库克伦 (Cochrane)",
+    "Parsec": "秒差距",
+    "Isolinear Chip": "等线性芯片",
+    "Bio-neural Gel Pack": "生物神经凝胶包",
+    
+    # Organizations
+    "Starfleet": "星际舰队",
+    "United Federation of Planets": "行星联合联邦",
+    "Starfleet Command": "星际舰队司令部",
+    "Section 31": "31区 (Section 31)",
+    
+    # LCARS Specific
+    "LCARS": "库式计算机接入与报告系统 (LCARS)",
+    "Main Computer": "主计算机",
+    "Access Denied": "访问受限/权限不足",
+    "Authorization Confirmed": "授权确认",
+    "Processing": "正在处理",
+    "Identity Confirmed": "身份确认"
+}
+
+def get_lexicon_prompt() -> str:
+    """Returns a formatted string for injection into AI system prompts."""
+    prompt = "CANONICAL TERMINOLOGY (FORCED TRANSLATION):\n"
+    for en, cn in CANONICAL_TERMINOLOGY.items():
+        prompt += f"- {en} -> {cn}\n"
+    return prompt

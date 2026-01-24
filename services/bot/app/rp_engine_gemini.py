@@ -14,6 +14,7 @@ TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
 from .config_manager import ConfigManager
 from . import quota_manager
 from . import tools
+from . import lexicon
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,8 @@ SYSTEM_PROMPT = (
     "   - Report JSON structure in 'reply': {{\"title\": \"REPORT_TITLE\", \"sections\": [{{\"category\": \"CAT_NAME\", \"content\": \"DATA\"}}, ...]}}\n"
     "3. **ESCALATE ONLY IF**: Extremely complex reasoning or long historical essays are needed. Set needs_escalation: true.\n"
     "4. **IGNORE**: If human-to-human chat, set intent: 'ignore', needs_escalation: false, and reply: ''.\n\n"
-    "Output JSON: {{\"reply\": \"string_or_json_object\", \"intent\": \"answer|clarify|refuse|ignore|report\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}}"
+    "Output JSON: {{\"reply\": \"string_or_json_object\", \"intent\": \"answer|clarify|refuse|ignore|report\", \"needs_escalation\": bool, \"escalated_model\": \"model-id-or-null\"}}\n\n"
+    + lexicon.get_lexicon_prompt()
 )
 
 ESCALATION_PROMPT = (

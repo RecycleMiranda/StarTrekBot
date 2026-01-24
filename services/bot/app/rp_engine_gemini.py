@@ -207,7 +207,9 @@ def _parse_response(text: str) -> Dict:
         text = text[start:end+1]
     
     try:
-        data = json.loads(text)
+        # LLMs often output literal newlines or control chars in strings. 
+        # strict=False allows these.
+        data = json.loads(text, strict=False)
         reply = data.get("reply", "Computer: Unable to comply.")
         intent = data.get("intent", "ack")
         reason = "success"

@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from .sender_mock import MockSender
 from .sender_qq import QQSender
 import httpx
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

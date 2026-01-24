@@ -526,14 +526,38 @@ async def post_settings(request: Request):
     return {"code": 1, "message": "failed to save settings"}
 
 # Serve static files for Admin UI
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+# Use absolute path relative to current file to be safe in different working dirs
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+logger.info(f"[Settings] Looking for static files in: {STATIC_DIR}")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info("[Settings] Mounted /static successfully.")
+else:
+    logger.warning(f"[Settings] Static directory NOT FOUND: {STATIC_DIR}")
 
 @app.get("/admin", response_class=HTMLResponse)
-def get_admin():
+def get_admin(request: Request):
+    token = os.getenv("WEBHOOK_TOKEN")
+    # Quick check if user provided token to avoid showing a dead page
+    if token and request.query_params.get("token") != token:
+        # We don't block the page here, but the JS will fail. 
+        # However, it's better to show an error if the path is fundamentally broken.
+        pass
+
     admin_index = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(admin_index):
         with open(admin_index, "r", encoding="utf-8") as f:
             return f.read()
-    return "Admin UI not found. Please build/place static files in services/bot/app/static/"
+    
+    # Debug info for the user if it fails
+    return f"""
+    <html><body>
+    <h1>Admin UI not found</h1>
+    <p>Looked at: <code>{admin_index}</code></p>
+    <p>Current directory: <code>{os.getcwd()}</code></p>
+    <p>File path: <code>{__file__}</code></p>
+    <p>Please ensure <code>services/bot/app/static</code> exists and is copied correctly.</p>
+    </body></html>
+    """

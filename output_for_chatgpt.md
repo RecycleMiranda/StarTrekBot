@@ -1,27 +1,31 @@
 # output_for_chatgpt
 
-- commit hash: d6943b1 (Local)
+- commit hash: 91a7a7b (Local)
 - 变更文件列表:
-  - `services/bot/app/dispatcher.py`
+  - `services/bot/app/config_manager.py` (New)
+  - `services/bot/app/static/index.html` (New)
+  - `services/bot/app/static/style.css` (New)
+  - `services/bot/app/static/app.js` (New)
   - `services/bot/app/main.py`
+  - `services/bot/app/dispatcher.py`
+  - `services/bot/app/rp_engine_gemini.py`
   - `README.md`
   - `docs/project.md`
 
 - VPS 验证命令 (以 127.0.0.1:8088 为准):
 
-  1) **默认允许 (未设置白名单)**:
-     - 在没设置 `BOT_ENABLED_GROUPS` 的情况下发送 `/ingest` 或调用 Webhook。
-     - *预期*: 机器人正常处理并回复。
+  1) **打开管理面板**:
+     - 在浏览器访问：`http://<SERVER_IP>:8088/admin?token=<你的WEBHOOK_TOKEN>`
+     - *预期*: 看到深色的星舰 LCARS 风格界面。
 
-  2) **白名单验证 (启用状态)**:
-     - 设置 `BOT_ENABLED_GROUPS=123,456` 后启动。
-     - 发送带 `"group_id": "123"` 的请求到 `/ingest`。
-     - *预期*: 处理成功，`rp.ok` 为 `true`。
+  2) **修改配置并持久化**:
+     - 在 Web UI 中修改 `COMPUTER_PREFIX` 为 `"Computer-Refined:"` 并点击 **SAVE CONFIG**。
+     - *预期*: 提示 `"CONFIGURATION PERSISTED SUCCESSFULY"`，且 `/app/data/settings.json` 内容已更新。
 
-  3) **拦截验证 (禁用状态)**:
-     - 发送带 `"group_id": "999"` 的请求到 `/ingest`。
-     - *预期*: 返回 `"message": "group_not_enabled"`，且 `final.reason` 为 `"group_not_whitelisted"`。
+  3) **验证实时生效 (Ingest)**:
+     - 在不重启容器的情况下，调用 `/ingest` 接口。
+     - *预期*: 返回的回复前缀已变为新设定的 `"Computer-Refined:"`。
 
-  4) **私聊不受限验证**:
-     - 发送不带 `group_id` 或 `group_id` 为 `null` 的请求。
-     - *预期*: 默认允许处理（除非后续需求变更为私聊也要白名单）。
+  4) **群聊白名单动态过滤**:
+     - 在 Web UI 中将 `BOT_ENABLED_GROUPS` 设为特定 ID。
+     - *预期*: 仅该 ID 的请求能通过 `/ingest`，其他 ID 返回 `group_not_enabled`。

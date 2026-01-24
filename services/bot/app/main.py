@@ -8,7 +8,7 @@ from .models import InternalEvent
 from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini, tools
 from .config_manager import ConfigManager
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from .sender_mock import MockSender
 from .sender_qq import QQSender
 import httpx
@@ -585,6 +585,11 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
+    token = os.getenv("WEBHOOK_TOKEN")
+    if token and request.query_params.get("token") != token:
+        # Don't show config if token is wrong
+        return HTMLResponse("<h1>401 Unauthorized - Access Denied</h1>", status_code=401)
+
     admin_index = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(admin_index):
         with open(admin_index, "r", encoding="utf-8") as f:

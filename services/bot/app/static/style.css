@@ -216,18 +216,28 @@ input:focus {
 }
 
 .st-btn {
-    background: var(--lcars-orange);
-    color: black;
+    background: var(--lcars-teal);
+    color: #000;
     border: none;
-    padding: 15px 30px;
+    padding: 12px 30px;
     font-weight: bold;
-    border-radius: 100px;
+    border-radius: 4px;
+    /* More modern than 100px circle */
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 0.95rem;
+    transition: all 0.3s;
+    text-transform: uppercase;
 }
 
 .st-btn:hover {
-    filter: brightness(1.1);
+    background: #fff;
+    box-shadow: 0 0 15px var(--lcars-teal);
+}
+
+.st-btn:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
 }
 
 #status-msg {

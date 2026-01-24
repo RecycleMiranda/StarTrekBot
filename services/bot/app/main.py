@@ -543,56 +543,72 @@ import json # Added this import for json.JSONDecodeError
 
 @app.get("/api/napcat/qr")
 async def get_napcat_qr(token: str = None):
-    """Proxy to get NapCat login QR code."""
+    """Proxy to get NapCat login QR code with multi-path fallback."""
     expected_token = os.getenv("WEBHOOK_TOKEN")
     if expected_token and (not token or token.strip() != expected_token.strip()):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
     config = ConfigManager.get_instance().get_all()
-    target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/login/get_qr"
+    base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
     headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}
     
-    logger.info(f"Proxying QR request to NapCat: {target_url}")
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(target_url, headers=headers)
-            logger.info(f"NapCat QR response stauts: {resp.status_code}")
-            
+    # Common paths for NapCat QR API
+    paths = [
+        "/api/login/get_qr",
+        "/api/login/getqr",
+        "/api/login/qrcode",
+        "/webui/api/login/get_qr"
+    ]
+    
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        last_error = ""
+        for path in paths:
+            target_url = f"{base_url}{path}"
+            logger.info(f"Probing NapCat QR at: {target_url}")
             try:
-                data = resp.json()
-                return data
-            except json.JSONDecodeError:
-                # If not JSON, return the raw text as an error
-                return {
-                    "code": 1, 
-                    "message": f"NapCat returned non-JSON response (Status {resp.status_code})",
-                    "raw_response": resp.text[:500]
-                }
-    except Exception as e:
-        logger.error(f"NapCat QR proxy failed: {e}")
-        return {"code": 1, "message": f"NapCat connection failed: {e}"}
+                resp = await client.post(target_url, headers=headers)
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        logger.info(f"Successfully fetched QR from {path}")
+                        return data
+                    except:
+                        last_error = f"Path {path} returned non-JSON (HTML/Text)"
+                        continue
+                else:
+                    last_error = f"Path {path} returned status {resp.status_code}"
+            except Exception as e:
+                last_error = f"Path {path} connection error: {e}"
+        
+        return {
+            "code": 1, 
+            "message": "NapCat QR API not found or authentication failed",
+            "last_error": last_error,
+            "probed_paths": paths
+        }
 
 @app.get("/api/napcat/status")
 async def get_napcat_status(token: str = None):
-    """Proxy to get NapCat and QQ status."""
+    """Proxy to get NapCat and QQ status with fallback."""
     expected_token = os.getenv("WEBHOOK_TOKEN")
     if expected_token and (not token or token.strip() != expected_token.strip()):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
         
     config = ConfigManager.get_instance().get_all()
-    target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/status"
+    base_url = f"http://{config['napcat_host']}:{config['napcat_port']}"
     headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}
 
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(target_url, headers=headers)
+    paths = ["/api/status", "/webui/api/status"]
+    
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        for path in paths:
             try:
-                return resp.json()
-            except json.JSONDecodeError:
-                return {"code": 1, "message": f"NapCat status non-JSON (Status {resp.status_code})", "raw": resp.text[:200]}
-    except Exception as e:
-        logger.error(f"NapCat Status proxy failed: {e}")
-        return {"code": 1, "message": f"NapCat connection failed: {e}"}
+                resp = await client.get(f"{base_url}{path}", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
+            except:
+                continue
+        return {"code": 1, "message": "NapCat status API not found"}
 
 # Serve static files for Admin UI
 # Use absolute path relative to current file to be safe in different working dirs

@@ -12,6 +12,8 @@ MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "160"))
 TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
 
 from .config_manager import ConfigManager
+from . import quota_manager
+from . import tools
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,13 @@ SYSTEM_PROMPT = (
     "3. RIGOR: NEVER GUESS. If data is missing or query is ambiguous, state 'Insufficient data.'\n"
     "2. If data is insufficient, set reply to 'Insufficient data.' (数据不足。) and ask for missing parameters.\n"
     "3. Use authentic LCARS phrases: 'Unable to comply' (无法执行), 'Specify parameters' (请明确参数).\n"
+    "QUOTA SYSTEM (REPLICATOR CREDITS):\n"
+    "- Standard replicator items cost 5-15 credits. High-value items (luxury, specialized tools) cost 25-100+ credits.\n"
+    "- Holodeck sessions cost 50 credits per hour.\n"
+    "- Current User Balance: {quota_balance} credits.\n"
+    "TOOLS:\n"
+    "- If the user wants to replicate something, use intent: 'tool_call', tool: 'replicate', args: {{\"item_name\": \"...\"}}.\n"
+    "- If reserving a holodeck, use tool: 'holodeck', args: {{\"program\": \"...\", \"hours\": float}}.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
     "2. **STRUCTURED REPORT MODE**: If the query requires a multi-category analysis (e.g., 'Scan that ship', 'Diagnostic report'), set intent: 'report' and provide a structured reply.\n"
@@ -75,7 +84,7 @@ ESCALATION_PROMPT = (
     "If providing a complex multi-point report, use the STRUCTURED REPORT format in your 'reply': "
     "{{\"title\": \"...\", \"sections\": [{{\"category\": \"...\", \"content\": \"...\"}}, ...]}}\n"
     "Otherwise, provide a direct factual string. "
-    "Format: Factual, precise, unemotional Star Trek style. "
+    "QUOTA INFO: User Balance: {quota_balance}.\n"
     "Output JSON: {{\"reply\": \"string_or_report_object\"}}"
 )
 
@@ -112,15 +121,22 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
-        # Metadata (ALAS)
-        user_profile = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)")
+        # Metadata (ALAS & Quota)
+        user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)")
+        user_id = meta.get("user_id", "0")
+        # Extract rank from profile string for quota lookup
+        rank_match = re.search(r"Rank: (.*?),", user_profile_str)
+        rank = rank_match.group(1) if rank_match else "Ensign"
+        
+        qm = quota_manager.get_quota_manager()
+        balance = qm.get_balance(user_id, rank)
 
         prompt = (
-            f"System: {SYSTEM_PROMPT.format(user_profile=user_profile)}\n\n"
+            f"System: {SYSTEM_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
-            f"Respond accordingly based on the input and user's full ALAS profile."
+            f"Respond accordingly based on the input, user's full ALAS profile, and replicator quota."
         )
 
         response = client.models.generate_content(
@@ -189,11 +205,17 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
             author = turn.get("author", "Unknown")
             history_str += f"[{author}]: {turn.get('content')}\n"
 
-        # Metadata (ALAS)
-        user_profile = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)") if meta else "Unknown (Ensign/Operations/Level 1)"
+        # Metadata (ALAS & Quota)
+        user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)") if meta else "Unknown (Ensign/Operations/Level 1)"
+        user_id = meta.get("user_id", "0") if meta else "0"
+        rank_match = re.search(r"Rank: (.*?),", user_profile_str)
+        rank = rank_match.group(1) if rank_match else "Ensign"
+        
+        qm = quota_manager.get_quota_manager()
+        balance = qm.get_balance(user_id, rank)
 
         prompt = (
-            f"System: {ESCALATION_PROMPT.format(user_profile=user_profile)}\n\n"
+            f"System: {ESCALATION_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
             f"Language: {lang_instruction}\n\n"
             f"Conversation History:\n{history_str}\n\n"
             f"Current User Query: {trigger_text}"
@@ -266,7 +288,7 @@ def _parse_response(text: str) -> Dict:
             tool = data.get("tool")
             args = data.get("args") or {}
             # Validation
-            if tool not in ["status", "time", "calc"]:
+            if tool not in ["status", "time", "calc", "replicate", "holodeck"]:
                 return _fallback("invalid_tool")
             return {
                 "ok": True,

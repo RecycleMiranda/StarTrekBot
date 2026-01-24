@@ -27,6 +27,25 @@ def _run_async(coro):
     finally:
         loop.close()
 
+def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) -> dict:
+    """Executes a ship tool with user context."""
+    from . import tools
+    try:
+        if tool == "status":
+            return tools.get_status()
+        elif tool == "time":
+            return tools.get_time()
+        elif tool == "calc":
+            return tools.calc(args.get("expr", ""))
+        elif tool == "replicate":
+            return tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"))
+        elif tool == "holodeck":
+            return tools.reserve_holodeck(args.get("program", "Standard Grid"), args.get("hours", 1.0), str(event.user_id), profile.get("rank", "Ensign"))
+        return {"ok": False, "error": f"unknown_tool: {tool}"}
+    except Exception as e:
+        logger.error(f"Tool execution failed: {e}")
+        return {"ok": False, "error": str(e)}
+
 def is_group_enabled(group_id: str | None) -> bool:
     """
     Checks if the given group_id is in the whitelist via ConfigManager.
@@ -125,6 +144,18 @@ def handle_event(event: InternalEvent):
                     img_io = visual_core.render_report(reply_raw)
                     image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
                     reply_text = f"Generating visual report... (Intent: {intent})"
+                elif intent == "tool_call":
+                    tool = result.get("tool")
+                    args = result.get("args") or {}
+                    logger.info(f"[Dispatcher] Executing tool: {tool}({args})")
+                    tool_result = _execute_tool(tool, args, event, user_profile)
+                    
+                    if tool_result.get("ok"):
+                        reply_text = tool_result.get("message") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                    else:
+                        reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
+                    
+                    intent = f"tool_res:{tool}"
                 else:
                     # Format report if it's a dict for text fallback
                     reply_text = report_builder.format_report_to_text(reply_raw)

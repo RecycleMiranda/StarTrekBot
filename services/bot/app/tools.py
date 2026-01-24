@@ -72,3 +72,59 @@ def calc(expr: str) -> dict:
     except Exception as e:
         logger.warning(f"Calculation failed: {e}")
         return {"ok": False, "result": None, "error": str(e)}
+
+def replicate(item_name: str, user_id: str, rank: str) -> dict:
+    """
+    Replicates an item using replicator credits.
+    Standard items cost 5-50 credits.
+    """
+    from .quota_manager import get_quota_manager
+    qm = get_quota_manager()
+    
+    # Generic cost logic (could be improved with a dictionary)
+    item_lower = item_name.lower()
+    cost = 10 # Default
+    if any(k in item_lower for k in ["tea", "coffee", "water"]): cost = 5
+    if any(k in item_lower for k in ["steak", "pasta", "meal"]): cost = 15
+    if any(k in item_lower for k in ["padd", "tool", "spare"]): cost = 25
+    if any(k in item_lower for k in ["diamond", "gold", "luxury"]): cost = 500
+    
+    if qm.spend_credits(user_id, cost):
+        return {
+            "ok": True,
+            "message": f"Replication successful: {item_name}.",
+            "cost": cost,
+            "remaining": qm.get_balance(user_id, rank)
+        }
+    else:
+        return {
+            "ok": False,
+            "message": "Insufficient replicator credits.",
+            "cost": cost,
+            "remaining": qm.get_balance(user_id, rank)
+        }
+
+def reserve_holodeck(program_name: str, duration_hours: float, user_id: str, rank: str) -> dict:
+    """
+    Reserves a holodeck session.
+    Costs 50 credits per hour.
+    """
+    from .quota_manager import get_quota_manager
+    qm = get_quota_manager()
+    
+    cost = int(duration_hours * 50)
+    
+    if qm.spend_credits(user_id, cost):
+        return {
+            "ok": True,
+            "message": f"Holodeck session reserved: '{program_name}' for {duration_hours} hours.",
+            "cost": cost,
+            "remaining": qm.get_balance(user_id, rank)
+        }
+    else:
+        return {
+            "ok": False,
+            "message": "Insufficient holodeck energy credits.",
+            "cost": cost,
+            "remaining": qm.get_balance(user_id, rank)
+        }

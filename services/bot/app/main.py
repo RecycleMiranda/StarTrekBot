@@ -525,6 +525,16 @@ async def post_settings(request: Request):
         return {"code": 0, "message": "ok", "data": config.get_all()}
     return {"code": 1, "message": "failed to save settings"}
 
+@app.post("/api/moderation/sync")
+async def sync_moderation_keywords(token: str):
+    """Sync keywords from remote source."""
+    if token != os.getenv("WEBHOOK_TOKEN"):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    from .moderation_keywords import KeywordFilter
+    result = await KeywordFilter.get_instance().sync_from_remote()
+    return result
+
 # Serve static files for Admin UI
 # Use absolute path relative to current file to be safe in different working dirs
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

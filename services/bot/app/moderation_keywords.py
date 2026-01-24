@@ -1,10 +1,12 @@
 import re
 import os
 import logging
+import httpx
 
 logger = logging.getLogger(__name__)
 
 KEYWORDS_FILE = "/app/data/keywords.txt"
+REMOTE_LIST_URL = "https://raw.githubusercontent.com/Konsheng/Sensitive-lexicon/refs/heads/master/sensitive-lexicon.txt"
 
 class KeywordFilter:
     _instance = None
@@ -59,3 +61,33 @@ class KeywordFilter:
                 }
         
         return {"allow": True, "action": "pass", "risk_level": 0, "reason": "local_passed", "provider": "local"}
+
+    async def sync_from_remote(self) -> dict:
+        """Downloads the latest sensitive word list from GitHub."""
+        logger.info(f"Syncing keywords from {REMOTE_LIST_URL}...")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(REMOTE_LIST_URL)
+                resp.raise_for_status()
+                content = resp.text
+                
+                # Deduplicate and basic cleaning
+                new_words = set()
+                for line in content.splitlines():
+                    clean = line.strip()
+                    if clean and not clean.startswith("#"):
+                        new_words.add(clean)
+                
+                if not new_words:
+                    return {"code": 1, "message": "downloaded list is empty"}
+
+                os.makedirs(os.path.dirname(KEYWORDS_FILE), exist_ok=True)
+                with open(KEYWORDS_FILE, "w", encoding="utf-8") as f:
+                    f.write("# StarTrekBot Cloud-Synced Keywords\n")
+                    f.write("\n".join(sorted(list(new_words))))
+                
+                self.reload()
+                return {"code": 0, "message": f"successfully synced {len(new_words)} keywords"}
+        except Exception as e:
+            logger.error(f"Failed to sync remote keywords: {e}")
+            return {"code": 1, "message": f"sync failed: {str(e)}"}

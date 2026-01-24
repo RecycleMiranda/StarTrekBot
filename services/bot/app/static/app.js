@@ -74,6 +74,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function syncKeywords() {
+        try {
+            const btn = document.getElementById('sync-keywords-btn');
+            btn.disabled = true;
+            showStatus('正在连接子空间数据库并下载词库...', '');
+            const resp = await fetch(`/api/moderation/sync?token=${token}`, { method: 'POST' });
+            const json = await resp.json();
+            if (json.code === 0) {
+                showStatus('✅ ' + json.message, 'success');
+            } else {
+                showStatus('❌ 同步失败：' + json.message, 'error');
+            }
+        } catch (e) {
+            showStatus('❌ 网络异常：无法同步词库', 'error');
+        } finally {
+            document.getElementById('sync-keywords-btn').disabled = false;
+        }
+    }
+
     function showStatus(msg, type) {
         statusMsg.textContent = msg;
         statusMsg.className = type;
@@ -99,6 +118,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     document.getElementById('moderation_provider').addEventListener('change', toggleModFields);
+    document.getElementById('sync-keywords-btn').addEventListener('click', syncKeywords);
     saveBtn.addEventListener('click', saveSettings);
     loadSettings();
 });

@@ -185,6 +185,7 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
         if not response or not response.text:
             return _fallback("empty_response")
         
+        logger.debug(f"Escalation raw response: {response.text}")
         result = _parse_response(response.text)
         result["model"] = thinking_model
         result["is_escalated"] = True
@@ -264,8 +265,9 @@ def _parse_response(text: str) -> Dict:
             "reason": reason,
             "needs_escalation": data.get("needs_escalation", False)
         }
-    except json.JSONDecodeError:
-        logger.warning(f"Failed to parse Gemini RP response: {text}")
+    except json.JSONDecodeError as je:
+        logger.warning(f"Failed to parse Gemini RP response (JSONDecodeError): {je}")
+        logger.warning(f"Raw response was: {text}")
         return _fallback("parse_error")
 
 def _fallback(reason: str) -> Dict:

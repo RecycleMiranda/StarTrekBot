@@ -3,7 +3,7 @@ import logging
 import asyncio
 from .models import InternalEvent
 from .config_manager import ConfigManager
-from . import router, send_queue
+from . import router, send_queue, rp_engine_gemini
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +41,47 @@ def handle_event(event: InternalEvent):
     # Build session ID
     session_id = f"{event.platform}:{event.group_id or event.user_id}"
     
-    # Route the message and get response
+    # Route the message
     try:
-        result = router.route_event(session_id, event.text, {"event": event.model_dump()})
+        route_result = router.route_event(session_id, event.text, {"event": event.model_dump()})
+        logger.info(f"[Dispatcher] Route result: {route_result}")
         
-        if result and result.get("reply"):
-            reply_text = result["reply"]
-            logger.info(f"[Dispatcher] Got reply: {reply_text[:100]}...")
+        # Check if we should respond (computer mode or high confidence)
+        if route_result.get("route") == "computer" or route_result.get("confidence", 0) >= 0.7:
+            # Generate AI reply asynchronously
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    rp_engine_gemini.generate_computer_reply(
+                        trigger_text=event.text,
+                        context=[],  # Could add conversation history later
+                        meta={"session_id": session_id, "user_id": event.user_id}
+                    )
+                )
+            finally:
+                loop.close()
             
-            # Enqueue the response
-            sq = send_queue.SendQueue.get_instance()
-            sq.enqueue({
-                "group_id": event.group_id,
-                "user_id": event.user_id,
-                "message": reply_text
-            })
-            return True
+            logger.info(f"[Dispatcher] AI result: {result}")
+            
+            if result and result.get("ok") and result.get("reply"):
+                reply_text = result["reply"]
+                logger.info(f"[Dispatcher] Sending reply: {reply_text[:100]}...")
+                
+                # Enqueue the response
+                sq = send_queue.SendQueue.get_instance()
+                sq.enqueue({
+                    "group_id": event.group_id,
+                    "user_id": event.user_id,
+                    "message": reply_text
+                })
+                return True
+            else:
+                logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
         else:
-            logger.info("[Dispatcher] No reply from router.")
+            logger.info(f"[Dispatcher] Route is chat/low confidence, not responding.")
     except Exception as e:
-        logger.error(f"[Dispatcher] Error processing message: {e}")
+        logger.error(f"[Dispatcher] Error processing message: {e}", exc_info=True)
     
     return False
+

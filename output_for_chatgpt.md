@@ -1,36 +1,43 @@
 # output_for_chatgpt
 
-- commit hash: 3980964 (Local)
-- 默认 GEMINI_MODEL: `gemini-2.0-flash-lite`
+- commit hash: 58001e6 (Local)
 - 变更文件列表:
-  - `services/bot/app/judge_gemini.py` (New)
+  - `services/bot/app/moderation.py` (New)
   - `services/bot/app/main.py`
-  - `services/bot/app/router.py`
   - `services/bot/requirements.txt`
   - `README.md`
   - `docs/project.md`
-  - `infra/docker-compose.yml`
 
 - VPS 验证命令 (以 127.0.0.1:8088 为准):
 
-  a) **不配置 API Key 时触发 judge**:
+  1) **验证状态 (未配置)**:
+     ```bash
+     curl http://127.0.0.1:8088/moderation/health
+     ```
+     *预期输出*: `configured: false`, `enabled: false`.
+
+  2) **验证接口 (未配置时显式通过)**:
+     ```bash
+     curl -X POST http://127.0.0.1:8088/moderation/check \
+          -H "Content-Type: application/json" \
+          -d '{"text": "测试文本"}'
+     ```
+     *预期输出*: `provider: disabled`, `allow: true`.
+
+  3) **验证集成 (Gate)**:
      ```bash
      curl -X POST http://127.0.0.1:8088/route \
           -H "Content-Type: application/json" \
-          -d '{"session_id": "test_m1", "text": "报告"}'
+          -d '{"session_id": "test_mod", "text": "正常指令"}'
      ```
-     *预期输出*: `final_reason` 为 `judge_error_fallback_chat` 或 `judge_unavailable`，`final_route` 为 `chat`。
+     *预期输出*: `data.moderation.allow: true` 且正常进行 router 逻辑。
 
-  b) **配置 API Key 后单测 Judge**:
+  4) **配置后验证 (如有敏感词)**:
+     *配置 `MODERATION_ENABLED=true` 和腾讯云密钥后*:
      ```bash
-     curl -X POST http://127.0.0.1:8088/judge \
+     # 输入测试敏感词
+     curl -X POST http://127.0.0.1:8088/route \
           -H "Content-Type: application/json" \
-          -d '{"text": "Computer, scan for life forms", "context": ["System check"]}'
+          -d '{"session_id": "test_mod", "text": "敏感词..."}'
      ```
-     *预期输出*: 返回 Gemini 判定的结果 JSON。
-
-  c) **验证日志字段**:
-     ```bash
-     tail -n 3 /opt/StarTrekBot/data/router_log.jsonl
-     ```
-     *预期输出*: 包含 `judge_called`, `judge_route`, `final_route` 等 M1 新增字段。
+     *预期输出*: `data.final.reason: "blocked_by_moderation"`, `data.moderation.allow: false`.

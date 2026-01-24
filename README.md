@@ -20,6 +20,16 @@
   - **IP**: `104.194.88.246`
   - **域名**: `https://startrekbot.miranda5799.top`
 
+### 配置发送队列 / Send Queue Config
+防风控限速配置（可在 VPS 的 `infra/docker-compose.override.yml` 修改）：
+```yaml
+services:
+  bot:
+    environment:
+      - SENDQ_GLOBAL_RPS=2.0
+      - SENDQ_SESSION_COOLDOWN_MS=1200
+```
+
 ### 配置安全审核 / Moderation Config
 在 VPS 的 `infra/docker-compose.override.yml` 中添加腾讯云 TMS 密钥：
 ```yaml
@@ -87,6 +97,19 @@ curl -X POST https://startrekbot.miranda5799.top/moderation/check \
      -H "Content-Type: application/json" \
      -d '{"text": "正常文本测试", "stage": "input"}'
 ```
+
+**测试发送队列 (Send Queue)**
+- 入队测试 / Enqueue:
+```bash
+curl -X POST https://startrekbot.miranda5799.top/send/enqueue \
+     -H "Content-Type: application/json" \
+     -d '{"text": "Computer, reply test message 1"}'
+```
+- 查看状态 / Status:
+```bash
+curl https://startrekbot.miranda5799.top/send/status
+```
+*(注：发送记录会记录在 VPS 的 `/app/data/send_log.jsonl` 中)*
 *(注：若 `MODERATION_ENABLED=true` 且包含敏感词，将返回 `allow: false`)*
 
 ### 个人号接入 (OneBot v11)

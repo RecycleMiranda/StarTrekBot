@@ -2,9 +2,10 @@ import os
 import time
 import json
 import logging
+import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router, judge_gemini, moderation
+from . import dispatcher, router, judge_gemini, moderation, send_queue
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +18,30 @@ os.makedirs(DATA_DIR, exist_ok=True)
 app = FastAPI(title="bot-service", version="0.0.1")
 
 def log_jsonl(filename: str, data: dict):
+    path = os.path.join(DATA_DIR, filename)
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning(f"Failed to write log to {path}: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Start the background sender worker.
+    """
+    sq = send_queue.SendQueue.get_instance()
+    asyncio.create_task(sq.worker_loop())
+    logger.info("Startup complete: SendQueue worker launched.")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """
+    Gracefully stop the background worker.
+    """
+    sq = send_queue.SendQueue.get_instance()
+    sq.stop()
+    logger.info("Shutdown complete: SendQueue worker signaled to stop.")
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health():
@@ -273,6 +298,36 @@ def get_moderation_health():
     Check moderation service status.
     """
     return {"code": 0, "message": "ok", "data": moderation.get_status()}
+
+@app.post("/send/enqueue")
+async def post_send_enqueue(request: Request):
+    """
+    Manually enqueue a message for sending.
+    """
+    body = await request.json()
+    session_id = body.get("session_id", "default")
+    text = body.get("text", "")
+    meta = body.get("meta") or {}
+    
+    # Use group_id as priority session_key per requirements
+    session_key = meta.get("group_id") or session_id
+    # Ensure key info stays in meta for the sender
+    meta["session_key"] = session_key
+    
+    sq = send_queue.SendQueue.get_instance()
+    res = await sq.enqueue_send(session_key, text, meta)
+    
+    if "error" in res:
+        return {"code": 1, "message": res["error"], "data": res}
+    return {"code": 0, "message": "ok", "data": res}
+
+@app.get("/send/status")
+def get_send_status():
+    """
+    View queue occupancy and statistics.
+    """
+    sq = send_queue.SendQueue.get_instance()
+    return {"code": 0, "message": "ok", "data": sq.get_status()}
 
 @app.post("/route/feedback")
 async def post_route_feedback(request: Request):

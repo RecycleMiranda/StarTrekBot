@@ -7,8 +7,10 @@ curl http://127.0.0.1:8080/health
 
 ## Test Webhook
 # Test QQ Webhook
+# Note: If WEBHOOK_TOKEN is set in environment, add -H "X-Webhook-Token: <your_token>"
 curl -X POST http://127.0.0.1:8080/qq/webhook \
      -H "Content-Type: application/json" \
+     -H "X-Webhook-Token: your_token_here" \
      -d '{"type": "message", "author_id": "user123", "content": "hello bot"}'
 
 # Test Internal Event

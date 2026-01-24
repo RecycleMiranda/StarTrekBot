@@ -1,25 +1,34 @@
 # output_for_chatgpt
 
 - scan results:
-  - Documentation files moved to `docs/` directory.
-  - References in `docs/coding_standards.md` and `docs/architecture.md` updated to `docs/project.md`.
-  - Directory structure `docs/` successfully created and populated.
+  - Added OneBot-like internal event model in `services/bot/app/models.py`.
+  - Added simple event dispatcher in `services/bot/app/dispatcher.py`.
+  - Added endpoints `/qq/webhook` and `/onebot/event` in `services/bot/app/main.py`.
+  - Documentation files are in `docs/` and cross-references are updated.
 
 - commands run:
-  - `mkdir -p docs && mv project.md architecture.md coding_standards.md api_rules.md data_model.md ui_guidelines.md docs/`
   - `git add .`
-  - `git commit -m "docs: move documentation files to /docs and fix links"`
+  - `git commit -m "feat: qq webhook + internal onebot-like event skeleton"`
   - `git push -u origin main` (FAILED with 403)
 
 - errors:
-  - `git push`: 403 Forbidden (Permission denied to push to the remote repository).
+  - `git push`: 403 Forbidden (Permission denied).
 
 - key diffs:
-  - `.md` files moved from root to `docs/`.
-  - `docs/project.md` updated with new changelog entry.
-  - Current Local Commit: 70969e8
+  - `services/bot/app/models.py` (New)
+  - `services/bot/app/dispatcher.py` (New)
+  - `services/bot/app/main.py` (Modified: Added webhook/event endpoints)
+  - `README.md` (Modified: Added test curl commands)
+  - `docs/project.md` (Modified: Updated changelog)
+
+- curl test command:
+  ```bash
+  curl -X POST http://127.0.0.1:8080/qq/webhook \
+       -H "Content-Type: application/json" \
+       -d '{"type": "message", "author_id": "user123", "content": "hello bot"}'
+  ```
 
 ---
 - Current Branch: main
-- Last Commit Hash (Local): 70969e8
-- Git Status Summary: Changes committed locally, but push failed due to permission issues.
+- Latest Commit Hash (Local): 8125ff8eced7be92e7b61a73205a47ddfe67c8f1
+- Git Status Summary: Changes committed locally. Push to remote failed (403).

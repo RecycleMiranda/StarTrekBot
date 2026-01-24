@@ -13,8 +13,18 @@ def health():
 @app.post("/qq/webhook")
 async def qq_webhook(request: Request):
     """
-    Entrance for QQ Official Robot WebHook.
+    Entrance for QQ Official Robot WebHook with optional token authentication.
     """
+    token = os.getenv("WEBHOOK_TOKEN")
+    if token:
+        request_token = request.headers.get("X-Webhook-Token")
+        if request_token != token:
+            return {
+                "code": 401,
+                "message": "unauthorized",
+                "data": None
+            }
+
     body = await request.json()
     
     # Minimal extraction logic for OneBot-like skeleton

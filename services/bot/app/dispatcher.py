@@ -27,7 +27,7 @@ def _run_async(coro):
     finally:
         loop.close()
 
-def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) -> dict:
+def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str) -> dict:
     """Executes a ship tool with user context."""
     from . import tools
     try:
@@ -88,6 +88,9 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) ->
             return tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
             
         return {"ok": False, "error": f"unknown_tool: {tool}"}
+    except Exception as e:
+        logger.error(f"Tool execution failed: {e}")
+        return {"ok": False, "error": str(e)}
 
 async def _destruct_notify(session_id: str, message: str):
     """Sends background countdown messages to the chat platform."""
@@ -96,9 +99,6 @@ async def _destruct_notify(session_id: str, message: str):
     # Mock meta for background send
     meta = {"from_computer": True, "priority": "high"}
     await sq.enqueue_send(session_id, message, meta)
-    except Exception as e:
-        logger.error(f"Tool execution failed: {e}")
-        return {"ok": False, "error": str(e)}
 
 def is_group_enabled(group_id: str | None) -> bool:
     """
@@ -221,7 +221,7 @@ def handle_event(event: InternalEvent):
                     tool = result.get("tool")
                     args = result.get("args") or {}
                     logger.info(f"[Dispatcher] Executing tool: {tool}({args})")
-                    tool_result = _execute_tool(tool, args, event, user_profile)
+                    tool_result = _execute_tool(tool, args, event, user_profile, session_id)
                     
                     if tool_result.get("ok"):
                         reply_text = tool_result.get("message") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"

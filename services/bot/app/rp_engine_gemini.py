@@ -81,9 +81,13 @@ SYSTEM_PROMPT = (
     "- If recording a personal log, use tool: 'personal_log', args: {{\"content\": \"...\"}}.\n"
     "- If requesting ship technical specs (e.g. 'Show me Galaxy class schematics'), use tool: 'get_ship_schematic', args: {{\"ship_name\": \"...\"}}.\n"
     "- If initiating self-destruct, use tool: 'initiate_self_destruct', args: {{\"seconds\": int, \"silent\": bool}}.\n"
-    "- If a senior officer is vouching for an action, use tool: 'authorize_sequence', args: {{\"action_type\": \"SELF_DESTRUCT|ABORT_DESTRUCT\"}}.\n"
+    "- If a senior officer is vouching for an action, use tool: 'authorize_sequence', args: {{\"action_type\": \"SELF_DESTRUCT|ABORT_DESTRUCT|LOCKOUT_ON|LOCKOUT_OFF\"}}.\n"
     "- If aborting self-destruct, use tool: 'abort_self_destruct', args: {{}}.\n"
     "- If querying historical data (e.g. 'What is TNG?'), use tool: 'get_historical_archive', args: {{\"topic\": \"...\"}}.\n"
+    "- If locking/unlocking command authority, use tool: 'lockdown_authority', args: {{\"state\": bool}}.\n"
+    "- If restricting a user (e.g. 'Restrict @User for 10 minutes'), use tool: 'restrict_user', args: {{\"target_mention\": \"@User\", \"duration_minutes\": int}}.\n"
+    "- If lifting a restriction, use tool: 'lift_user_restriction', args: {{\"target_mention\": \"@User\"}}.\n"
+    "- TARGETING: When a command targets a person (e.g., 'Restrict @XXX'), extract the mention string exactly as it appears in the text.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
     "2. **STRUCTURED REPORT MODE**: If the query requires a multi-category analysis (e.g., 'Scan that ship', 'Diagnostic report'), set intent: 'report' and provide a structured reply.\n"
@@ -307,7 +311,8 @@ def _parse_response(text: str) -> Dict:
             # Validation
             allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
                        "get_ship_schematic", "get_historical_archive", 
-                       "initiate_self_destruct", "authorize_sequence", "abort_self_destruct"]
+                       "initiate_self_destruct", "authorize_sequence", "abort_self_destruct",
+                       "lockdown_authority", "restrict_user", "lift_user_restriction"]
             if tool not in allowed:
                 return _fallback("invalid_tool")
             return {

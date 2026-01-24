@@ -134,6 +134,25 @@ def handle_event(event: InternalEvent):
     # Build session ID
     session_id = f"{event.platform}:{event.group_id or event.user_id}"
     
+    # --- ACCESS CONTROL GATING (Legacy & Security) ---
+    from .permissions import is_user_restricted, is_command_locked, get_user_profile
+    
+    # 1. Individual Restriction
+    if is_user_restricted(event.user_id):
+        logger.warning(f"[Dispatcher] User {event.user_id} is restricted. Dropping.")
+        return False
+        
+    # 2. Global Command Lockout
+    if is_command_locked():
+        # Only allow Level 8+ during lockout
+        profile = get_user_profile(str(event.user_id), event.nickname, event.title)
+        if profile.get("clearance", 1) < 8:
+            logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")
+            sq = send_queue.SendQueue.get_instance()
+            session_key = f"{event.platform}:{event.group_id or event.user_id}"
+            _executor.submit(_run_async, sq.enqueue_send(session_key, "ACCESS DENIED: Shipboard command authority is currently locked to Senior Officers.", {"from_computer": True}))
+            return False
+    
     # Route the message with full event meta for attribution
     try:
         route_result = router.route_event(session_id, event.text, {

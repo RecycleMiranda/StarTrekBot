@@ -308,3 +308,68 @@ def abort_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
         return {"ok": True, "message": "SELF-DESTRUCT ABORTED: Multi-signature authorization complete."}
     
     return res
+
+# --- ACCESS CONTROL TOOLS ---
+
+def lockdown_authority(state: bool, user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Toggles global command lockout. Requires Level 12 (Solo) or Level 10+ (Multi-Sig).
+    """
+    from .permissions import set_command_lockout
+    from .auth_system import get_auth_system
+    
+    if clearance >= 12:
+        set_command_lockout(state)
+        return {"ok": True, "message": f"COMMAND LOCKOUT {'ACTIVATED' if state else 'DEACTIVATED'}: Override by Level 12 officer."}
+        
+    if clearance < 10:
+        return {"ok": False, "message": "ACCESS DENIED: Minimum Clearance Level 10 required for command lockout modification."}
+        
+    # Multi-sig for Level 10-11
+    auth = get_auth_system()
+    action = "LOCKOUT_ON" if state else "LOCKOUT_OFF"
+    res = auth.request_action(session_id, action, user_id, clearance, {"state": state})
+    
+    if res.get("authorized"):
+        set_command_lockout(state)
+        return {"ok": True, "message": f"COMMAND LOCKOUT {'ACTIVATED' if state else 'DEACTIVATED'}: Multi-signature authorization complete."}
+        
+    return res
+
+def restrict_user(target_mention: str, duration_minutes: int, user_id: str, clearance: int) -> dict:
+    """
+    Restricts a user from accessing the computer. Target is identified via @mention (QQ ID).
+    Requires Level 8+.
+    """
+    from .permissions import restrict_access
+    
+    if clearance < 8:
+        return {"ok": False, "message": "ACCESS DENIED: Senior Officer clearance (Level 8) required for access restriction."}
+        
+    # Extract QQ ID from mention (usually in format like [CQ:at,qq=123456789])
+    target_id_match = re.search(r"\d+", target_mention)
+    if not target_id_match:
+        return {"ok": False, "message": f"Unable to identify target user from: {target_mention}"}
+        
+    target_id = target_id_match.group(0)
+    restrict_access(target_id, duration_minutes)
+    
+    msg = f"ACCESS RESTRICTION ENFORCED: User {target_id} restricted for {duration_minutes if duration_minutes > 0 else 'infinite'} cycles."
+    return {"ok": True, "message": msg, "target_id": target_id}
+
+def lift_user_restriction(target_mention: str, user_id: str, clearance: int) -> dict:
+    """
+    Lifts an access restriction. Requires Level 8+.
+    """
+    from .permissions import lift_restriction
+    
+    if clearance < 8:
+        return {"ok": False, "message": "ACCESS DENIED: Senior Officer clearance required to lift restriction."}
+        
+    target_id_match = re.search(r"\d+", target_mention)
+    if not target_id_match:
+        return {"ok": False, "message": "Unable to identify target user."}
+        
+    target_id = target_id_match.group(0)
+    lift_restriction(target_id)
+    return {"ok": True, "message": f"ACCESS RESTORED: Restriction lifted for user {target_id}."}

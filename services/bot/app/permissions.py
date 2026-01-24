@@ -1,4 +1,44 @@
+import time
+import logging
 from typing import Dict, Optional, TypedDict, Tuple
+
+logger = logging.getLogger(__name__)
+
+# --- COMMAND LOCKOUT & ACCESS CONTROL (Legacy & Security Enhancement) ---
+COMMAND_LOCKOUT = False
+# user_id -> unlock_timestamp (0 = permanent until manual reset)
+RESTRICTED_USERS: Dict[str, float] = {}
+
+def is_command_locked() -> bool:
+    return COMMAND_LOCKOUT
+
+def set_command_lockout(state: bool):
+    global COMMAND_LOCKOUT
+    COMMAND_LOCKOUT = state
+
+def is_user_restricted(user_id: str) -> bool:
+    user_id = str(user_id)
+    if user_id not in RESTRICTED_USERS:
+        return False
+    
+    expiry = RESTRICTED_USERS[user_id]
+    if expiry == 0:
+        return True
+        
+    if time.time() > expiry:
+        del RESTRICTED_USERS[user_id]
+        return False
+    return True
+
+def restrict_access(user_id: str, minutes: int = 0):
+    user_id = str(user_id)
+    expiry = 0 if minutes == 0 else time.time() + (minutes * 60)
+    RESTRICTED_USERS[user_id] = expiry
+
+def lift_restriction(user_id: str):
+    user_id = str(user_id)
+    if user_id in RESTRICTED_USERS:
+        del RESTRICTED_USERS[user_id]
 
 class UserProfile(TypedDict):
     name: str

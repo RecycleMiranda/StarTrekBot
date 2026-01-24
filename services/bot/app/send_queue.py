@@ -112,13 +112,13 @@ class SendQueue:
         # Output Moderation
         mod_res = await moderation.moderate_text(text_to_send, "output", item.meta)
         mod_info = {
-            "allow": mod_res["allow"],
-            "action": mod_res["action"],
-            "reason": mod_res["reason"],
-            "provider": mod_res["provider"]
+            "allow": mod_res.get("allow", True),
+            "action": mod_res.get("action", "none"),
+            "reason": mod_res.get("reason", ""),
+            "provider": mod_res.get("provider", "none")
         }
         
-        if not mod_res["allow"]:
+        if not mod_res.get("allow", True):
             logger.warning(f"Message blocked by output moderation: {item.id}")
             text_to_send = "Computer: Unable to comply."
             mod_info["blocked"] = True

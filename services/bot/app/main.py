@@ -71,7 +71,8 @@ async def qq_webhook(request: Request):
     token = os.getenv("WEBHOOK_TOKEN")
     if token:
         request_token = request.headers.get("X-Webhook-Token")
-        if request_token != token:
+        if not request_token or request_token.strip() != token.strip():
+            logger.warning(f"Unauthorized WebHook access attempt from {request.client.host}")
             return {
                 "code": 401,
                 "message": "unauthorized",
@@ -527,9 +528,11 @@ async def post_settings(request: Request):
     return {"code": 1, "message": "failed to save settings"}
 
 @app.post("/api/moderation/sync")
-async def sync_moderation_keywords(token: str):
+async def sync_moderation_keywords(token: str = None):
     """Sync keywords from remote source."""
-    if token != os.getenv("WEBHOOK_TOKEN"):
+    expected_token = os.getenv("WEBHOOK_TOKEN")
+    if expected_token and (not token or token.strip() != expected_token.strip()):
+        logger.warning(f"Unauthorized API access attempt. Hint: expected starts with '{expected_token[:3]}...'")
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
     from .moderation_keywords import KeywordFilter
@@ -558,9 +561,10 @@ async def get_napcat_qr(token: str):
         return {"code": 1, "message": f"NapCat connection failed: {e}"}
 
 @app.get("/api/napcat/status")
-async def get_napcat_status(token: str):
+async def get_napcat_status(token: str = None):
     """Proxy to get NapCat and QQ status."""
-    if token != os.getenv("WEBHOOK_TOKEN"):
+    expected_token = os.getenv("WEBHOOK_TOKEN")
+    if expected_token and (not token or token.strip() != expected_token.strip()):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
         
     config = ConfigManager.get_instance().get_all()
@@ -589,10 +593,19 @@ else:
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin(request: Request):
-    token = os.getenv("WEBHOOK_TOKEN")
-    if token and request.query_params.get("token") != token:
-        # Don't show config if token is wrong
-        return HTMLResponse("<h1>401 Unauthorized - Access Denied</h1>", status_code=401)
+    expected_token = os.getenv("WEBHOOK_TOKEN")
+    provided_token = request.query_params.get("token")
+    
+    # If a token is set in env, it MUST be provided and match
+    if expected_token and (not provided_token or provided_token.strip() != expected_token.strip()):
+        logger.warning(f"Unauthorized Admin UI access. Provided: '{provided_token}', Expected starts with '{expected_token[:3]}...'")
+        return HTMLResponse(f"""
+            <div style="background:#05080c; color:#c54242; padding:50px; font-family:sans-serif; height:100vh;">
+                <h1>401 Unauthorized - Access Denied</h1>
+                <p>子空间安全协议拒绝了你的访问请求。</p>
+                <p style="color:#75a2d1">请检查 URL 中的 token 参数。若忘记 Token，请在服务器执行 <code>env | grep WEBHOOK_TOKEN</code> 查看。</p>
+            </div>
+        """, status_code=401)
 
     admin_index = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(admin_index):

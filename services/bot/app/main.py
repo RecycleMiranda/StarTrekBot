@@ -118,12 +118,39 @@ async def qq_webhook(request: Request):
     return {"code": 0, "message": "ok", "data": {"received": True}}
 
 @app.post("/onebot/event")
-def onebot_event(event: InternalEvent):
+async def onebot_event(request: Request):
     """
-    Entrance for standard internal events.
+    Entrance for OneBot v11 HTTP POST events from NapCat.
     """
-    dispatcher.handle_event(event)
+    body = await request.json()
+    logger.info(f"[OneBot] Received event: {body.get('post_type', 'unknown')}")
+    
+    # Only process message events
+    if body.get("post_type") == "message":
+        # Extract text from message array
+        text = ""
+        raw_message = body.get("message", [])
+        if isinstance(raw_message, list):
+            for seg in raw_message:
+                if seg.get("type") == "text":
+                    text += seg.get("data", {}).get("text", "")
+        elif isinstance(raw_message, str):
+            text = raw_message
+        
+        event = InternalEvent(
+            event_type=body.get("message_type", "group"),
+            platform="qq",
+            user_id=str(body.get("user_id")),
+            group_id=str(body.get("group_id")) if body.get("group_id") else None,
+            message_id=str(body.get("message_id")),
+            text=text or body.get("raw_message", ""),
+            raw=body,
+            ts=body.get("time", int(time.time()))
+        )
+        dispatcher.handle_event(event)
+    
     return {"code": 0, "message": "ok", "data": {"received": True}}
+
 
 @app.websocket("/onebot/v11/ws")
 async def onebot_v11_ws(websocket: WebSocket):

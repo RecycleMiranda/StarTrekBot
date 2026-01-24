@@ -177,7 +177,8 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
             contents=prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=500,  # Allow longer responses for complex answers
-                temperature=0.2
+                temperature=0.2,
+                response_mime_type="application/json"
             )
         )
         

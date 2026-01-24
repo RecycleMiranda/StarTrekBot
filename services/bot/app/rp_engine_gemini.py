@@ -250,7 +250,8 @@ def _parse_response(text: str) -> Dict:
             "reply": reply,
             "intent": intent,
             "model": model,
-            "reason": reason
+            "reason": reason,
+            "needs_escalation": data.get("needs_escalation", False)
         }
     except json.JSONDecodeError:
         logger.warning(f"Failed to parse Gemini RP response: {text}")

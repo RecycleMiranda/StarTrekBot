@@ -185,7 +185,7 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
         if not response or not response.text:
             return _fallback("empty_response")
         
-        logger.debug(f"Escalation raw response: {response.text}")
+        logger.warning(f"[DEBUG] Escalation raw response: {response.text}")
         result = _parse_response(response.text)
         result["model"] = thinking_model
         result["is_escalated"] = True
@@ -200,12 +200,11 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Op
 
 def _parse_response(text: str) -> Dict:
     text = text.strip()
-    # Handle markdown wrapping
-    if text.startswith("```"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            text = text[start:end+1]
+    # Robust JSON extraction: find first '{' and last '}'
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1:
+        text = text[start:end+1]
     
     try:
         data = json.loads(text)

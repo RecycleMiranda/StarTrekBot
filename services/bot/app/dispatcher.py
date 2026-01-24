@@ -9,6 +9,7 @@ from . import router
 import send_queue
 import rp_engine_gemini
 import permissions
+import report_builder
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,9 @@ def handle_event(event: InternalEvent):
             logger.info(f"[Dispatcher] AI result: {result}")
             
             if result and result.get("ok") and result.get("reply"):
-                reply_text = result["reply"]
+                reply_raw = result["reply"]
+                # Format report if it's a dict
+                reply_text = report_builder.format_report_to_text(reply_raw)
                 logger.info(f"[Dispatcher] Sending reply: {reply_text[:100]}...")
                 
                 # Enqueue the response
@@ -188,7 +191,9 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
         logger.info(f"[Dispatcher] Escalation result: {escalation_result}")
         
         if escalation_result and escalation_result.get("ok") and escalation_result.get("reply"):
-            reply_text = escalation_result["reply"]
+            reply_raw = escalation_result["reply"]
+            # Format report if it's a dict
+            reply_text = report_builder.format_report_to_text(reply_raw)
             logger.info(f"[Dispatcher] Sending escalated reply: {reply_text[:100]}...")
             
             # Enqueue the follow-up response

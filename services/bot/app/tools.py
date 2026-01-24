@@ -90,22 +90,25 @@ def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> di
         required_clearance = 1
     elif any(k in item_lower for k in ["steak", "pasta", "meal", "soup"]): 
         cost = 15
-        required_clearance = 1
+        required_clearance = 2
     elif any(k in item_lower for k in ["padd", "tool", "spare", "component"]): 
         cost = 25
-        required_clearance = 2 # Officer level
+        required_clearance = 5 # Standard Officer
     elif any(k in item_lower for k in ["phaser", "weapon", "explosive", "hazardous", "rifles"]): 
-        cost = 100
-        required_clearance = 3 # Command level
+        cost = 150
+        required_clearance = 8 # Senior Officer / Command
+    elif any(k in item_lower for k in ["torpedo", "detonator", "cloak"]):
+        cost = 500
+        required_clearance = 11 # Admiralty/Section 31
     elif any(k in item_lower for k in ["diamond", "gold", "luxury"]): 
         cost = 500
-        required_clearance = 2
+        required_clearance = 4
         
     # Check Clearance
     if clearance < required_clearance:
         return {
             "ok": False,
-            "message": f"Access denied. Replication of {item_name} requires Clearance Level {required_clearance}.",
+            "message": f"Access denied. Replication of {item_name} requires Clearance Level {required_clearance}. Current level: {clearance}.",
             "cost": 0,
             "remaining": qm.get_balance(user_id, rank)
         }
@@ -132,11 +135,11 @@ def reserve_holodeck(program_name: str, duration_hours: float, user_id: str, ran
     from .quota_manager import get_quota_manager
     qm = get_quota_manager()
     
-    # Safety Protocol Check
-    if disable_safety and clearance < 3:
+    # Safety Protocol Check (12-level)
+    if disable_safety and clearance < 9:
          return {
             "ok": False,
-            "message": "Access denied. Disabling safety protocols is a restricted Command-level command (Level 3 Required).",
+            "message": f"Access denied. Disabling safety protocols is a restricted Senior Officer command (Level 9 Required). Current level: {clearance}.",
             "cost": 0,
             "remaining": qm.get_balance(user_id, rank)
         }

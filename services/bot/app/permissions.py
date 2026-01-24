@@ -115,16 +115,28 @@ def get_user_profile(user_id: str, nickname: Optional[str] = None, title: Option
         rank = resolve_rank_from_title(title)
         station, is_core = resolve_station_from_title(title)
         
-        # Simple clearance logic based on rank
-        clearance = 1
-        if rank in ["Fleet Admiral", "Admiral", "Vice Admiral", "Rear Admiral", "Commodore"]:
-            clearance = 4 if rank == "Fleet Admiral" else 3
-        elif rank in ["Captain", "Commander", "Lt. Commander"]:
-            clearance = 2
+        # 12-Level Security Clearance Mapping
+        rank_to_clearance = {
+            "Fleet Admiral": 12,
+            "Admiral": 11,
+            "Vice Admiral": 10,
+            "Rear Admiral": 10,
+            "Commodore": 9,
+            "Captain": 8,
+            "Commander": 7,
+            "Lt. Commander": 6,
+            "Lieutenant": 5,
+            "Lieutenant J.G.": 4,
+            "Ensign": 3,
+            "Crewman": 2,
+            "Civilian": 1
+        }
+        
+        clearance = rank_to_clearance.get(rank, 1)
             
-        # Station Boost: Core station officers get at least level 2 clearance for ops
-        if is_core and clearance < 2:
-            clearance = 2
+        # Station Boost: Core station officers get at least level 5 clearance for ops
+        if is_core and clearance < 5:
+            clearance = 5
             
         profile = {
             "name": nickname or "Unknown",

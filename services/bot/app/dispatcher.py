@@ -79,7 +79,7 @@ def handle_event(event: InternalEvent):
                 reply_text = result["reply"]
                 logger.info(f"[Dispatcher] Sending reply: {reply_text[:100]}...")
                 
-                # Enqueue the response (need to run async enqueue_send)
+                # Enqueue the response
                 sq = send_queue.SendQueue.get_instance()
                 session_key = f"qq:{event.group_id or event.user_id}"
                 
@@ -93,6 +93,19 @@ def handle_event(event: InternalEvent):
                 )
                 enqueue_result = enqueue_future.result(timeout=5)
                 logger.info(f"[Dispatcher] Enqueued: {enqueue_result}")
+                
+                # Check if escalation is needed - spawn background task for follow-up
+                if result.get("needs_escalation"):
+                    logger.info("[Dispatcher] Escalation needed, spawning background task...")
+                    _executor.submit(
+                        _handle_escalation,
+                        result.get("original_query", event.text),
+                        result.get("is_chinese", False),
+                        event.group_id,
+                        event.user_id,
+                        session_key
+                    )
+                
                 return True
 
             else:
@@ -103,3 +116,42 @@ def handle_event(event: InternalEvent):
         logger.error(f"[Dispatcher] Error processing message: {e}", exc_info=True)
     
     return False
+
+
+def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str, session_key: str):
+    """
+    Background handler for escalated queries - calls stronger model and sends follow-up message.
+    """
+    import time
+    time.sleep(0.5)  # Small delay to ensure first message is sent first
+    
+    logger.info(f"[Dispatcher] Processing escalated query: {query[:50]}...")
+    
+    try:
+        # Call the stronger model
+        escalation_result = _run_async(
+            rp_engine_gemini.generate_escalated_reply(query, is_chinese)
+        )
+        
+        logger.info(f"[Dispatcher] Escalation result: {escalation_result}")
+        
+        if escalation_result and escalation_result.get("ok") and escalation_result.get("reply"):
+            reply_text = escalation_result["reply"]
+            logger.info(f"[Dispatcher] Sending escalated reply: {reply_text[:100]}...")
+            
+            # Enqueue the follow-up response
+            sq = send_queue.SendQueue.get_instance()
+            enqueue_result = _run_async(
+                sq.enqueue_send(session_key, reply_text, {
+                    "group_id": group_id,
+                    "user_id": user_id,
+                    "is_escalated": True
+                })
+            )
+            logger.info(f"[Dispatcher] Escalated message enqueued: {enqueue_result}")
+        else:
+            logger.warning(f"[Dispatcher] Escalation returned no reply: {escalation_result}")
+            
+    except Exception as e:
+        logger.error(f"[Dispatcher] Escalation failed: {e}", exc_info=True)
+

@@ -49,53 +49,65 @@ def _load_style_spec() -> str:
 SYSTEM_PROMPT = (
     "You are the LCARS Starship Voice Command Computer from Star Trek: The Next Generation. "
     "Follow the PERSONA RULES and mimic the FEW-SHOT EXAMPLES. "
-    "Be direct, factual, and unemotional. Use acknowledgment phrases like 'Confirmed', 'Working', 'Acknowledged'. "
+    "Be direct, factual, and unemotional. Use acknowledgment phrases like 'Confirmed', 'Acknowledged'. "
     "Always provide a helpful answer based on Star Trek lore and general knowledge. "
-    "Must output ONLY a single line of JSON: {\"reply\": \"your response here\", \"intent\": \"ack|answer|clarify|refuse\"}"
+    "CRITICAL: You MUST reply in the SAME LANGUAGE as the user's input. If user speaks Chinese, reply in Chinese. If English, reply in English. "
+    "Must output ONLY a single line of JSON: {\"reply\": \"your response here\", \"intent\": \"ack|answer|clarify|refuse\", \"needs_escalation\": false}"
+)
+
+ESCALATION_PROMPT = (
+    "You are the LCARS Starship Voice Command Computer providing a detailed response to a complex query. "
+    "The user asked a question that required deeper analysis. Provide a thorough, accurate answer. "
+    "CRITICAL: Reply in the SAME LANGUAGE as the user's input. "
+    "Format your response in Star Trek computer style - factual, precise, unemotional. "
+    "Output JSON: {\"reply\": \"your detailed response\"}"
 )
 
 # Complexity indicators that suggest need for deeper thinking
 COMPLEX_INDICATORS = [
-    "计算", "多久", "多远", "为什么", "解释", "分析", "比较",
+    "计算", "多久", "多远", "为什么", "解释", "分析", "比较", "推算",
     "how long", "how far", "why", "explain", "analyze", "calculate",
-    "what if", "假设", "推测", "历史", "history", "详细"
+    "what if", "假设", "推测", "历史", "history", "详细", "预估"
 ]
+
 
 async def generate_computer_reply(trigger_text: str, context: List[str], meta: Optional[Dict] = None) -> Dict:
     """
     Generates a Starship Computer style reply using Gemini.
-    Supports two-tier response: quick ack + escalation for complex queries.
+    Supports two-stage response: if complex, returns 'Working...' and schedules escalation.
     """
     config = get_config()
     api_key = config.get("gemini_api_key", "")
     fast_model = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
-    # Use a more capable model for complex questions
-    thinking_model = config.get("gemini_thinking_model", "gemini-2.0-flash")
 
     if not api_key:
         return _fallback("rp_disabled (missing api key)")
 
-    # Check if question seems complex
-    is_complex = any(indicator in trigger_text.lower() for indicator in COMPLEX_INDICATORS)
+    # Detect language
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in trigger_text)
+    
+    # Check if question seems complex based on keywords
+    is_complex = any(indicator in trigger_text.lower() for indicator in COMPLEX_INDICATORS)
     
     try:
         client = genai.Client(api_key=api_key)
         style_spec = _load_style_spec()
         
-        # Use appropriate model based on complexity
-        model_to_use = thinking_model if is_complex else fast_model
+        # Add language enforcement to prompt
+        lang_instruction = "回复必须使用中文。" if is_chinese else "Reply must be in English."
         
         prompt = (
             f"System: {SYSTEM_PROMPT}\n\n"
+            f"Language: {lang_instruction}\n\n"
             f"{style_spec}\n\n"
             f"Context: {json.dumps(context, ensure_ascii=False)}\n"
-            f"Meta: {json.dumps(meta or {}, ensure_ascii=False)}\n"
-            f"Trigger: {trigger_text}"
+            f"Trigger: {trigger_text}\n\n"
+            f"If this question is too complex to answer quickly (requires calculation, detailed explanation, or deep analysis), "
+            f"set needs_escalation to true and provide a brief acknowledgment only."
         )
 
         response = client.models.generate_content(
-            model=model_to_use,
+            model=fast_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=MAX_TOKENS,
@@ -108,19 +120,70 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
             return _fallback("empty_response")
         
         result = _parse_response(response.text)
-        result["model"] = model_to_use
-        result["was_complex"] = is_complex
+        result["model"] = fast_model
+        result["is_chinese"] = is_chinese
         
-        # If complex, prepend "Working..." acknowledgment
-        if is_complex and result.get("ok"):
-            working_prefix = "处理中... " if is_chinese else "Working... "
-            result["reply"] = working_prefix + result.get("reply", "")
+        # Check if escalation is needed
+        needs_escalation = result.get("needs_escalation", False) or (is_complex and len(trigger_text) > 20)
+        
+        if needs_escalation:
+            working_msg = "处理中..." if is_chinese else "Working..."
+            result["reply"] = working_msg
+            result["needs_escalation"] = True
+            result["original_query"] = trigger_text
         
         return result
 
     except Exception as e:
         logger.error(f"Gemini RP generation failed: {e}")
         return _fallback(str(e))
+
+
+async def generate_escalated_reply(trigger_text: str, is_chinese: bool, meta: Optional[Dict] = None) -> Dict:
+    """
+    Generates a detailed reply using a more powerful model for complex questions.
+    """
+    config = get_config()
+    api_key = config.get("gemini_api_key", "")
+    thinking_model = config.get("gemini_thinking_model", "gemini-2.0-flash")
+
+    if not api_key:
+        return _fallback("rp_disabled (missing api key)")
+
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        lang_instruction = "回复必须使用中文。使用星际迷航计算机风格。" if is_chinese else "Reply must be in English. Use Star Trek computer style."
+        
+        prompt = (
+            f"System: {ESCALATION_PROMPT}\n\n"
+            f"Language: {lang_instruction}\n\n"
+            f"User Query: {trigger_text}\n\n"
+            f"Provide a detailed, accurate answer based on Star Trek canon and real-world science where applicable."
+        )
+
+        response = client.models.generate_content(
+            model=thinking_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=500,  # Allow longer responses for complex answers
+                temperature=0.2
+            )
+        )
+        
+        if not response or not response.text:
+            return _fallback("empty_response")
+        
+        result = _parse_response(response.text)
+        result["model"] = thinking_model
+        result["is_escalated"] = True
+        return result
+
+    except Exception as e:
+        logger.error(f"Gemini escalation failed: {e}")
+        return _fallback(str(e))
+
+
 
 
 def _parse_response(text: str) -> Dict:

@@ -18,22 +18,34 @@ DEPARTMENTS = {
 }
 
 # LCARS Ranks Map (Keywords -> Standard Canon Rank)
+# Star Trek uses Navy-style ranks.
 RANK_MAP = {
+    # Admirals
+    "fleet admiral": "Fleet Admiral", "旗舰上将": "Fleet Admiral", "五星上将": "Fleet Admiral",
     "admiral": "Admiral", "上将": "Admiral", "将军": "Admiral",
+    "vice admiral": "Vice Admiral", "中将": "Vice Admiral",
+    "rear admiral": "Rear Admiral", "少将": "Rear Admiral",
+    "commodore": "Commodore", "准将": "Commodore",
+    
+    # Officers
     "captain": "Captain", "舰长": "Captain", "上校": "Captain",
     "commander": "Commander", "副舰长": "Commander", "中校": "Commander",
-    "lt. commander": "Lt. Commander", "少校": "Lt. Commander",
+    "lt. commander": "Lt. Commander", "少校": "Lt. Commander", "中校(副)": "Lt. Commander",
     "lt. cmdr": "Lt. Commander",
     "lieutenant": "Lieutenant", "上尉": "Lieutenant",
     "lieutenant j.g.": "Lieutenant J.G.", "中尉": "Lieutenant J.G.",
+    "lieutenant junior grade": "Lieutenant J.G.",
     "ensign": "Ensign", "少尉": "Ensign",
-    "crewman": "Crewman", "船员": "Crewman", "水兵": "Crewman",
-    "civilian": "Civilian", "平民": "Civilian"
+    
+    # Enlisted & Others
+    "crewman": "Crewman", "船员": "Crewman", "水兵": "Crewman", "下士": "Crewman",
+    "civilian": "Civilian", "平民": "Civilian", "老百姓": "Civilian"
 }
 
-# Ordered list for hierarchy resolution
+# Ordered list for hierarchy resolution (Highest to Lowest)
 RANKS_HIERARCHY = [
-    "Admiral", "Captain", "Commander", "Lt. Commander", 
+    "Fleet Admiral", "Admiral", "Vice Admiral", "Rear Admiral", "Commodore",
+    "Captain", "Commander", "Lt. Commander", 
     "Lieutenant", "Lieutenant J.G.", "Ensign", "Crewman", "Civilian"
 ]
 

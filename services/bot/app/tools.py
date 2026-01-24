@@ -128,3 +128,13 @@ def reserve_holodeck(program_name: str, duration_hours: float, user_id: str, ran
             "cost": cost,
             "remaining": qm.get_balance(user_id, rank)
         }
+
+def personal_log(content: str, user_id: str) -> dict:
+    """
+    Records a personal log. Grants random credits (2h cooldown).
+    """
+    from .quota_manager import get_quota_manager
+    qm = get_quota_manager()
+    
+    result = qm.record_log(user_id)
+    return result

@@ -21,28 +21,28 @@ DEPARTMENTS = {
 
 # Core Stations that boost authority
 CORE_STATIONS = {
-    "bridge": "Bridge", "桥位": "Bridge", "驾驶": "Bridge",
-    "ops": "Operations", "运行": "Operations", "调度": "Operations",
-    "engineering": "Engineering", "工程": "Engineering", "机舱": "Engineering",
-    "chief": "Chief", "首席": "Chief",
-    "tactical": "Tactical", "战术": "Tactical",
-    "medical officer": "Medical", "医官": "Medical"
+    "bridge": "Bridge", "舰桥": "Bridge", "舵手": "Bridge",
+    "ops": "Operations", "运作": "Operations", "运作": "Operations",
+    "engineering": "Engineering", "工程部": "Engineering", "轮机部": "Engineering",
+    "chief": "Chief", "士官长": "Chief",
+    "tactical": "Tactical", "战术部": "Tactical",
+    "medical officer": "Medical", "医疗部": "Medical"
 }
 
 # LCARS Ranks Map (Keywords -> Standard Canon Rank)
 # Star Trek uses Navy-style ranks.
 RANK_MAP = {
     # Admirals
-    "fleet admiral": "Fleet Admiral", "旗舰上将": "Fleet Admiral", "五星上将": "Fleet Admiral",
-    "admiral": "Admiral", "上将": "Admiral", "将军": "Admiral",
+    "fleet admiral": "Fleet Admiral", "舰队上将": "Fleet Admiral", "舰队上将": "Fleet Admiral",
+    "admiral": "Admiral", "上将": "Admiral", "上将": "Admiral",
     "vice admiral": "Vice Admiral", "中将": "Vice Admiral",
     "rear admiral": "Rear Admiral", "少将": "Rear Admiral",
     "commodore": "Commodore", "准将": "Commodore",
     
     # Officers
     "captain": "Captain", "舰长": "Captain", "上校": "Captain",
-    "commander": "Commander", "副舰长": "Commander", "中校": "Commander",
-    "lt. commander": "Lt. Commander", "少校": "Lt. Commander", "中校(副)": "Lt. Commander",
+    "commander": "Commander", "大副": "Commander", "中校": "Commander",
+    "lt. commander": "Lt. Commander", "少校": "Lt. Commander", "中校": "Lt. Commander",
     "lt. cmdr": "Lt. Commander",
     "lieutenant": "Lieutenant", "上尉": "Lieutenant",
     "lieutenant j.g.": "Lieutenant J.G.", "中尉": "Lieutenant J.G.",

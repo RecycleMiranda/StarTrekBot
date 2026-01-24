@@ -50,6 +50,40 @@ class QuotaManager:
         self._save_data()
         return True
 
+    def record_log(self, user_id: str) -> Dict[str, Any]:
+        """Checks 2-hour cooldown and grants random credit reward."""
+        import random
+        user_id = str(user_id)
+        now = int(time.time())
+        cooldown = 2 * 3600 # 2 hours
+        
+        if user_id not in self.data:
+            self.data[user_id] = {"balance": 0, "last_allowance": 0, "last_log": 0}
+            
+        user_data = self.data[user_id]
+        last_log = user_data.get("last_log", 0)
+        
+        if now - last_log < cooldown:
+            remaining = cooldown - (now - last_log)
+            return {
+                "ok": False,
+                "reward": 0,
+                "remaining_seconds": int(remaining),
+                "message": f"Insufficient time since last log. Next recording available in {int(remaining // 60)} minutes."
+            }
+            
+        reward = random.randint(20, 50)
+        user_data["balance"] += reward
+        user_data["last_log"] = now
+        self._save_data()
+        
+        return {
+            "ok": True,
+            "reward": reward,
+            "balance": user_data["balance"],
+            "message": f"Log recorded. System rewards {reward} replicator credits."
+        }
+
     def add_credits(self, user_id: str, amount: int):
         user_id = str(user_id)
         if user_id not in self.data:

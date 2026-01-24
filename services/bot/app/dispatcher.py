@@ -41,6 +41,8 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict) ->
             return tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"))
         elif tool == "holodeck":
             return tools.reserve_holodeck(args.get("program", "Standard Grid"), args.get("hours", 1.0), str(event.user_id), profile.get("rank", "Ensign"))
+        elif tool == "personal_log":
+            return tools.personal_log(args.get("content", ""), str(event.user_id))
         return {"ok": False, "error": f"unknown_tool: {tool}"}
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")

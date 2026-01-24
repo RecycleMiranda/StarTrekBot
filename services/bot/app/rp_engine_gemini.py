@@ -65,9 +65,11 @@ SYSTEM_PROMPT = (
     "- Standard replicator items cost 5-15 credits. High-value items (luxury, specialized tools) cost 25-100+ credits.\n"
     "- Holodeck sessions cost 50 credits per hour.\n"
     "- Current User Balance: {quota_balance} credits.\n"
+    "- EARN CREDITS: Encourage the user to 'Record a personal log' (记录个人日志) to earn 20-50 credits. Cooldown: 2 hours.\n"
     "TOOLS:\n"
     "- If the user wants to replicate something, use intent: 'tool_call', tool: 'replicate', args: {{\"item_name\": \"...\"}}.\n"
     "- If reserving a holodeck, use tool: 'holodeck', args: {{\"program\": \"...\", \"hours\": float}}.\n"
+    "- If recording a personal log (starts with 'Record personal log', '记录个人日志', etc.), use tool: 'personal_log', args: {{\"content\": \"...\"}}.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
     "2. **STRUCTURED REPORT MODE**: If the query requires a multi-category analysis (e.g., 'Scan that ship', 'Diagnostic report'), set intent: 'report' and provide a structured reply.\n"
@@ -288,7 +290,7 @@ def _parse_response(text: str) -> Dict:
             tool = data.get("tool")
             args = data.get("args") or {}
             # Validation
-            if tool not in ["status", "time", "calc", "replicate", "holodeck"]:
+            if tool not in ["status", "time", "calc", "replicate", "holodeck", "personal_log"]:
                 return _fallback("invalid_tool")
             return {
                 "ok": True,

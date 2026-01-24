@@ -535,27 +535,39 @@ async def sync_moderation_keywords(token: str = None):
         logger.warning(f"Unauthorized API access attempt. Hint: expected starts with '{expected_token[:3]}...'")
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
-    from .moderation_keywords import KeywordFilter
-    result = await KeywordFilter.get_instance().sync_from_remote()
-    return result
+import json # Added this import for json.JSONDecodeError
+
+# ... (rest of the imports)
+
+# ... (rest of the code before get_napcat_qr)
 
 @app.get("/api/napcat/qr")
-async def get_napcat_qr(token: str):
+async def get_napcat_qr(token: str = None):
     """Proxy to get NapCat login QR code."""
-    if token != os.getenv("WEBHOOK_TOKEN"):
-        logger.warning(f"Unauthorized QR request with token: {token}")
+    expected_token = os.getenv("WEBHOOK_TOKEN")
+    if expected_token and (not token or token.strip() != expected_token.strip()):
         return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
     
     config = ConfigManager.get_instance().get_all()
     target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/login/get_qr"
-    headers = {"Authorization": f"Bearer {config['napcat_token']}"} if config['napcat_token'] else {}
+    headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}
     
     logger.info(f"Proxying QR request to NapCat: {target_url}")
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(target_url, headers=headers)
-            logger.info(f"NapCat QR response: {resp.status_code}")
-            return resp.json()
+            logger.info(f"NapCat QR response stauts: {resp.status_code}")
+            
+            try:
+                data = resp.json()
+                return data
+            except json.JSONDecodeError:
+                # If not JSON, return the raw text as an error
+                return {
+                    "code": 1, 
+                    "message": f"NapCat returned non-JSON response (Status {resp.status_code})",
+                    "raw_response": resp.text[:500]
+                }
     except Exception as e:
         logger.error(f"NapCat QR proxy failed: {e}")
         return {"code": 1, "message": f"NapCat connection failed: {e}"}
@@ -569,12 +581,15 @@ async def get_napcat_status(token: str = None):
         
     config = ConfigManager.get_instance().get_all()
     target_url = f"http://{config['napcat_host']}:{config['napcat_port']}/webui/api/status"
-    headers = {"Authorization": f"Bearer {config['napcat_token']}"} if config['napcat_token'] else {}
+    headers = {"Authorization": f"Bearer {config['napcat_token'].strip()}"} if config['napcat_token'] else {}
 
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(target_url, headers=headers)
-            return resp.json()
+            try:
+                return resp.json()
+            except json.JSONDecodeError:
+                return {"code": 1, "message": f"NapCat status non-JSON (Status {resp.status_code})", "raw": resp.text[:200]}
     except Exception as e:
         logger.error(f"NapCat Status proxy failed: {e}")
         return {"code": 1, "message": f"NapCat connection failed: {e}"}

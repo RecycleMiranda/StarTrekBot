@@ -30,6 +30,8 @@ services:
       - SENDQ_SENDER=mock  # 默认为 mock 记录日志，切换为 qq 以调用真实通道
       - SENDQ_GLOBAL_RPS=2.0
       - SENDQ_SESSION_COOLDOWN_MS=1200
+      # 群聊过滤：指定授权的群号（以逗号分隔）；留空或 * 为不限制
+      - BOT_ENABLED_GROUPS=123456,789012
       # 若使用 qq sender，需配置以下
       - QQ_SEND_ENDPOINT=http://127.0.0.1:xxxx/send # 你的发送通道地址
       - QQ_SEND_TOKEN=your_token

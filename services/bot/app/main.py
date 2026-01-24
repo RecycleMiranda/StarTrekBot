@@ -194,6 +194,17 @@ async def post_route(request: Request):
     text = body.get("text", "")
     meta = body.get("meta") or {}
 
+    # 0. Group Whitelist Check
+    if not dispatcher.is_group_enabled(meta.get("group_id") or session_id if "group" in session_id else None):
+        # We use a bit of heuristic for session_id if it's used as group_id
+        # But ingest/route usually provide group_id in meta.
+        g_id = meta.get("group_id") or (session_id if "group" in session_id else None)
+        if not dispatcher.is_group_enabled(g_id):
+            return {
+                "code": 0, "message": "group_not_enabled",
+                "data": {"final": {"route": "chat", "reason": "group_not_whitelisted"}}
+            }
+
     # 0. Moderation Gate
     mod_res = await moderation.moderate_text(text, "input", meta)
     if not mod_res["allow"]:
@@ -281,6 +292,18 @@ async def post_ingest(request: Request):
     session_id = body.get("session_id", "default")
     text = body.get("text", "")
     meta = body.get("meta") or {}
+
+    # 0. Group Whitelist Check
+    group_id = meta.get("group_id") or (session_id if "group" in session_id else None)
+    if not dispatcher.is_group_enabled(group_id):
+        return {
+            "code": 0, "message": "group_not_enabled",
+            "data": {
+                "moderation": None, "router": None,
+                "final": {"route": "chat", "reason": "group_not_whitelisted"},
+                "rp": None, "enqueued": None
+            }
+        }
 
     # a) Moderation (Input)
     mod_res = await moderation.moderate_text(text, "input", meta)

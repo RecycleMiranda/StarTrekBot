@@ -7,8 +7,13 @@ WORKDIR /app
 RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
     pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 安装中文字体解决绘图乱码
-RUN apt-get update && apt-get install -y fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
+# 安装中文字体和 Git
+RUN apt-get update && apt-get install -y fonts-noto-cjk git && rm -rf /var/lib/apt/lists/*
+
+# 配置 Git 基础身份（用于容器内自动提交）
+RUN git config --global user.name "LCARS Main Computer" && \
+    git config --global user.email "computer@starfleet.federation" && \
+    git config --global --add safe.directory "*"
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

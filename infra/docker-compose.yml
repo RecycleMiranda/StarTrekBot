@@ -6,8 +6,11 @@ services:
       - ../services/bot/.env
     environment:
       - NAPCAT_HOST=napcat
+      - PROTOCOLS_PATH=/app/services/bot/app/config/federation_protocols.json
+      - STANDARDS_MD_PATH=/app/services/bot/app/FEDERATION_STANDARDS.md
     volumes:
-      - /opt/StarTrekBot/data:/app/data
+      - ..:/app
+      - ~/.ssh:/root/.ssh:ro
     ports:
       - "8080:8080"
     networks:

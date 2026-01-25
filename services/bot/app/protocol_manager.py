@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 # Paths for Docker and Local
 BASE_DIR = os.path.dirname(__file__)
-PROTOCOLS_JSON = os.path.join(BASE_DIR, "config", "federation_protocols.json")
-STANDARDS_MD = os.path.join(BASE_DIR, "FEDERATION_STANDARDS.md")
+PROTOCOLS_JSON = os.getenv("PROTOCOLS_PATH", os.path.join(BASE_DIR, "config", "federation_protocols.json"))
+STANDARDS_MD = os.getenv("STANDARDS_MD_PATH", os.path.join(BASE_DIR, "FEDERATION_STANDARDS.md"))
 
 class ProtocolManager:
     _instance = None
@@ -24,13 +24,32 @@ class ProtocolManager:
         return cls._instance
 
     def load_protocols(self):
+        # 1. Try to load from the target path (likely persistent volume)
         if os.path.exists(PROTOCOLS_JSON):
             try:
                 with open(PROTOCOLS_JSON, "r", encoding="utf-8") as f:
                     self._protocols = json.load(f)
+                    logger.info(f"Protocols loaded from {PROTOCOLS_JSON}")
                     return
             except Exception as e:
                 logger.error(f"Failed to load protocols JSON: {e}")
+
+        # 2. Fallback: If target doesn't exist, try to copy from the default template
+        template_path = os.path.join(BASE_DIR, "config", "federation_protocols.json")
+        if PROTOCOLS_JSON != template_path and os.path.exists(template_path):
+            try:
+                logger.info(f"Initializing persistent protocols from template: {template_path}")
+                with open(template_path, "r", encoding="utf-8") as f:
+                    self._protocols = json.load(f)
+                
+                # Immediately save to the persistent location
+                os.makedirs(os.path.dirname(PROTOCOLS_JSON), exist_ok=True)
+                with open(PROTOCOLS_JSON, "w", encoding="utf-8") as f:
+                    json.dump(self._protocols, f, indent=2, ensure_ascii=False)
+                return
+            except Exception as e:
+                logger.error(f"Failed to initialize protocols from template: {e}")
+
         self._protocols = {}
 
     def get_prompt(self, category: str, key: str, default: str = "") -> str:
@@ -74,10 +93,38 @@ class ProtocolManager:
             
             # Sync to MD (Simple recreation for V1)
             self._sync_to_markdown()
+            
+            # Auto Git Sync
+            self._git_sync(f"LCARS: Updated protocol {category}.{key}")
             return True
         except Exception as e:
             logger.error(f"Failed to save protocols: {e}")
             return False
+
+    def _git_sync(self, message: str):
+        """Automatically commits protocol changes to Git."""
+        import subprocess
+        try:
+            # In Docker, we map the repo root directly to /app
+            repo_dir = "/app" if os.path.exists("/app/.git") else os.path.dirname(os.path.dirname(BASE_DIR))
+            
+            # 1. Add altered files (relative to repo root)
+            # Find relative paths for git add
+            rel_json = os.path.relpath(PROTOCOLS_JSON, repo_dir)
+            rel_md = os.path.relpath(STANDARDS_MD, repo_dir)
+            
+            subprocess.run(["git", "add", rel_json, rel_md], cwd=repo_dir, check=False)
+            
+            # 2. Commit (Don't check for exit code in case nothing changed)
+            subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, check=False)
+            
+            # 3. Push to remote (Broadcast to subspace)
+            subprocess.run(["git", "push"], cwd=repo_dir, check=False)
+            
+            # 4. Log
+            logger.info(f"Autonomous Git push completed: {message}")
+        except Exception as e:
+            logger.warning(f"Git sync failed (Ignored): {e}")
 
     def _sync_to_markdown(self):
         """Generates a fresh FEDERATION_STANDARDS.md from current protocols."""

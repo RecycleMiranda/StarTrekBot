@@ -196,18 +196,16 @@ def handle_event(event: InternalEvent):
             user_profile = permissions.get_user_profile(event.user_id, nickname, title)
             profile_str = permissions.format_profile_for_ai(user_profile)
 
-            # Generate AI reply in a separate thread to avoid event loop conflict
+            # Generate AI reply in a separate thread (it's now a sync call inside)
             future = _executor.submit(
-                _run_async,
-                rp_engine_gemini.generate_computer_reply(
-                    trigger_text=event.text,
-                    context=router.get_session_context(session_id),
-                    meta={
-                        "session_id": session_id, 
-                        "user_id": event.user_id,
-                        "user_profile": profile_str
-                    }
-                )
+                rp_engine_gemini.generate_computer_reply,
+                trigger_text=event.text,
+                context=router.get_session_context(session_id),
+                meta={
+                    "session_id": session_id, 
+                    "user_id": event.user_id,
+                    "user_profile": profile_str
+                }
             )
             result = future.result(timeout=15)  # 15 second timeout
             
@@ -308,12 +306,10 @@ def _handle_escalation(query: str, is_chinese: bool, group_id: str, user_id: str
     
     try:
         # Call the stronger model with context
-        context = router.get_session_context(session_key.replace("qq:", "qq:")) # key is session_id
-        escalation_result = _run_async(
-            rp_engine_gemini.generate_escalated_reply(
-                query, is_chinese, requested_model, context, 
-                meta={"user_profile": profile_str}
-            )
+        context = router.get_session_context(session_key.replace("qq:", "qq:"))
+        escalation_result = rp_engine_gemini.generate_escalated_reply(
+            query, is_chinese, requested_model, context, 
+            meta={"user_profile": profile_str}
         )
         
         logger.info(f"[Dispatcher] Escalation result: {escalation_result}")

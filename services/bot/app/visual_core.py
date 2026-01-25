@@ -76,8 +76,10 @@ class TemplateRenderer:
             y += font.size + spacing
 
     def render_personnel(self, data: Dict[str, Any]):
-        # --- 1. Top Areas (Avatar) ---
-        # Brackets are centered at approx x=460 and x=960 (on 2000 width)
+        # --- 1. Top Areas (Avatar & Watermark) ---
+        # Watermark to confirm new engine is active
+        self.draw.text((1600, 50), "INTEGRATED DESIGN V2.1", font=self.fonts.tiny, fill=(100, 100, 150))
+        
         avatar_x, avatar_y = 485, 420
         avatar_size = 370
         

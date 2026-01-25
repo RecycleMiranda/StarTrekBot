@@ -104,8 +104,9 @@ class TemplateRenderer:
         # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
         
         # 1. Avatar Section (Bracket Alignment)
-        avatar_size = 380 
-        avatar_x, avatar_y = 480, 210  
+        # Centering inside the template brackets based on visual feedback
+        avatar_size = 320 
+        avatar_x, avatar_y = 515, 240  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -115,11 +116,11 @@ class TemplateRenderer:
         else:
             self.draw.rectangle([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill=(15, 20, 35))
             # Center "NO SIGNAL" in the box
-            self.draw.text((avatar_x + 95, avatar_y + 160), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
+            self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # 2. Data Section (Enforce strict two-column layout)
-        label_x = 480 
-        value_x = 980
+        # 2. Data Section (Aligned with Avatar Left Edge)
+        label_x = 515 
+        value_x = 940
         data_y = 670 
         line_h = 80 
         

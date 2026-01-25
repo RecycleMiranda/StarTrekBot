@@ -19,67 +19,9 @@ from .protocol_manager import get_protocol_manager
 logger = logging.getLogger(__name__)
 
 def get_lexicon_prompt() -> str:
-- Warp Field Coil -> 曲速场线圈
-- Bussard Ramscoop -> 巴萨德冲压采集器
-- Electro Plasma System (EPS) -> 等离子电力系统
-- Impulse Propulsion System (IPS) -> 脉冲推进系统
-- Cochrane -> 科克伦 (子空间畸变单位)
-
-[Computer & Command Systems]
-- LCARS -> 计算机数据库访问与读取系统
-- Operations Center (Ops) -> 运作中心
-- Main Bridge -> 主舰桥
-- Computer Core -> 计算机核心
-- Optical Data Network (ODN) -> 光学数据网络
-- Isolinear Optical Chip -> 等线性光学芯片
-- Isolinear rod -> 等线性数据棒
-- Quad -> 夸 (Kiloquad -> 千夸 / Gigaquad -> 吉夸)
-- PADD -> 个人访问显示设备
-
-[Energy & Utilities]
-- Fusion Reactor -> 聚变反应堆
-- Industrial replicator -> 工业复制机
-- Matter Stream -> 物质流
-- Plasma power grid -> 等离子电网
-- Subspace transceiver -> 子空间收发器
-
-[Transporter Systems]
-- Transporter -> 传送机 / 传送系统
-- Annular Confinement Beam (ACB) -> 环形约束波束
-- Pattern Buffer -> 模式缓冲器
-- Heisenberg Compensator -> 海森堡补偿器
-
-[Science & Sensors]
-- Tricorder -> 三录仪
-- Navigational Deflector -> 航行偏导仪
-
-[Tactical Systems]
-- Phaser -> 相位炮 / 相位器
-- Photon Torpedo -> 光子鱼雷
-- Quantum Torpedo -> 量子鱼雷
-- Spiral-wave disruptor -> 螺旋波裂解炮 (卡达西武器)
-- Polaron weapon ->极化子武器 (自治领武器)
-- Defensive shield -> 防御护盾
-- Shield generator -> 护盾发生器
-- Self-replicating mine -> 自复制空雷
-
-[Environmental & Crew Support]
-- Life Support -> 生命保障
-- Gravity Generator -> 重力发生器
-- Gravity blanket -> 重力发生毯 (卡达西技术)
-- Holographic Environment Simulator -> 全息环境模拟器 (全息甲板)
-
-[Auxiliary Spacecraft & Threat Forces]
-- Shuttlecraft -> 穿梭机
-- Danube-class Runabout -> 多瑙河级汽艇
-- Galaxy-class -> 银河级
-- Sovereign-class -> 元首级
-- Defiant-class -> 挑战级
-- Galor-Class Attack Cruiser -> 加洛级攻击巡洋舰
-- Jem'Hadar Attack Ship -> 詹哈达攻击舰
-- D'Deridex-Class Warbird -> 戴克森级战鸟
-- Workbee -> 工蜂
-"""
+    """Returns the comprehensive LCARS/Cardassian technical lexicon."""
+    pm = get_protocol_manager()
+    return pm.get_lexicon("ship_structures", "")
 
 def get_config():
     return ConfigManager.get_instance()

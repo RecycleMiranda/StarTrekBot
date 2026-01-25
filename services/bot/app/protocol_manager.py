@@ -112,17 +112,23 @@ class ProtocolManager:
             # 1. Add altered files (relative to repo root)
             rel_json = os.path.relpath(PROTOCOLS_JSON, repo_dir)
             rel_md = os.path.relpath(STANDARDS_MD, repo_dir)
+            logger.info(f"Staging files: {rel_json}, {rel_md} (Abs: {PROTOCOLS_JSON})")
             
             cp_add = subprocess.run(["git", "add", rel_json, rel_md], cwd=repo_dir, capture_output=True, text=True)
             if cp_add.returncode != 0:
                 logger.warning(f"Git add failed: {cp_add.stderr}")
+            
+            # Check what's actually staged
+            cp_status = subprocess.run(["git", "status", "--short"], cwd=repo_dir, capture_output=True, text=True)
+            logger.info(f"Current Git status: \n{cp_status.stdout.strip()}")
 
             # 2. Commit
             cp_commit = subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, capture_output=True, text=True)
             if cp_commit.returncode == 0:
                 logger.info(f"Git commit success: {cp_commit.stdout.strip()}")
             else:
-                logger.info(f"Git commit skipped/failed (possibly no changes): {cp_commit.stdout.strip()}")
+                # Often occurs if no changes were actually made to the files
+                logger.info(f"Git commit skipped/failed: {cp_commit.stdout.strip()} {cp_commit.stderr.strip()}")
 
             # 3. Push to remote (Subspace broadcast)
             cp_push = subprocess.run(["git", "push"], cwd=repo_dir, capture_output=True, text=True)

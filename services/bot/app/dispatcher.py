@@ -96,10 +96,26 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             result = tools.update_biography(args.get("content", ""), str(event.user_id))
             
         elif tool == "update_protocol":
+            category = args.get("category", "rp_engine")
+            key = args.get("key")
+            value = args.get("value")
+            
+            # Smart Mapping: If key/value are missing but other keys exist, 
+            # find a likely candidate (e.g. AI sent {'persona': '...'})
+            if not key or value is None:
+                # Look for common protocol keys in the args
+                known_keys = ["persona", "wake_response", "chinese_style", "security_protocols", "decision_logic"]
+                for k in known_keys:
+                    if k in args:
+                        key = k
+                        value = args[k]
+                        logger.info(f"[Dispatcher] Smart-mapped protocol update: {key}={value}")
+                        break
+            
             result = tools.update_protocol(
-                args.get("category", "rp_engine"),
-                args.get("key", "persona"),
-                args.get("value", ""),
+                category,
+                key or "persona",
+                value or "",
                 str(event.user_id),
                 profile.get("clearance", 1)
             )

@@ -104,9 +104,9 @@ class TemplateRenderer:
         # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
         
         # 1. Avatar Section (Bracket Alignment)
-        # NUDGING LEFT TO CLEAR BIO AND REDUCE GAPS
+        # NUDGING RIGHT TO CLEAR SPINE, VALUES PINNED
         avatar_size = 320 
-        avatar_x, avatar_y = 340, 210  
+        avatar_x, avatar_y = 440, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -119,7 +119,7 @@ class TemplateRenderer:
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
         # 2. Data Section (Aligned with Avatar Left Edge)
-        label_x = 340 
+        label_x = 440 
         value_x = 720
         data_y = 670 
         line_h = 80 

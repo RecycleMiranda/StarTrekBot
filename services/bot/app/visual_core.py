@@ -102,9 +102,9 @@ class TemplateRenderer:
             
     def render_personnel(self, data: Dict[str, Any], is_chinese: bool = False):
         # 1. Avatar Section (Bracket Alignment)
-        # NUDGING LEFT SLIGHTLY AND WIDENING GAP
+        # MICRO-ADJUSTMENT: X=385 (CLEAR SPINE), SIZE=320
         avatar_size = 320 
-        avatar_x, avatar_y = 450, 210  
+        avatar_x, avatar_y = 385, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -117,9 +117,9 @@ class TemplateRenderer:
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
         # 2. Data Section (Enforce strict two-column layout)
-        label_x = 450 
-        value_x = 920
-        data_y = 720 
+        label_x = 385 
+        value_x = 780
+        data_y = 670 
         line_h = 80 
         
         # Translation Map for Values
@@ -143,13 +143,10 @@ class TemplateRenderer:
         
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
-            # USE BASELINE ALIGNMENT (anchor="ls") to ensure vertical alignment 
-            # with different font sizes (42 vs 52)
-            
             # Left Column: Label
-            self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE, anchor="ls")
-            # Right Column: Value (Pinned X, widening gap)
-            self.draw.text((value_x, curr_y), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE, anchor="ls")
+            self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
+            # Right Column: Value (Manual -8px offset to fix floating)
+            self.draw.text((value_x, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
 
         # 3. Bio Section (Aligned with "BIO" Header on right)
         bio_x = 1200 

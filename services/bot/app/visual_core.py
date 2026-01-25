@@ -13,6 +13,7 @@ class TStyle:
     TEXT_WHITE = (223, 225, 232)
     TEXT_CYAN = (88, 166, 209)
     TEXT_ORANGE = (255, 151, 123)
+    TEXT_DIM = (120, 130, 150)
     
 class FontLoader:
     def __init__(self):

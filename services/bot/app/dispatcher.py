@@ -516,6 +516,7 @@ def handle_event(event: InternalEvent):
             sender = event.raw.get("sender", {})
             nickname = sender.get("card") or sender.get("nickname")
             title = sender.get("title") # QQ Group Title
+            from . import permissions
             user_profile = permissions.get_user_profile(event.user_id, nickname, title)
             profile_str = permissions.format_profile_for_ai(user_profile)
 

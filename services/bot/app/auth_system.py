@@ -42,9 +42,9 @@ class UniversalAuthSystem:
         if clearance >= 12:
             return {"ok": True, "authorized": True, "message": "COMMAND AUTHORIZED: Solo override active."}
             
-        # Rule: Level 8-11 requires 3 people
-        if clearance < 8:
-            return {"ok": False, "message": f"ACCESS DENIED: Minimum Clearance Level 8 required for multi-sig authorization. Current: {clearance}."}
+        # Rule: Level 9-11 requires 3 people
+        if clearance < 9:
+            return {"ok": False, "message": f"ACCESS DENIED: Minimum Clearance Level 9 required for multi-sig authorization. Current: {clearance}."}
             
         if session_id not in self.pending_actions:
             self.pending_actions[session_id] = {}
@@ -73,8 +73,8 @@ class UniversalAuthSystem:
             del self.pending_actions[session_id][action_type]
             return {"ok": False, "message": "AUTHORIZATION EXPIRED: Sequence reset required."}
             
-        if clearance < 8:
-            return {"ok": False, "message": "Ineligible for authorization. Minimum Clearance Level 8 required."}
+        if clearance < 9:
+            return {"ok": False, "message": "Ineligible for authorization. Minimum Clearance Level 9 required."}
             
         if user_id in action.votes:
             return {"ok": False, "message": "DUPLICATE AUTHORIZATION: Identity already recorded."}
@@ -95,9 +95,9 @@ class UniversalAuthSystem:
         }
 
     def cancel_request(self, session_id: str, action_type: str, clearance: int) -> dict:
-        """Cancels a pending request (requires Level 8+)."""
+        """Cancels a pending request (requires Level 9+)."""
         session_id = str(session_id)
-        if clearance < 8:
+        if clearance < 9:
              return {"ok": False, "message": "ACCESS DENIED: Insufficient clearance to abort auth sequence."}
              
         if session_id in self.pending_actions and action_type in self.pending_actions[session_id]:

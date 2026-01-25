@@ -35,10 +35,29 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
     
     # Tool name aliasing - map AI shortcuts to actual function names
     tool_aliases = {
-        "self_destruct": "initiate_self_destruct",
-        "destruct": "initiate_self_destruct",
-        "abort_destruct": "abort_self_destruct",
-        "cancel_destruct": "abort_self_destruct",
+        # Self-destruct aliases
+        "self_destruct": "initialize_self_destruct",
+        "destruct": "initialize_self_destruct",
+        "init_destruct": "initialize_self_destruct",
+        "initiate_self_destruct": "initialize_self_destruct",
+        # Auth aliases
+        "auth_destruct": "authorize_self_destruct",
+        "vouch_destruct": "authorize_self_destruct",
+        "authorize_sequence": "authorize_self_destruct",
+        # Activate aliases
+        "start_destruct": "activate_self_destruct",
+        "engage_destruct": "activate_self_destruct",
+        # Cancel aliases
+        "abort_self_destruct": "request_cancel_self_destruct",
+        "abort_destruct": "request_cancel_self_destruct",
+        "cancel_destruct": "request_cancel_self_destruct",
+        "stop_destruct": "request_cancel_self_destruct",
+        # Cancel auth aliases
+        "auth_cancel_destruct": "authorize_cancel_self_destruct",
+        "vouch_cancel": "authorize_cancel_self_destruct",
+        # Confirm cancel aliases
+        "confirm_cancel_destruct": "confirm_cancel_self_destruct",
+        "finalize_cancel": "confirm_cancel_self_destruct",
     }
     if tool in tool_aliases:
         original_tool = tool
@@ -71,37 +90,53 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         elif tool == "personal_log":
             result = tools.personal_log(args.get("content", ""), str(event.user_id))
             
-        # --- Self-Destruct & Auth ---
-        elif tool == "initiate_self_destruct":
-            res = tools.initiate_self_destruct(
+        # --- Self-Destruct 3-Step Flow ---
+        elif tool == "initialize_self_destruct":
+            result = tools.initialize_self_destruct(
                 args.get("seconds", 60), 
                 args.get("silent", False), 
                 str(event.user_id), 
                 profile.get("clearance", 1), 
                 session_id
             )
-            if res.get("authorized"):
-                from .self_destruct import get_destruct_manager
-                dm = get_destruct_manager()
-                asyncio.create_task(dm.start_sequence(session_id, args.get("seconds", 60), args.get("silent", False), _destruct_notify))
-            result = res
             
-        elif tool == "authorize_sequence":
-            res = tools.authorize_sequence(
-                args.get("action_type", "SELF_DESTRUCT"), 
+        elif tool == "authorize_self_destruct":
+            result = tools.authorize_self_destruct(
                 str(event.user_id), 
                 profile.get("clearance", 1), 
                 session_id
             )
-            if res.get("authorized") and args.get("action_type") == "SELF_DESTRUCT":
-                from .self_destruct import get_destruct_manager
-                dm = get_destruct_manager()
-                meta = res.get("metadata", {})
-                asyncio.create_task(dm.start_sequence(session_id, meta.get("duration", 60), meta.get("silent", False), _destruct_notify))
-            result = res
             
-        elif tool == "abort_self_destruct":
-            result = tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
+        elif tool == "activate_self_destruct":
+            result = _run_async(tools.activate_self_destruct(
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id,
+                _destruct_notify
+            ))
+            
+        # --- Cancel Flow ---
+        elif tool == "request_cancel_self_destruct":
+            result = tools.request_cancel_self_destruct(
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id
+            )
+            
+        elif tool == "authorize_cancel_self_destruct":
+            result = tools.authorize_cancel_self_destruct(
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id
+            )
+            
+        elif tool == "confirm_cancel_self_destruct":
+            result = tools.confirm_cancel_self_destruct(
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id
+            )
+
             
         elif tool == "get_personnel_file":
             result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)

@@ -21,6 +21,9 @@ class FontLoader:
         asset_font = os.path.join(base_dir, "assets", "NotoSansSC-Bold.otf")
         shouxuan_font = os.path.join(base_dir, "assets", "shouxuan.ttf") # Path to be filled by user or existing file
         
+        # Pre-initialize to avoid AttributeError
+        self.title = self.header = self.label = self.data = self.bio = self.tiny = None
+
         common_paths = [
             shouxuan_font,
             asset_font,
@@ -43,7 +46,8 @@ class FontLoader:
                 self.data = ImageFont.truetype(font_path, 60)
                 self.bio = ImageFont.truetype(font_path, 54)
                 self.tiny = ImageFont.truetype(font_path, 30)
-            except: pass
+            except: 
+                pass
             
         if not self.header:
             self.title = self.header = self.label = self.data = self.bio = self.tiny = ImageFont.load_default()

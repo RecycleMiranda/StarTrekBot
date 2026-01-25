@@ -361,6 +361,7 @@ def enter_repair_mode(user_id: str, clearance: int, session_id: str, target_modu
         return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required for repair mode."}
     
     from .repair_agent import get_repair_agent
+    from . import repair_tools
     agent = get_repair_agent()
     session = agent.start_session(session_id, user_id, target_module)
     

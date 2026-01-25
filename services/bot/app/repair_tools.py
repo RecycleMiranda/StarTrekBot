@@ -21,6 +21,28 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Base path for the bot application
+APP_BASE = Path(__file__).parent
+BACKUP_DIR = APP_BASE / ".backup"
+
+# Whitelist of modules that can be modified
+MODIFIABLE_MODULES = {
+    "self_destruct.py",
+    "auth_system.py",
+    "tools.py",
+    "quota_manager.py",
+    "permissions.py",
+}
+
+# Blacklist of modules that must never be modified
+PROTECTED_MODULES = {
+    "main.py",
+    "dispatcher.py",
+    "rp_engine_gemini.py",
+    "repair_agent.py",
+    "repair_tools.py",  # Can't modify itself!
+}
+
 def git_sync_changes(file_path: Path, message: str) -> dict:
     """
     Commit and push a file to git.

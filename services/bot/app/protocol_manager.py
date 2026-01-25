@@ -146,6 +146,12 @@ class ProtocolManager:
         except Exception as e:
             logger.error(f"Critical error during Git sync: {e}", exc_info=True)
 
+    def _sync_to_markdown(self):
+        """Generates a fresh FEDERATION_STANDARDS.md from current protocols."""
+        try:
+            rp = self._protocols.get("system_prompts", {}).get("rp_engine", {})
+            im = self._protocols.get("immutable_directives", {})
+            
             # Format Immutable Directives nicely
             im_lines = []
             for cat, rules in im.items():

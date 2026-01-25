@@ -462,3 +462,58 @@ def query_technical_database(query: str) -> dict:
         "title": "TECHNICAL DATABASE QUERY RESULT",
         "sections": [{"category": "Search Results", "content": "\n".join(results)}]
     }
+
+def get_personnel_file(target_mention: str, user_id: str) -> dict:
+    """
+    Retrieves and visualizes a personnel file card.
+    """
+    from .permissions import get_user_profile
+    from .quota_manager import get_quota_manager
+    from . import visual_core
+    
+    # 1. Resolve Target ID
+    target_id = str(user_id) # Default to self
+    nickname = None
+    
+    if target_mention:
+        # Extract ID from mention [CQ:at,qq=12345] or just text
+        match = re.search(r"\d+", target_mention)
+        if match:
+            target_id = match.group(0)
+    
+    # 2. Get Profile Data
+    limit_break = (target_id == "2819163610")
+    profile = get_user_profile(target_id)
+    
+    # 3. Get Quota Balance
+    qm = get_quota_manager()
+    # Rank needed for quota lookup, extract from profile
+    rank = profile.get("rank", "Ensign")
+    balance = qm.get_balance(target_id, rank)
+    
+    # 4. Prepare Data for Visual Core
+    data = {
+        "name": profile.get("name", "Unknown"),
+        "rank": profile.get("rank", "Ensign"),
+        "department": profile.get("department", "OPERATIONS"),
+        "clearance": profile.get("clearance", 1),
+        "station": profile.get("station", "General Duty"),
+        "is_core_officer": profile.get("is_core_officer", False),
+        "user_id": target_id,
+        "quota_balance": balance,
+        "restricted": False # TODO: check restricted status
+    }
+    
+    # 5. Render Image
+    try:
+        img_io = visual_core.render_personnel_file(data)
+        return {
+            "ok": True,
+            "message": f"Displaying personnel file for {target_id}.",
+            "image_io": img_io
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "message": f"Visual rendering failed: {e}"
+        }

@@ -175,6 +175,7 @@ SYSTEM_PROMPT = (
     "- If locking/unlocking command authority, use tool: 'lockdown_authority', args: {{\"state\": bool}}.\n"
     "- If restricting a user (e.g. 'Restrict @User for 10 minutes'), use tool: 'restrict_user', args: {{\"target_mention\": \"@User\", \"duration_minutes\": int}}.\n"
     "- If lifting a restriction, use tool: 'lift_user_restriction', args: {{\"target_mention\": \"@User\"}}.\n"
+    "- If searching profile/rank/clearance of a user (e.g. 'Who am I?', 'Show profile', 'Check @User status'), use tool: 'get_personnel_file', args: {{\"target_mention\": \"@User\"}} (leave empty for self).\n"
     "- If updating a person's profile (rank, clearance, station, department), use tool: 'update_user_profile', args: {{\"target_mention\": \"@User\", \"field\": \"rank|clearance|station|department\", \"value\": \"...\"}}.\n"
     "- TARGETING: When a command targets a person (e.g., 'Restrict @XXX', 'Set @XXX to Level 10'), extract the mention string exactly.\n"
     "DECISION LOGIC:\n"
@@ -399,10 +400,10 @@ def _parse_response(text: str) -> Dict:
             args = data.get("args") or {}
             # Validation
             # Validation
-            allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
                        "get_ship_schematic", "get_historical_archive", "query_technical_database",
                        "initiate_self_destruct", "authorize_sequence", "abort_self_destruct",
-                       "lockdown_authority", "restrict_user", "lift_user_restriction", "update_user_profile"]
+                       "lockdown_authority", "restrict_user", "lift_user_restriction", "update_user_profile",
+                       "get_personnel_file"]
             if tool not in allowed:
                 return _fallback("invalid_tool")
             return {

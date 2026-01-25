@@ -87,6 +87,9 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         elif tool == "abort_self_destruct":
             return tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
             
+        elif tool == "get_personnel_file":
+            return tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id))
+            
         return {"ok": False, "error": f"unknown_tool: {tool}"}
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")
@@ -225,6 +228,10 @@ def handle_event(event: InternalEvent):
                     
                     if tool_result.get("ok"):
                         reply_text = tool_result.get("message") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                        # Check for image content from tool (e.g. Personnel File)
+                        if "image_io" in tool_result:
+                            img_io = tool_result["image_io"]
+                            image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
                     else:
                         reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
                     

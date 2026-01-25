@@ -63,8 +63,8 @@ def _run_async(coro):
 # Global session mode tracking
 SESSION_MODES = {}
 
-def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
-    """Executes a ship tool with user context."""
+async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
+    """Execute a tool dynamically based on name and args. Async version."""
     from . import tools
     result = None
     
@@ -138,7 +138,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         elif tool == "time":
             result = tools.get_time()
         elif tool == "calc":
-            result = tools.calc(args.get("expr", ""))
+            result = tools.calculator(args.get("expression"))
         elif tool == "replicate":
             result = tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"), clearance=profile.get("clearance", 1))
         elif tool == "holodeck":
@@ -156,6 +156,18 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             result = tools.get_historical_archive(args.get("topic", "Federation"))
         elif tool == "personal_log":
             result = tools.personal_log(args.get("content", ""), str(event.user_id))
+        elif tool == "search_memory":
+            result = tools.search_memory(args.get("query"), session_id)
+            
+        elif tool == "set_reminder":
+            result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))
+            
+        elif tool == "override_safety":
+            result = tools.override_safety(
+                str(event.user_id), 
+                clearance=profile.get("clearance", 1),
+                disable_safety=args.get("disable_safety", False)
+            )
             
         # --- Self-Destruct 3-Step Flow ---
         elif tool == "initialize_self_destruct":
@@ -186,43 +198,13 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                     "user_id": event.user_id
                 })
             
-            # Since _execute_tool is sync but activate is async in tools.py,
-            # we need to bridge this. However, tools.activate returns a coroutine.
-            # We must await it. But _execute_tool is currently synchronous.
-            # FIX: We will return the coroutine and let the caller handle it or
-            # use a helper to run it sync if needed.
-            # Actually, standard tools.py activate is async.
-            # Given _execute_tool is run via _run_async wrapper in `handle_event` (line 631), 
-            # we are inside an async context? No, line 631 is `_run_async(_execute_ai_logic...)`.
-            # `_execute_ai_logic` calls `future.result()` which blocks.
-            # This is complex. Let's look at `tools.py`.
-            # `activate_self_destruct` is defined as `async def`.
-            # We need to run it synchronously here or refactor.
-            # Simplest correct way: Use the same event loop or run_coroutine_threadsafe.
-            # For now, let's use a sync wrapper if possible, or just run it.
-            
-            # Re-check: _execute_tool is expected to return a dict.
-            # If we call an async function, we get a coroutine.
-            # We need to execute it.
-            import asyncio
-            
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-            # If we are already in a loop (which we are if called from async context),
-            # but _execute_tool is called from a thread pool executor?
-            # Dispatcher lines 415-422 show `future = _executor.submit(...)`.
-            # So we are in a separate thread! We can use asyncio.run() safely if it's a new loop.
-            
-            result = asyncio.run(tools.activate_self_destruct(
+            # Directly await the async tool on the main loop
+            result = await tools.activate_self_destruct(
                 str(event.user_id), 
                 profile.get("clearance", 1), 
                 session_id,
                 notify_callback
-            ))
+            )
             
         # --- Cancel Flow ---
         elif tool == "request_cancel_self_destruct":
@@ -292,18 +274,18 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             )
             
         elif tool == "ask_about_code":
-            result = _run_async(tools.ask_about_code(
-                args.get("question") or args.get("query", ""),
-                str(event.user_id),
-                profile.get("clearance", 1),
-                session_id
-            ))
+            # Direct call to RepairAgent natural language interface
+            from .repair_agent import get_repair_agent
+            agent = get_repair_agent()
+            result = await agent.answer_code_question(
+                session_id, 
+                str(event.user_id), 
+                args.get("question", ""), 
+                profile.get("clearance", 1)
+            )
 
             
         elif tool == "get_personnel_file":
-
-
-
             result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
             
         elif tool == "update_biography":
@@ -572,35 +554,59 @@ def handle_event(event: InternalEvent):
             _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode"))
             return True
         else:
-            # Force route to ask_about_code
-            from . import permissions
-            user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
-            # Use _execute_ai_logic but force the tool call
-            # Or better, construct a synthetic AI result to feed into the pipeline
-            _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text}))
-            return True
-    
-    # --- ACCESS CONTROL GATING (Legacy & Security) ---
-    from .permissions import is_user_restricted, is_command_locked, get_user_profile
-    
-    # 1. Individual Restriction
-    if is_user_restricted(event.user_id):
-        logger.warning(f"[Dispatcher] User {event.user_id} is restricted. Dropping.")
-        return False
         
-    # 2. Global Command Lockout
-    if is_command_locked():
-        # Only allow Level 8+ during lockout
-        profile = get_user_profile(str(event.user_id), event.nickname, event.title)
-        if profile.get("clearance", 1) < 8:
-            logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")
-            sq = send_queue.SendQueue.get_instance()
-            session_key = f"{event.platform}:{event.group_id or event.user_id}"
-            _executor.submit(_run_async, sq.enqueue_send(session_key, "ACCESS DENIED: Shipboard command authority is currently locked to Senior Officers.", {"from_computer": True}))
-            return False
-    
-    # Route the message with full event meta for attribution
     try:
+        # Skip empty messages
+        if not event.text or not event.text.strip():
+            logger.info("[Dispatcher] Empty message, skipping.")
+            return False
+
+        # --- DIAGNOSTIC MODE INTERCEPT ---
+        if SESSION_MODES.get(session_id) == "diagnostic":
+            logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
+            
+            # Check for exit command
+            sender = event.raw.get("sender", {})
+            nickname = sender.get("card") or sender.get("nickname")
+            title = sender.get("title") # QQ Group Title
+
+            if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
+                # Route to exit_repair_mode
+                route_result = {"route": "computer", "confidence": 1.0}
+                from . import permissions
+                user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
+                # Create synthetic result for execution
+                await _execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode")
+                return True
+            else:
+                # Force route to ask_about_code
+                from . import permissions
+                user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
+                # Use _execute_ai_logic but force the tool call
+                # Or better, construct a synthetic AI result to feed into the pipeline
+                await _execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text})
+                return True
+        
+        # --- ACCESS CONTROL GATING (Legacy & Security) ---
+        from .permissions import is_user_restricted, is_command_locked, get_user_profile
+        
+        # 1. Individual Restriction
+        if is_user_restricted(event.user_id):
+            logger.warning(f"[Dispatcher] User {event.user_id} is restricted. Dropping.")
+            return False
+            
+        # Command Lockout Check
+        if is_command_locked(): # Assuming COMMAND_LOCKOUT_ACTIVE is replaced by is_command_locked()
+            # Only allow Level 8+ during lockout
+            profile = get_user_profile(str(event.user_id), event.nickname, event.title)
+            if profile.get("clearance", 1) < 8:
+                logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")
+                sq = send_queue.SendQueue.get_instance()
+                session_key = f"{event.platform}:{event.group_id or event.user_id}"
+                await sq.enqueue_send(session_key, "ACCESS DENIED: Shipboard command authority is currently locked to Senior Officers.", {"from_computer": True})
+                return False
+        
+        # Route the message with full event meta for attribution
         route_result = router.route_event(session_id, event.text, {
             "event": event.model_dump(),
             "event_raw": event.raw
@@ -611,6 +617,7 @@ def handle_event(event: InternalEvent):
         confidence = route_result.get("confidence", 0)
         route = route_result.get("route", "chat")
         
+        should_respond = False
         # Dual-Stage Triage
         # Stage 1: Fast Rule High-Confidence (e.g. Wake Word / Manual Enter)
         if route == "computer" and confidence >= 0.8:
@@ -620,14 +627,11 @@ def handle_event(event: InternalEvent):
             logger.info(f"[Dispatcher] Borderline confidence ({confidence}), calling secondary judge...")
             try:
                 from . import judge_gemini
-                judge_result = _executor.submit(
-                    _run_async, 
-                    judge_gemini.judge_intent(
-                        trigger={"text": event.text, "user_id": event.user_id},
-                        context=router.get_session_context(session_id)
-                    )
-                ).result(timeout=5)
-                
+                judge_result = await judge_gemini.judge_intent(
+                    trigger={"text": event.text, "user_id": event.user_id},
+                    context=router.get_session_context(session_id)
+                )
+
                 if judge_result.get("route") == "computer" and judge_result.get("confidence", 0) >= 0.7:
                     logger.info(f"[Dispatcher] Judge confirmed intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
                     should_respond = True
@@ -651,15 +655,11 @@ def handle_event(event: InternalEvent):
                 pm = get_protocol_manager()
                 bleep_text = pm.get_prompt("rp_engine", "wake_response", "*Computer Acknowledgment Chirp*")
                 
-                # Use executor to avoid "loop already running" error
-                _executor.submit(
-                    _run_async,
-                    sq.enqueue_send(session_key, bleep_text, {
-                        "group_id": event.group_id,
-                        "user_id": event.user_id,
-                        "reply_to": event.message_id
-                    })
-                )
+                await sq.enqueue_send(session_key, bleep_text, {
+                    "group_id": event.group_id,
+                    "user_id": event.user_id,
+                    "reply_to": event.message_id
+                })
                 return True
 
             # Fetch full ALAS User Profile
@@ -668,10 +668,9 @@ def handle_event(event: InternalEvent):
             title = sender.get("title") # QQ Group Title
             from . import permissions
             user_profile = permissions.get_user_profile(event.user_id, nickname, title)
-            profile_str = permissions.format_profile_for_ai(user_profile)
-
-            # Generate AI reply using helper
-            _run_async(_execute_ai_logic(event, user_profile, session_id))
+            
+            # Generate AI reply using helper (async await)
+            await _execute_ai_logic(event, user_profile, session_id)
             return True
             
         else:

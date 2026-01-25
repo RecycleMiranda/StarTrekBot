@@ -114,7 +114,7 @@ async def qq_webhook(request: Request):
         ts=int(time.time())
     )
     
-    dispatcher.handle_event(event)
+    await dispatcher.handle_event(event)
     return {"code": 0, "message": "ok", "data": {"received": True}}
 
 @app.post("/onebot/event")
@@ -147,7 +147,7 @@ async def onebot_event(request: Request):
             raw=body,
             ts=body.get("time", int(time.time()))
         )
-        dispatcher.handle_event(event)
+        await dispatcher.handle_event(event)
     
     return {"code": 0, "message": "ok", "data": {"received": True}}
 
@@ -175,7 +175,7 @@ async def onebot_v11_ws(websocket: WebSocket):
                     raw=data,
                     ts=data.get("time")
                 )
-                dispatcher.handle_event(event)
+                await dispatcher.handle_event(event)
             
             # You can handle meta_event (heartbeat) or notice here if needed
             

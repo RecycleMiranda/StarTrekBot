@@ -106,9 +106,9 @@ RANKS_HIERARCHY = [
 USER_PROFILES: Dict[str, UserProfile] = {
     "2819163610": {
         "name": "AAAAA你米兰达🌈",
-        "rank": "Admiral",
+        "rank": "Fleet Admiral",
         "department": "SECTION_31",
-        "clearance": 11,
+        "clearance": 12,
         "station": "Command Center",
         "is_core_officer": True,
         "biography": "Senior Section 31 Agent. High-level operative in the 24th Century."

@@ -6,15 +6,25 @@ logger = logging.getLogger(__name__)
 
 # --- COMMAND LOCKOUT & ACCESS CONTROL (Legacy & Security Enhancement) ---
 COMMAND_LOCKOUT = False
+# Global Command Override (Z in 1.8 script - 权限覆盖)
+COMMAND_OVERRIDE = False
 # user_id -> unlock_timestamp (0 = permanent until manual reset)
 RESTRICTED_USERS: Dict[str, float] = {}
 
 def is_command_locked() -> bool:
-    return COMMAND_LOCKOUT
+    return COMMAND_LOCKOUT or COMMAND_OVERRIDE
+
+def is_command_override_active() -> bool:
+    return COMMAND_OVERRIDE
 
 def set_command_lockout(state: bool):
     global COMMAND_LOCKOUT
     COMMAND_LOCKOUT = state
+
+def set_command_override(state: bool):
+    global COMMAND_OVERRIDE
+    COMMAND_OVERRIDE = state
+    logger.info(f"[Permissions] Command Override set to {state}")
 
 def is_user_restricted(user_id: str) -> bool:
     user_id = str(user_id)

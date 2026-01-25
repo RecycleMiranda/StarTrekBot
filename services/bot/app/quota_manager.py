@@ -40,6 +40,12 @@ class QuotaManager:
         self._check_daily_allowance(user_id, rank)
         return self.data.get(user_id, {}).get("balance", 0)
 
+    COSTS = {
+        "replicator": 5,
+        "search": 2,
+        "geolocator": 10
+    }
+
     def spend_credits(self, user_id: str, amount: int) -> bool:
         user_id = str(user_id)
         current_balance = self.get_balance(user_id)
@@ -49,6 +55,11 @@ class QuotaManager:
         self.data[user_id]["balance"] -= amount
         self._save_data()
         return True
+
+    def spend_for_tool(self, user_id: str, tool_name: str) -> bool:
+        """Helper to spend credits for a specific tool."""
+        cost = self.COST_MAP.get(tool_name.lower(), 0)
+        return self.spend_credits(user_id, cost)
 
     def record_log(self, user_id: str) -> Dict[str, Any]:
         """Checks 2-hour cooldown and grants random credit reward."""

@@ -9,15 +9,17 @@ logger = logging.getLogger(__name__)
 
 def get_status() -> dict:
     """
-    Returns mock starship status.
+    Returns real-time starship status from ShipSystems.
     """
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
     return {
         "ok": True,
-        "message": f"STATUS REPORT: Shields at {92}%. Warp capability nominal. Alert status: GREEN.",
-        "shields_percent": 92,
-        "warp_factor": 0.0,
-        "alert": "green",
-        "power_status": "nominal"
+        "message": f"STATUS REPORT: {ss.get_shield_status()}. Alert status: {ss.alert_status.value}.",
+        "shields_active": ss.shields_active,
+        "shield_integrity": ss.shield_integrity,
+        "alert": ss.alert_status.value,
+        "subsystems": {k: v.value for k, v in ss.subsystems.items()}
     }
 
 def get_time() -> dict:
@@ -78,58 +80,35 @@ def calc(expr: str) -> dict:
 
 def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> dict:
     """
-    Replicates an item using replicator credits with ALAS clearance check.
+    Replicates an item using replicator credits (1.8 Style: 5 credits per item).
     """
     from .quota_manager import get_quota_manager
+    from .ship_systems import get_ship_systems
+    
+    ss = get_ship_systems()
+    if not ss.is_subsystem_online("replicator"):
+        return {"ok": False, "message": "无法完成：复制机系统下线。"}
+
     qm = get_quota_manager()
+    cost = 5 # 1.8 Standard cost
     
     item_lower = item_name.lower()
-    cost = 10 # Default
-    required_clearance = 1
+    if any(k in item_lower for k in ["phaser", "weapon", "explosive", "rifles"]):
+        if clearance < 9:
+            return {"ok": False, "message": "权限不足拒绝访问"}
+        cost = 50 # Weapons are expensive
     
-    # Clearance & Cost Logic
-    if any(k in item_lower for k in ["tea", "coffee", "water", "juice"]): 
-        cost = 5
-        required_clearance = 1
-    elif any(k in item_lower for k in ["steak", "pasta", "meal", "soup"]): 
-        cost = 15
-        required_clearance = 2
-    elif any(k in item_lower for k in ["padd", "tool", "spare", "component"]): 
-        cost = 25
-        required_clearance = 5 # Standard Officer
-    elif any(k in item_lower for k in ["phaser", "weapon", "explosive", "hazardous", "rifles"]): 
-        cost = 150
-        required_clearance = 8 # Senior Officer / Command
-    elif any(k in item_lower for k in ["torpedo", "detonator", "cloak"]):
-        cost = 500
-        required_clearance = 11 # Admiralty/Section 31
-    elif any(k in item_lower for k in ["diamond", "gold", "luxury"]): 
-        cost = 500
-        required_clearance = 4
+    balance = qm.get_balance(user_id, rank)
+    if balance < cost:
+        return {"ok": False, "message": f"无法完成：你的配额不足。需要 {cost} 个配额，当前剩余 {balance} 个。"}
         
-    # Check Clearance
-    if clearance < required_clearance:
-        return {
-            "ok": False,
-            "message": f"Access denied. Replication of {item_name} requires Clearance Level {required_clearance}. Current level: {clearance}.",
-            "cost": 0,
-            "remaining": qm.get_balance(user_id, rank)
-        }
-    
-    if qm.spend_credits(user_id, cost):
-        return {
-            "ok": True,
-            "message": f"Replication successful: {item_name}.",
-            "cost": cost,
-            "remaining": qm.get_balance(user_id, rank)
-        }
-    else:
-        return {
-            "ok": False,
-            "message": "Insufficient replicator credits.",
-            "cost": cost,
-            "remaining": qm.get_balance(user_id, rank)
-        }
+    qm.spend_credits(user_id, cost)
+    return {
+        "ok": True,
+        "message": f"复制中…（消耗 {cost} 配额）\n[嘀—— 嘶嘶——]\n复制完成：{item_name}。",
+        "item": item_name,
+        "cost": cost
+    }
 
 def reserve_holodeck(program_name: str, duration_hours: float, user_id: str, rank: str, clearance: int = 1, disable_safety: bool = False) -> dict:
     """
@@ -297,19 +276,10 @@ async def activate_self_destruct(user_id: str, clearance: int, session_id: str, 
     return await dm.initialize(session_id, user_id, clearance, notify_callback=notify_callback)
 
 
-def request_cancel_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
-    """
-    Step 1 of cancel flow: Request cancellation.
-    Level 12 can cancel immediately. Others need multi-sig.
-    """
-    from .self_destruct import get_destruct_manager
-    dm = get_destruct_manager()
-    return dm.request_cancel(session_id, user_id, clearance)
-
-
 def authorize_cancel_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
     """
-    Step 2 of cancel flow: Add cancel authorization.
+    Step 1 (Version 1.8): Record an authorization signature to cancel self-destruct.
+    Requires Level 11+. 3 unique signatures must be recorded BEFORE calling 'confirm_cancel'.
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
@@ -318,8 +288,9 @@ def authorize_cancel_self_destruct(user_id: str, clearance: int, session_id: str
 
 def confirm_cancel_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
     """
-    Step 3 of cancel flow: Confirm and execute cancellation.
-    Level 12 can confirm from any state.
+    Step 2 (Version 1.8): Execute the self-destruct cancellation.
+    Requires Level 9+. This will only succeed if 3 unique signatures have been 
+    previously collected via 'authorize_cancel_self_destruct' (or if called by Level 11+).
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
@@ -327,14 +298,15 @@ def confirm_cancel_self_destruct(user_id: str, clearance: int, session_id: str) 
 
 
 # Legacy aliases for backward compatibility
-def initiate_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str) -> dict:
+def initiate_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str, notify_callback) -> dict:
     """Legacy wrapper - redirects to initialize_self_destruct."""
-    return initialize_self_destruct(seconds, silent, user_id, clearance, session_id)
+    # Note: legacy caller might not provide notify_callback, but dispatcher now always does
+    return initialize_self_destruct(seconds, silent, user_id, clearance, session_id, notify_callback)
 
 
 def abort_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
-    """Legacy wrapper - redirects to request_cancel_self_destruct."""
-    return request_cancel_self_destruct(user_id, clearance, session_id)
+    """Legacy wrapper - redirects to authorize_cancel_self_destruct."""
+    return authorize_cancel_self_destruct(user_id, clearance, session_id)
 
 
 def authorize_sequence(action_type: str, user_id: str, clearance: int, session_id: str) -> dict:
@@ -715,3 +687,78 @@ def update_protocol(category: str, key: str, value: str, user_id: str, clearance
         }
     else:
         return {"ok": False, "message": "Failed to update protocol. System file write error."}
+# --- SHIP SYSTEMS & CONTROL TOOLS (1.8 Protocol) ---
+
+def set_alert_status(level: str, clearance: int) -> dict:
+    """
+    Sets the ship's alert status (RED, YELLOW, NORMAL).
+    Requires Level 8+.
+    """
+    if clearance < 8:
+        return {"ok": False, "message": "权限不足拒绝访问"}
+        
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    msg = ss.set_alert(level)
+    return {"ok": True, "message": msg, "level": ss.alert_status.value}
+
+def toggle_shields(active: bool, clearance: int) -> dict:
+    """
+    Toggles the ship's shields.
+    Requires Level 8+.
+    """
+    if clearance < 8:
+        return {"ok": False, "message": "权限不足拒绝访问"}
+        
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    msg = ss.toggle_shields(active)
+    return {"ok": True, "message": msg, "active": ss.shields_active}
+
+def set_subsystem_state(name: str, state_str: str, clearance: int) -> dict:
+    """
+    Toggles a subsystem (online/offline).
+    Requires Level 11+.
+    """
+    if clearance < 11:
+        return {"ok": False, "message": "权限不足拒绝访问"}
+        
+    from .ship_systems import get_ship_systems, SubsystemState
+    ss = get_ship_systems()
+    state = SubsystemState.ONLINE if "online" in state_str.lower() or "上线" in state_str else SubsystemState.OFFLINE
+    msg = ss.set_subsystem(name, state)
+    return {"ok": True, "message": msg}
+
+def set_absolute_override(state: bool, user_id: str, clearance: int) -> dict:
+    """
+    Toggles Absolute Command Override (Z-flag).
+    Requires Level 11+.
+    """
+    from .permissions import set_command_override, USER_PROFILES
+    
+    # Check if user is owner or Level 11+
+    is_owner = (user_id == "2819163610" or user_id == "1993596624")
+    if not is_owner and clearance < 11:
+        return {"ok": False, "message": "权限不足拒绝访问"}
+        
+    set_command_override(state)
+    msg = "确认，指挥权覆盖已激活。计算机现在仅响应授权命令。" if state else "确认，指挥权覆盖已解除。"
+    return {"ok": True, "message": msg}
+
+async def locate_user(target_mention: str, clearance: int) -> dict:
+    """
+    Mock Geolocation for 1.8 (Simulating the IP API).
+    """
+    if clearance < 11:
+        return {"ok": False, "message": "权限不足拒绝访问"}
+    
+    target_id_match = re.search(r"\d+", target_mention)
+    if not target_id_match:
+        return {"ok": False, "message": "无法识别目标。"}
+    
+    target_id = target_id_match.group(0)
+    # 1.8 Mock logic: "Accessing Starfleet tracking... User located at Sector 001."
+    return {
+        "ok": True, 
+        "message": f"正在定位用户：{target_id}…\n[信号追踪中…]\n定位成功：用户当前位于 001 扇区，地球空间站。"
+    }

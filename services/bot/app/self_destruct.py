@@ -95,7 +95,7 @@ class DestructSequence:
         if self.language == "zh":
             if minutes > 0:
                 if secs == 0:
-                    return f"{minutes}分"
+                    return f"{minutes}分钟"
                 return f"{minutes}分{secs}秒"
             return f"{secs}秒"
         else:
@@ -194,10 +194,11 @@ class DestructManager:
     _instance = None
     OWNER_ID = "1993596624"  # From 1.8 script
     
-    def __init__(self):
         self.sequences: Dict[str, DestructSequence] = {}
         # Track authorizations per session BEFORE initialization
         self.pending_authorizers: Dict[str, Set[str]] = {}
+        # Track cancel authorizations per session BEFORE confirmation
+        self.pending_cancel_authorizers: Dict[str, Set[str]] = {}
     
     @classmethod
     def get_instance(cls):
@@ -288,7 +289,7 @@ class DestructManager:
             "zh": {
                 "denied": "拒绝访问。",
                 "already_active": "程序已激活：当前状态为 {state}。",
-                "not_worthy": "你配吗？",
+                "not_worthy": "权限不足拒绝访问",
                 "low_clearance": "权限不足",
                 "auth_needed": "授权人数不足 拒绝访问",
                 "success": f"确认，自毁系统已启动。反应堆核心 {{duration_str}} 后破裂..."
@@ -307,8 +308,8 @@ class DestructManager:
         
         if not is_owner and not is_master:
             if clearance < DestructSequence.CLE_INIT:
-                return {"ok": False, "message": msg["low_clearance"]}
-            
+                return {"ok": False, "message": msg["denied"]}
+                
             # Normal Level 9+ must have 3 authorizations
             auths = self.pending_authorizers.get(session_id, set())
             if len(auths) < DestructSequence.MIN_AUTHORIZERS:
@@ -474,23 +475,27 @@ class DestructManager:
         }
     
     def authorize_cancel(self, session_id: str, user_id: str, clearance: int) -> dict:
-        """Step 2 of cancel flow: Add cancel authorization."""
+        """Step 1 (Version 1.8): Store cancel authorization before confirmation."""
         session_id = str(session_id)
         user_id = str(user_id)
         
         seq = self.get_sequence(session_id)
-        lang = seq.language if seq else "en"
+        lang = seq.language if seq else ("zh" if "zh" in str(session_id) else "en")
         
         msgs = {
             "en": {
-                "ineligible": f"INELIGIBLE: Clearance Level {DestructSequence.CLE_AUTH_CANCEL}+ required.",
-                "no_seq": "NO PENDING SEQUENCE.",
-                "invalid_state": "INVALID STATE: Sequence is '{state}', not awaiting cancel authorization."
+                "ineligible": "INSUFFICIENT CLEARANCE.",
+                "no_active": "NO ACTIVE SEQUENCE.",
+                "dup": "DUPLICATE: You have already authorized cancellation.",
+                "complete": "CANCEL AUTHORIZATION COMPLETE: Signatures collected. Awaiting final command to terminate.",
+                "accepted": "CANCEL AUTHORIZATION ACCEPTED: {needed} more senior officer signature(s) required."
             },
             "zh": {
-                "ineligible": f"无权操作：需要 {DestructSequence.CLE_AUTH_CANCEL} 级以上权限。",
-                "no_seq": "无待处理程序。",
-                "invalid_state": "状态无效：程序处于“{state}”，并非等待取消授权。"
+                "ineligible": "权限不足拒绝访问",
+                "no_active": "无法完成：无自毁序列运行中。",
+                "dup": "无法完成，你已授权",
+                "complete": "取消授权码集齐，输入终止指令后确认取消",
+                "accepted": "取消担保已接受：还需要 {needed} 个高级军官签名以授权取消。"
             }
         }
         msg = msgs.get(lang, msgs["en"])
@@ -498,16 +503,27 @@ class DestructManager:
         if clearance < DestructSequence.CLE_AUTH_CANCEL:
             return {"ok": False, "message": msg["ineligible"]}
         
-        if not seq:
-            return {"ok": False, "message": msg["no_seq"]}
+        if not seq or seq.state != DestructState.ACTIVE:
+            return {"ok": False, "message": msg["no_active"]}
+            
+        if session_id not in self.pending_cancel_authorizers:
+            self.pending_cancel_authorizers[session_id] = set()
+            
+        auths = self.pending_cancel_authorizers[session_id]
+        if user_id in auths:
+            return {"ok": False, "message": msg["dup"]}
+            
+        auths.add(user_id)
+        count = len(auths)
         
-        if seq.state != DestructState.CANCEL_PENDING:
-            return {"ok": False, "message": msg["invalid_state"].format(state=seq.state.value)}
-        
-        return seq.add_cancel_authorizer(user_id)
+        if count >= DestructSequence.MIN_AUTHORIZERS:
+            return {"ok": True, "message": msg["complete"]}
+            
+        needed = DestructSequence.MIN_AUTHORIZERS - count
+        return {"ok": True, "message": msg["accepted"].format(needed=needed)}
     
     def confirm_cancel(self, session_id: str, user_id: str, clearance: int) -> dict:
-        """Step 3 of cancel flow: Confirm and execute cancellation."""
+        """Step 2 (Version 1.8): Execute the cancellation."""
         session_id = str(session_id)
         
         seq = self.get_sequence(session_id)
@@ -515,32 +531,42 @@ class DestructManager:
         
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.CLE_CANCEL}+ required.",
-                "no_seq": "NO PENDING SEQUENCE.",
-                "cannot_confirm": "CANNOT CONFIRM: Cancel not yet authorized. Current state: '{state}'."
+                "denied": "INSUFFICIENT CLEARANCE.",
+                "no_active": "NO ACTIVE SEQUENCE.",
+                "auth_needed": "INSUFFICIENT CANCEL AUTHORIZATION."
             },
             "zh": {
-                "denied": f"拒绝访问：需要 {DestructSequence.CLE_CANCEL} 级以上权限。",
-                "no_seq": "无待处理程序。",
-                "cannot_confirm": "无法确认：取消尚未获得授权。当前状态：“{state}”。"
+                "denied": "权限不足拒绝访问",
+                "no_active": "无待处理程序。",
+                "auth_needed": "授权人数不足 拒绝访问"
             }
         }
         msg = msgs.get(lang.lower(), msgs["en"])
         
         if clearance < DestructSequence.CLE_CANCEL:
             return {"ok": False, "message": msg["denied"]}
+            
+        if not seq or seq.state != DestructState.ACTIVE:
+            return {"ok": False, "message": msg["no_active"]}
+            
+        # Check authorizations
+        auths = self.pending_cancel_authorizers.get(session_id, set())
         
-        if not seq:
-            return {"ok": False, "message": msg["no_seq"]}
+        # Masters / Owners bypass
+        is_owner = (user_id == self.OWNER_ID)
+        is_master = (clearance >= 11)
         
-        # Level 12 can confirm from CANCEL_PENDING
-        if clearance >= 12 and seq.state == DestructState.CANCEL_PENDING:
-            return self._do_cancel(session_id, "Level 12 override")
+        if not is_owner and not is_master and len(auths) < DestructSequence.MIN_AUTHORIZERS:
+            return {"ok": False, "message": msg["auth_needed"]}
+            
+        # Execute cancel
+        result = self._do_cancel(session_id, "授权终止")
         
-        if seq.state != DestructState.CANCEL_AUTHORIZED:
-            return {"ok": False, "message": msg["cannot_confirm"].format(state=seq.state.value)}
-        
-        return self._do_cancel(session_id, "Multi-signature authorization")
+        # Clear signatures
+        if session_id in self.pending_cancel_authorizers:
+            del self.pending_cancel_authorizers[session_id]
+            
+        return result
     
     def _do_cancel(self, session_id: str, reason: str) -> dict:
         """Actually cancel the sequence."""

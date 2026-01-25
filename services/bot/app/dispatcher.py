@@ -89,10 +89,10 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "check_destruct": "get_destruct_status",
         "destruct_info": "get_destruct_status",
         # Cancel aliases
-        "abort_self_destruct": "request_cancel_self_destruct",
-        "abort_destruct": "request_cancel_self_destruct",
-        "cancel_destruct": "request_cancel_self_destruct",
-        "stop_destruct": "request_cancel_self_destruct",
+        "abort_self_destruct": "authorize_cancel_self_destruct",
+        "abort_destruct": "authorize_cancel_self_destruct",
+        "cancel_destruct": "authorize_cancel_self_destruct",
+        "stop_destruct": "authorize_cancel_self_destruct",
         # Cancel auth aliases
         "auth_cancel_destruct": "authorize_cancel_self_destruct",
         "vouch_cancel": "authorize_cancel_self_destruct",
@@ -122,6 +122,19 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "analyze_code": "ask_about_code",
         "explain_code": "ask_about_code",
         "check_code": "ask_about_code",
+        # 1.8 Protocol Aliases
+        "lock_computer": "set_absolute_override",
+        "unlock_computer": "set_absolute_override",
+        "red_alert": "set_alert_status",
+        "yellow_alert": "set_alert_status",
+        "cancel_alert": "set_alert_status",
+        "raise_shields": "toggle_shields",
+        "lower_shields": "toggle_shields",
+        "shield_status": "get_shield_status",
+        "weapon_lock": "weapon_lock_fire",
+        "open_fire": "weapon_lock_fire",
+        "locate_user": "locate_user",
+        "replicate": "replicate",
     }
 
 
@@ -131,6 +144,14 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         tool = tool_aliases[tool]
         logger.info(f"[Dispatcher] Aliased tool '{original_tool}' -> '{tool}'")
     
+    # 1.8 Absolute Command Override (Z-flag) check
+    from .permissions import is_command_override_active
+    is_owner = (str(event.user_id) == "2819163610" or str(event.user_id) == "1993596624")
+    
+    if is_command_override_active() and not is_owner and tool != "set_absolute_override":
+        logger.warning(f"[Dispatcher] Command REJECTED due to Absolute Override for user {event.user_id}")
+        return {"ok": False, "message": "权限不足拒绝访问"}
+
     try:
         if tool == "status":
             result = tools.get_status()
@@ -206,13 +227,6 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             )
             
         # --- Cancel Flow ---
-        elif tool == "request_cancel_self_destruct":
-            result = tools.request_cancel_self_destruct(
-                str(event.user_id), 
-                profile.get("clearance", 1),
-                session_id
-            )
-            
         elif tool == "authorize_cancel_self_destruct":
             result = tools.authorize_cancel_self_destruct(
                 str(event.user_id), 
@@ -255,6 +269,44 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 profile.get("clearance", 1)
             )
             
+        # --- 1.8 Protocol Hard-coded Tools ---
+        elif tool == "set_absolute_override":
+            # State is inferred from tool_name if not in args
+            state = args.get("state") if "state" in args else ("lock" in tool_name or "激活" in tool_name)
+            result = tools.set_absolute_override(state, str(event.user_id), profile.get("clearance", 1))
+            
+        elif tool == "set_alert_status":
+            level = args.get("level") or ("RED" if "red" in tool_name else "YELLOW" if "yellow" in tool_name else "NORMAL")
+            result = tools.set_alert_status(level, profile.get("clearance", 1))
+            
+        elif tool == "toggle_shields":
+            active = args.get("active") if "active" in args else ("raise" in tool_name or "升起" in tool_name)
+            result = tools.toggle_shields(active, profile.get("clearance", 1))
+            
+        elif tool == "get_shield_status":
+            from .ship_systems import get_ship_systems
+            result = {"ok": True, "message": get_ship_systems().get_shield_status()}
+            
+        elif tool == "replicate":
+            result = tools.replicate(
+                args.get("item_name") or args.get("item", "Tea, Earl Grey, Hot"),
+                str(event.user_id),
+                profile.get("rank", "Ensign"),
+                profile.get("clearance", 1)
+            )
+            
+        elif tool == "locate_user":
+            result = await tools.locate_user(args.get("target_mention"), profile.get("clearance", 1))
+            
+        elif tool == "weapon_lock_fire":
+            # Simulate 1.8 weapon check
+            from .ship_systems import get_ship_systems
+            ss = get_ship_systems()
+            if not ss.is_subsystem_online("weapons"):
+                result = {"ok": False, "message": "无法完成：武器系统下线。"}
+            else:
+                action = "锁定成功" if "lock" in tool_name else "滴噔滴"
+                result = {"ok": True, "message": action}
         elif tool == "get_repair_module_outline":
             result = tools.get_repair_module_outline(
                 args.get("module") or args.get("name", ""),

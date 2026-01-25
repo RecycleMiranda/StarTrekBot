@@ -267,14 +267,14 @@ def get_destruct_status(session_id: str) -> dict:
     return dm.get_status(session_id)
 
 
-def initialize_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str) -> dict:
+def initialize_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str, language: str = "en") -> dict:
     """
     Step 1: Initialize the self-destruct sequence.
     Requires Level 9+. Creates a pending sequence awaiting authorization.
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
-    return dm.initialize(session_id, user_id, clearance, duration=seconds, silent=silent)
+    return dm.initialize(session_id, user_id, clearance, duration=seconds, silent=silent, language=language)
 
 
 def authorize_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:

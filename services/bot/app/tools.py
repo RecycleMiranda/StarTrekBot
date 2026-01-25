@@ -438,6 +438,23 @@ def list_repair_backups(module_name: str, clearance: int) -> dict:
     return repair_tools.list_backups(module_name)
 
 
+async def ask_about_code(question: str, user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Ask a question about the codebase. The agent will read relevant code and answer.
+    Requires Level 10+ for reading, Level 12+ for modifications.
+    """
+    from .repair_agent import get_repair_agent
+    agent = get_repair_agent()
+    return await agent.answer_code_question(session_id, user_id, question, clearance)
+
+
+def is_code_question(message: str) -> bool:
+    """Check if a message is asking about code."""
+    from .repair_agent import get_repair_agent
+    agent = get_repair_agent()
+    return agent.is_code_related_question(message)
+
+
 # --- ACCESS CONTROL TOOLS ---
 
 

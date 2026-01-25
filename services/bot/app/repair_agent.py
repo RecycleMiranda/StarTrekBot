@@ -6,11 +6,12 @@ Features:
 - Multi-turn conversation support
 - Automatic model selection based on complexity
 - Integration with repair_tools for file operations
+- Natural code Q&A without explicit "repair mode"
 """
 
 import logging
 import time
-import json
+import re
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class RepairComplexity(Enum):
-    SIMPLE = "simple"      # Syntax errors, typos
+    SIMPLE = "simple"      # Syntax errors, typos, questions
     MEDIUM = "medium"      # Logic bugs, small refactors
     COMPLEX = "complex"    # Architecture changes, multi-file
 
@@ -35,6 +36,7 @@ class RepairSession:
     created_at: float = field(default_factory=time.time)
     last_activity: float = field(default_factory=time.time)
     changes_made: List[Dict] = field(default_factory=list)
+    pending_code: Optional[str] = None  # Code waiting for confirmation
     
     SESSION_TIMEOUT = 600  # 10 minutes
     
@@ -64,6 +66,18 @@ class RepairAgent:
         RepairComplexity.MEDIUM: "gemini-2.0-flash",
         RepairComplexity.COMPLEX: "gemini-2.5-pro-preview-05-06",
     }
+    
+    # Keywords that indicate code-related questions
+    CODE_QUESTION_KEYWORDS = [
+        "怎么工作", "如何工作", "how does", "how it works",
+        "什么问题", "有什么bug", "有问题吗", "any bugs", "any issues",
+        "为什么", "why does", "why is",
+        "解释", "explain", "说明",
+        "代码", "code", "模块", "module",
+        "实现", "implementation", "逻辑", "logic",
+        "自毁", "self_destruct", "auth", "授权", "权限",
+        "改一下", "修改", "改成", "change", "modify", "fix",
+    ]
     
     def __init__(self):
         self.sessions: Dict[str, RepairSession] = {}
@@ -103,11 +117,13 @@ class RepairAgent:
             }
         return {"ok": False, "message": "No active repair session."}
     
+    def is_code_related_question(self, message: str) -> bool:
+        """Check if a message is asking about code."""
+        message_lower = message.lower()
+        return any(kw in message_lower for kw in self.CODE_QUESTION_KEYWORDS)
+    
     def estimate_complexity(self, user_message: str, code_context: Optional[str] = None) -> RepairComplexity:
-        """
-        Estimate the complexity of a repair request.
-        Simple heuristics, can be enhanced with LLM classification.
-        """
+        """Estimate the complexity of a request."""
         message_lower = user_message.lower()
         
         # Complex indicators
@@ -116,66 +132,62 @@ class RepairAgent:
             return RepairComplexity.COMPLEX
         
         # Medium indicators
-        medium_keywords = ["bug", "逻辑", "logic", "fix", "修复", "问题", "error", "exception"]
+        medium_keywords = ["bug", "逻辑", "logic", "fix", "修复", "问题", "error", "exception", "改", "change", "modify"]
         if any(kw in message_lower for kw in medium_keywords):
             return RepairComplexity.MEDIUM
         
-        # Default to simple for quick queries
         return RepairComplexity.SIMPLE
     
-    def get_model_for_session(self, session: RepairSession) -> str:
-        """Get the appropriate model based on session complexity."""
-        return self.MODEL_MAP.get(session.complexity, self.MODEL_MAP[RepairComplexity.SIMPLE])
+    def get_model_for_complexity(self, complexity: RepairComplexity) -> str:
+        """Get the appropriate model based on complexity."""
+        return self.MODEL_MAP.get(complexity, self.MODEL_MAP[RepairComplexity.SIMPLE])
     
-    async def process_message(self, session_id: str, user_id: str, message: str, clearance: int) -> dict:
+    async def answer_code_question(self, session_id: str, user_id: str, message: str, clearance: int) -> dict:
         """
-        Process a message in repair mode.
-        Returns the agent's response.
+        Answer a code-related question naturally, without formal "repair mode".
+        This is the main entry point for natural code Q&A.
         """
         from . import repair_tools
         
-        # Check clearance
-        if clearance < 12:
+        # Check clearance - code questions require at least Level 10, modifications require 12
+        is_modification_request = any(kw in message.lower() for kw in ["改", "修改", "change", "modify", "fix", "修复", "确认"])
+        
+        if is_modification_request and clearance < 12:
             return {
                 "ok": False,
-                "message": "ACCESS DENIED: Level 12 clearance required for repair mode.",
-                "exit_repair_mode": True
+                "message": "ACCESS DENIED: Level 12 clearance required for code modifications."
             }
         
-        # Get or create session
+        if clearance < 10:
+            return {
+                "ok": False,
+                "message": "ACCESS DENIED: Level 10+ clearance required for code analysis."
+            }
+        
+        # Get or create session (auto-start for code questions)
         session = self.get_session(session_id)
         if not session:
-            # Check if this is a session start command
-            if any(kw in message.lower() for kw in ["诊断", "修复", "repair", "diagnose", "检查"]):
-                # Extract module name if present
-                module = self._extract_module_name(message)
-                session = self.start_session(session_id, user_id, module)
-            else:
-                return {
-                    "ok": False,
-                    "message": "No active repair session. Say '诊断 <module_name>' to start.",
-                    "in_repair_mode": False
-                }
+            # Try to detect which module the question is about
+            module = self._extract_module_name(message)
+            session = self.start_session(session_id, user_id, module)
+        
+        # Check if this is a confirmation for pending changes
+        if session.pending_code and any(kw in message.lower() for kw in ["确认", "confirm", "yes", "好", "是", "应用"]):
+            return await self._apply_pending_changes(session)
         
         session.add_message("user", message)
         
-        # Update complexity estimate
-        session.complexity = self.estimate_complexity(message)
+        # Estimate complexity and select model
+        complexity = self.estimate_complexity(message)
+        model = self.get_model_for_complexity(complexity)
         
-        # Check for exit commands
-        if any(kw in message.lower() for kw in ["退出", "exit", "结束", "done", "完成"]):
-            result = self.end_session(session_id)
-            result["exit_repair_mode"] = True
-            return result
-        
-        # Build context for LLM
-        context = self._build_repair_context(session, message)
+        # Build context with relevant code
+        context = self._build_qa_context(session, message)
         
         # Call LLM
-        model = self.get_model_for_session(session)
         response = await self._call_repair_llm(context, model, session)
         
-        # Parse and execute any tool calls from the response
+        # Process response
         final_response = await self._process_llm_response(response, session)
         
         session.add_message("assistant", final_response.get("reply", ""))
@@ -184,10 +196,37 @@ class RepairAgent:
             "ok": True,
             "reply": final_response.get("reply", ""),
             "model_used": model,
-            "complexity": session.complexity.value,
-            "in_repair_mode": True,
+            "complexity": complexity.value,
+            "has_pending_changes": session.pending_code is not None,
             "changes_made": final_response.get("changes_made", [])
         }
+    
+    async def _apply_pending_changes(self, session: RepairSession) -> dict:
+        """Apply pending code changes after user confirmation."""
+        from . import repair_tools
+        
+        if not session.pending_code or not session.target_module:
+            return {"ok": False, "message": "No pending changes to apply."}
+        
+        write_result = repair_tools.write_module(session.target_module, session.pending_code)
+        session.pending_code = None
+        
+        if write_result.get("ok"):
+            session.changes_made.append({
+                "module": session.target_module,
+                "action": "write",
+                "success": True
+            })
+            return {
+                "ok": True,
+                "reply": f"✅ 更改已应用: {write_result.get('message')}\n热重载状态: {'成功' if write_result.get('reload_success') else '需要重启'}",
+                "changes_made": [{"module": session.target_module, "action": "write"}]
+            }
+        else:
+            return {
+                "ok": False,
+                "reply": f"❌ 应用失败: {write_result.get('message')}"
+            }
     
     def _extract_module_name(self, message: str) -> Optional[str]:
         """Extract module name from a message."""
@@ -198,49 +237,75 @@ class RepairAgent:
             base_name = module.replace(".py", "")
             if module in message or base_name in message:
                 return module
+        
+        # Infer from context keywords
+        keyword_to_module = {
+            "自毁": "self_destruct.py",
+            "destruct": "self_destruct.py",
+            "授权": "auth_system.py",
+            "auth": "auth_system.py",
+            "权限": "permissions.py",
+            "permission": "permissions.py",
+            "工具": "tools.py",
+            "tool": "tools.py",
+        }
+        
+        message_lower = message.lower()
+        for keyword, module in keyword_to_module.items():
+            if keyword in message_lower:
+                return module
+        
         return None
     
-    def _build_repair_context(self, session: RepairSession, current_message: str) -> str:
-        """Build the context string for the LLM."""
+    def _build_qa_context(self, session: RepairSession, current_message: str) -> str:
+        """Build context for natural code Q&A."""
         from . import repair_tools
         
         context_parts = [
-            "You are the LCARS Self-Repair Agent. You can diagnose and fix code in the StarTrekBot system.",
+            "You are the LCARS Ship Computer with code analysis capabilities.",
+            "You can read and explain code, diagnose issues, and suggest fixes.",
             "",
-            "AVAILABLE TOOLS:",
-            "- read_module(name): Read a module's source code",
-            "- write_module(name, content): Write new content to a module (creates backup)",
-            "- get_module_outline(name): Get structural overview of a module",
-            "- rollback_module(name): Restore from backup",
-            "- list_backups(name): List available backups",
+            "RESPONSE STYLE:",
+            "- Be concise and direct, like a ship's computer",
+            "- Use Chinese for responses (technical terms in English are OK)",
+            "- When suggesting code changes, show the COMPLETE modified code in a ```python block",
+            "- Ask for confirmation (回复 '确认' 来应用) before applying any changes",
             "",
             f"MODIFIABLE MODULES: {', '.join(repair_tools.MODIFIABLE_MODULES)}",
             "",
-            "RULES:",
-            "1. Always read a module before suggesting changes",
-            "2. Explain what you're going to change before doing it",
-            "3. When writing changes, provide the COMPLETE new file content",
-            "4. If unsure, ask clarifying questions",
-            "",
         ]
         
+        # Load relevant module code
+        modules_to_load = []
         if session.target_module:
-            context_parts.append(f"CURRENT TARGET: {session.target_module}")
-            
-            # Load current module content
-            read_result = repair_tools.read_module(session.target_module)
+            modules_to_load.append(session.target_module)
+        else:
+            # Try to infer from message
+            inferred = self._extract_module_name(current_message)
+            if inferred:
+                session.target_module = inferred
+                modules_to_load.append(inferred)
+        
+        for module in modules_to_load:
+            read_result = repair_tools.read_module(module)
             if read_result.get("ok"):
-                context_parts.append(f"\nCURRENT CODE ({session.target_module}):")
+                # Truncate to reasonable size
+                content = read_result["numbered_content"]
+                if len(content) > 15000:
+                    content = content[:15000] + "\n... (truncated)"
+                context_parts.append(f"\n=== {module} ===")
                 context_parts.append("```python")
-                context_parts.append(read_result["numbered_content"][:10000])  # Limit size
+                context_parts.append(content)
                 context_parts.append("```")
         
-        context_parts.append("\nCONVERSATION HISTORY:")
-        for msg in session.conversation_history[-10:]:  # Last 10 messages
-            role = "USER" if msg["role"] == "user" else "AGENT"
-            context_parts.append(f"{role}: {msg['content']}")
+        # Add conversation history
+        if session.conversation_history:
+            context_parts.append("\n=== CONVERSATION ===")
+            for msg in session.conversation_history[-6:]:
+                role = "USER" if msg["role"] == "user" else "COMPUTER"
+                context_parts.append(f"{role}: {msg['content'][:500]}")
         
-        context_parts.append(f"\nCURRENT REQUEST: {current_message}")
+        context_parts.append(f"\nUSER: {current_message}")
         
         return "\n".join(context_parts)
     
@@ -257,7 +322,7 @@ class RepairAgent:
                 model=model,
                 contents=context,
                 config=types.GenerateContentConfig(
-                    temperature=0.3,  # Lower temperature for code work
+                    temperature=0.3,
                     max_output_tokens=8000,
                 )
             )
@@ -275,47 +340,41 @@ class RepairAgent:
             }
     
     async def _process_llm_response(self, llm_response: dict, session: RepairSession) -> dict:
-        """Process the LLM response and execute any tool calls."""
+        """Process the LLM response and handle code blocks."""
         from . import repair_tools
         
         if not llm_response.get("ok"):
-            return {"reply": f"LLM ERROR: {llm_response.get('error', 'Unknown error')}"}
+            return {"reply": f"分析错误: {llm_response.get('error', 'Unknown error')}"}
         
         text = llm_response.get("text", "")
         changes_made = []
         
-        # Check if the response contains a code block to write
-        if "```python" in text and session.target_module:
-            # Extract the code block
-            import re
-            code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
-            if code_match:
-                new_code = code_match.group(1)
-                
-                # Check if this looks like a complete file (has imports or class/function definitions)
-                if "import" in new_code or "def " in new_code or "class " in new_code:
-                    # Ask for confirmation first (in the response)
-                    if "确认" not in text.lower() and "confirm" not in text.lower():
-                        # Add confirmation request to the response
-                        text += "\n\n请回复 '确认' 来应用这些更改。"
-                    elif session.conversation_history and "确认" in session.conversation_history[-1].get("content", "").lower():
-                        # User confirmed, apply changes
-                        write_result = repair_tools.write_module(session.target_module, new_code)
-                        if write_result.get("ok"):
-                            changes_made.append({
-                                "module": session.target_module,
-                                "action": "write",
-                                "success": True
-                            })
-                            session.changes_made.append(changes_made[-1])
-                            text += f"\n\n✅ 已应用更改: {write_result.get('message')}"
-                        else:
-                            text += f"\n\n❌ 应用失败: {write_result.get('message')}"
+        # Check if the response contains a code block
+        code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
+        if code_match and session.target_module:
+            new_code = code_match.group(1)
+            
+            # Check if this looks like a complete file
+            if ("import" in new_code or "def " in new_code or "class " in new_code) and len(new_code) > 100:
+                # Validate syntax
+                syntax_result = repair_tools.validate_syntax(new_code)
+                if syntax_result.get("valid"):
+                    # Store as pending, don't auto-apply
+                    session.pending_code = new_code
+                    if "确认" not in text and "confirm" not in text.lower():
+                        text += "\n\n⚠️ 请回复 '确认' 来应用这些更改，或继续讨论。"
+                else:
+                    text += f"\n\n⚠️ 语法检查失败: {syntax_result.get('message')}"
         
         return {
             "reply": text,
             "changes_made": changes_made
         }
+    
+    # Legacy methods for formal repair mode
+    async def process_message(self, session_id: str, user_id: str, message: str, clearance: int) -> dict:
+        """Process a message in formal repair mode (legacy compatibility)."""
+        return await self.answer_code_question(session_id, user_id, message, clearance)
 
 
 def get_repair_agent():

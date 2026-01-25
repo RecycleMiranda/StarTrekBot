@@ -79,7 +79,13 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         "undo_repair": "rollback_repair_module",
         "list_backups": "list_repair_backups",
         "show_backups": "list_repair_backups",
+        # Code Q&A aliases
+        "code_question": "ask_about_code",
+        "analyze_code": "ask_about_code",
+        "explain_code": "ask_about_code",
+        "check_code": "ask_about_code",
     }
+
 
 
     if tool in tool_aliases:
@@ -199,9 +205,18 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 args.get("module") or args.get("name", ""),
                 profile.get("clearance", 1)
             )
+            
+        elif tool == "ask_about_code":
+            result = _run_async(tools.ask_about_code(
+                args.get("question") or args.get("query", ""),
+                str(event.user_id),
+                profile.get("clearance", 1),
+                session_id
+            ))
 
             
         elif tool == "get_personnel_file":
+
 
 
             result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)

@@ -41,20 +41,20 @@ class DestructSequence:
             "dup_auth_init": "重复授权：发起者无法自我授权。",
             "dup_auth_id": "重复授权：该身份已记录。",
             "auth_complete": "授权完成：{count} 名军官已确认。等待激活指令。",
-            "vouch_accepted": "担保已接受：还需要 {needed} 个签名。",
+            "vouch_accepted": "授权已确认：还需要 {needed} 个签名。",
             "dup_cancel_auth": "重复授权：该取消请求的身份已记录。",
             "cancel_auth_complete": "取消授权完成：{count} 名军官已确认。等待确认。",
             "cancel_vouch_accepted": "取消担保已接受：还需要 {needed} 个签名以授权取消。",
             "alert_prefix": "⚠️ 自毁警报：",
-            "countdown": "自毁将在 {seconds} 秒后执行。",
-            "detonated": "💥 自毁程序已完成。舰船已被摧毁。",
-            "cancelled": "自毁倒计时已在这 {session_id} 会话中取消。"
+            "countdown": "自毁将在 {time_str} 后执行。",
+            "detonated": "启动自毁系统，解除反物质储罐约束力场，过载反应堆核心",
+            "cancelled": "确认：自毁程序已取消。"
         },
         "en": {
             "dup_auth_init": "DUPLICATE AUTHORIZATION: Initiator cannot self-authorize.",
             "dup_auth_id": "DUPLICATE AUTHORIZATION: Identity already recorded.",
             "auth_complete": "AUTHORIZATION COMPLETE: {count} officers confirmed. Awaiting activation command.",
-            "vouch_accepted": "VOUCH ACCEPTED: {needed} more signature(s) required.",
+            "vouch_accepted": "AUTHORIZATION ACCEPTED: {needed} more signature(s) required.",
             "dup_cancel_auth": "DUPLICATE AUTHORIZATION: Identity already recorded for cancellation.",
             "cancel_auth_complete": "CANCELLATION AUTHORIZED: {count} officers confirmed. Awaiting confirmation.",
             "cancel_vouch_accepted": "CANCEL VOUCH ACCEPTED: {needed} more signature(s) required to authorize cancellation.",
@@ -81,6 +81,20 @@ class DestructSequence:
         
         self.remaining = duration_seconds
         self.countdown_task: Optional[asyncio.Task] = None
+
+    def _format_time(self, seconds: int) -> str:
+        """Format seconds into a human-readable string (minutes and seconds)."""
+        minutes = seconds // 60
+        secs = seconds % 60
+        
+        if self.language and ("zh" in self.language.lower() or "cn" in self.language.lower()):
+            if minutes > 0:
+                return f"{minutes}分{secs}秒"
+            return f"{secs}秒"
+        else:
+            if minutes > 0:
+                return f"{minutes}m {secs}s"
+            return f"{secs}s"
 
     def _msg(self, key: str, **kwargs) -> str:
         """Helper to get translated message."""
@@ -152,7 +166,8 @@ class DestructSequence:
                     sleep_time = 1
                 
                 prefix = "" if self.silent_mode else self._msg("alert_prefix")
-                msg = f"{prefix}{self._msg('countdown', seconds=self.remaining)}"
+                time_str = self._format_time(self.remaining)
+                msg = f"{prefix}{self._msg('countdown', time_str=time_str)}"
                 
                 await notify_callback(self.session_id, msg)
                 
@@ -261,7 +276,7 @@ class DestructManager:
             "zh": {
                 "denied": f"拒绝访问：需要最低 {DestructSequence.MIN_CLEARANCE} 级权限。当前：{clearance}。",
                 "already_active": "程序已激活：当前状态为 {state}。",
-                "init_success": f"自毁程序已启动：{duration} 秒倒计时待命。等待 {DestructSequence.MIN_AUTHORIZERS} 名高级军官授权。"
+                "init_success": "确认：自毁系统已初始化。{duration_str} 倒计时待命。等待 {DestructSequence.MIN_AUTHORIZERS} 名高级军官授权。"
             }
         }
         msg = msgs.get(lang_code, msgs["en"])
@@ -276,10 +291,11 @@ class DestructManager:
         seq = DestructSequence(session_id, user_id, duration, silent, language=language)
         self.sequences[session_id] = seq
         
+        duration_str = seq._format_time(duration)
         return {
             "ok": True,
             "state": seq.state.value,
-            "message": msg["init_success"]
+            "message": msg["init_success"].format(duration_str=duration_str)
         }
     
     def authorize(self, session_id: str, user_id: str, clearance: int) -> dict:
@@ -329,14 +345,14 @@ class DestructManager:
             "en": {
                 "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required.",
                 "no_seq": "NO PENDING SEQUENCE: Initialize self-destruct first.",
-                "cannot_active": "CANNOT ACTIVATE: Sequence is in '{state}' state. Authorization required.",
-                "success": "⚠️ AUTO-DESTRUCT ACTIVATED: {seconds} seconds to detonation. This ship will self-destruct."
+                "cannot_active": "CANNOT ACTIVATE: Sequence not authorized. Current state: {state}.",
+                "success": "⚠️ AUTO-DESTRUCT ACTIVATED: Detonation in {seconds} seconds. Abandon ship."
             },
             "zh": {
                 "denied": f"拒绝访问：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
-                "no_seq": "无待处理程序：请先初始化自毁程序。",
-                "cannot_active": "无法激活：程序处于“{state}”状态。需要授权。",
-                "success": "⚠️ 自毁程序已激活：距离引爆还有 {seconds} 秒。本舰即将自毁。"
+                "no_seq": "无法完成：请先初始化自毁程序。",
+                "cannot_active": "无法激活：程序未授权。当前状态：{state}。",
+                "success": "⚠️ 启动自毁系统。解除反物质储罐约束力场。过载反应堆核心。警告：自毁系统已启动，{{time_str}} 后执行。"
             }
         }
         msg = msgs.get(lang, msgs["en"])
@@ -358,10 +374,11 @@ class DestructManager:
         seq.state = DestructState.ACTIVE
         seq.countdown_task = asyncio.create_task(seq.run_countdown(notify_callback))
         
+        time_str = seq._format_time(seq.duration_seconds)
         return {
             "ok": True,
             "state": seq.state.value,
-            "message": msg["success"].format(seconds=seq.duration_seconds)
+            "message": msg["success"].format(time_str=time_str)
         }
     
     def request_cancel(self, session_id: str, user_id: str, clearance: int) -> dict:

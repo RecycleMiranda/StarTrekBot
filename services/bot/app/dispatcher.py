@@ -209,6 +209,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         # --- Cancel Flow ---
         elif tool == "request_cancel_self_destruct":
             result = tools.request_cancel_self_destruct(
+                str(event.user_id), 
+                profile.get("clearance", 1),
                 session_id
             )
             

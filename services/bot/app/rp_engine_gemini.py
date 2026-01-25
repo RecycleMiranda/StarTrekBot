@@ -110,6 +110,7 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
 
         # Format the system prompt - ensure no rogue braces
         formatted_sys = _get_system_prompt()
+        logger.info(f"[NeuralEngine] Final System Prompt: \n{formatted_sys}")
         formatted_sys = formatted_sys.replace("{quota_balance}", str(balance))
         full_prompt = (
             f"System: {formatted_sys}\n\n"

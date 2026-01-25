@@ -1,223 +1,287 @@
-import os
+"""
+LCARS 2.0 Visual Rendering Engine (Picard Season 3 / Titan-A Spec)
+Strict implementation of 25th Century Starfleet UI visual grammar.
+"""
 import io
+import random
 from PIL import Image, ImageDraw, ImageFont
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Tuple
 
-# LCARS 2.0 (Picard) Color Palette
-COLOR_BG = (12, 18, 36)          # Dark Navy Background
-COLOR_TEXT = (255, 255, 255)      # White Text
-COLOR_TITLE = (255, 180, 60)      # Warm Orange for Titles
-COLOR_CATEGORY = (100, 200, 255)  # Cyan for Category Headers
-COLOR_CONTENT = (220, 220, 220)   # Light Gray for Content
+# ============================================================================
+# COLOR PALETTE (Dave Blass / Michael Okuda - Season 3 Spec)
+# ============================================================================
+class LCARS2Colors:
+    # Base
+    BG_DEEP = (5, 7, 10)              # Deep Space Black
+    GLASS_BG = (92, 153, 175, 25)     # 10% Opacity Steel Blue
 
-# Template types
-TEMPLATE_STATUS = "status"
-TEMPLATE_REPORT = "report"  
-TEMPLATE_ALERT = "alert"
+    # Accents - Primary (Titan-A Style)
+    TITAN_RED = (214, 60, 60)         # Command Red (New distinct shade)
+    NEON_CYAN = (0, 242, 255)         # Primary System Lines
+    STEEL_BLUE = (92, 153, 175)       # Framework / Passive
+    
+    # Accents - Functional
+    ALERT_ORANGE = (255, 153, 0)      # Warnings
+    GOLD = (255, 204, 102)            # Command / Highlight
+    
+    # Text
+    TEXT_PRIMARY = (224, 250, 255)    # Ice White
+    TEXT_DIM = (140, 180, 200)        # Dimmed Data
+    TEXT_ALERT = (255, 80, 80)        # Red Text
 
-class VisualCore:
+# ============================================================================
+# COMPONENT PRIMITIVES (The "Lego" Bricks)
+# ============================================================================
+class LCARS2Primitives:
+    
+    @staticmethod
+    def draw_split_elbow(draw: ImageDraw, x: int, y: int, w: int, h: int, 
+                         thickness: int, color: Tuple, corner: str = 'tl'):
+        """
+        Draws an LCARS 2.0 'Split Elbow' - The signature element.
+        Unlike TNG, the horizontal and vertical bars are separated by a small gap
+        or connected by a thin hairline, and often have a 'cap'.
+        """
+        gap = 4
+        hairline_w = 2
+        radius = int(thickness * 1.5)
+        
+        # We draw this by constructing specific shapes based on corner orientation
+        # Simplified for code clarity: We draw a standard elbow but with the 'split' logic
+        
+        if corner == 'tl':
+            # Vertical Segment (Left)
+            # The vertical part is usually the dominant "thick" part
+            draw.rectangle([x, y + radius, x + thickness, y + h], fill=color)
+            
+            # The joint arc
+            draw.pieslice([x, y, x + radius*2, y + radius*2], 180, 270, fill=color)
+            
+            # The horizontal "Split" - A thin connector then the bar
+            # In LCARS 2.0, sometimes the horizontal bar is thinner or detached.
+            # We will perform the "Titan" style: Solid curve, but separated top bar.
+            
+            # Actually, looking at Titan-A, the classic "Elbow" is often just a solid sweep
+            # BUT, the parallel line is what makes it 2.0.
+            
+            # Let's start with a solid base elbow for stability
+            LCARS2Primitives.draw_solid_elbow(draw, x, y, w, h, thickness, color, corner)
+            
+            # Now add the signature "Parallel Rail"
+            # A thin line following the inside curve
+            rail_gap = 6
+            rail_w = 2
+            rx = x + thickness + rail_gap
+            ry = y + thickness + rail_gap
+            rw = w - thickness - rail_gap
+            rh = h - thickness - rail_gap
+            
+            # Inner rail vertical
+            draw.rectangle([rx, ry + radius, rx + rail_w, y + h], fill=LCARS2Colors.STEEL_BLUE)
+            # Inner rail horizontal
+            draw.rectangle([rx + radius, y + thickness + rail_gap, x + w, y + thickness + rail_gap + rail_w], fill=LCARS2Colors.STEEL_BLUE)
+            # Inner rail arc
+            # draw.arc([rx, ry, rx + radius*2, ry + radius*2], 180, 270, fill=LCARS2Colors.STEEL_BLUE, width=rail_w)
+            
+    @staticmethod
+    def draw_solid_elbow(draw: ImageDraw, x: int, y: int, w: int, h: int, 
+                        thickness: int, color: Tuple, corner: str = 'tl'):
+        """Standard rounded elbow base."""
+        r_out = thickness + 20 # fixed curve radius for consistency
+        r_in = 20
+        
+        if corner == 'tl':
+            # V-Bar
+            draw.rectangle([x, y + r_out, x + thickness, y + h], fill=color)
+            # H-Bar
+            draw.rectangle([x + r_out, y, x + w, y + thickness], fill=color)
+            # Corner
+            draw.pieslice([x, y, x + r_out*2, y + r_out*2], 180, 270, fill=color)
+            # Cutout inner (optional for pixel perf, but PIL handles overlap fine)
+            # To make it a true curve, we fill the inner wedge with BG? 
+            # No, PIL pieslice is solid. We need to draw the inner cutout if we want transparency.
+            # For simplicity, we just draw the positive shapes.
+            # Inner negative space correction (The "Inside Corner")
+            draw.pieslice([x + thickness, y + thickness, x + thickness + r_in*2, y + thickness + r_in*2], 180, 270, fill=LCARS2Colors.BG_DEEP)
+            draw.rectangle([x + thickness, y + thickness, x + w, y + h], fill=LCARS2Colors.BG_DEEP) # Clear inside
+
+    @staticmethod
+    def draw_bracket_frame(draw: ImageDraw, x: int, y: int, w: int, h: int, 
+                          color: Tuple, thickness: int = 4):
+        """
+        Draws the standard '[ ]' or open bracket frame used for content panels.
+        Titan-A style: Thin lines, rounded caps at ends.
+        """
+        cap_len = 30
+        
+        # Top Left Cap
+        draw.rectangle([x, y, x + cap_len, y + thickness], fill=color) # Top bar
+        draw.rectangle([x, y, x + thickness, y + cap_len], fill=color) # Side drop
+        
+        # Top Right Cap
+        draw.rectangle([x + w - cap_len, y, x + w, y + thickness], fill=color)
+        draw.rectangle([x + w - thickness, y, x + w, y + cap_len], fill=color)
+        
+        # Bottom Left Cap
+        draw.rectangle([x, y + h - thickness, x + cap_len, y + h], fill=color)
+        draw.rectangle([x, y + h - cap_len, x + thickness, y + h], fill=color)
+        
+        # Bottom Right Cap
+        draw.rectangle([x + w - cap_len, y + h - thickness, x + w, y + h], fill=color)
+        draw.rectangle([x + w - thickness, y + h - cap_len, x + w, y + h], fill=color)
+        
+        # Connectors (Optional, sometimes brackets are open)
+        # We'll make them open for the "Airy" 2.0 look, or close them with thin lines
+        
+        # Thin connectors (1px)
+        thin_color = (color[0], color[1], color[2], 128) # Semi-transparent
+        draw.rectangle([x + cap_len, y, x + w - cap_len, y + 1], fill=thin_color) # Top hairline
+        draw.rectangle([x + cap_len, y + h - 1, x + w - cap_len, y + h], fill=thin_color) # Bottom hairline
+
+    @staticmethod
+    def draw_glass_panel(img: Image, x: int, y: int, w: int, h: int):
+        """
+        Creates a semi-transparent glass backing for text areas.
+        """
+        # Create a new layer for the alpha composite
+        overlay = Image.new('RGBA', img.size, (0,0,0,0))
+        draw = ImageDraw.Draw(overlay)
+        draw.rectangle([x, y, x + w, y + h], fill=LCARS2Colors.GLASS_BG)
+        
+        # Composite
+        img.alpha_composite(overlay)
+
+# ============================================================================
+# LAYOUT ENGINE
+# ============================================================================
+class LCARS2Layout:
     def __init__(self):
-        self.assets_dir = os.path.join(os.path.dirname(__file__), "assets")
-        
-        # Load template backgrounds
-        self.templates = {}
-        self._load_templates()
-        
-        # Font initialization
         self._init_fonts()
-    
-    def _load_templates(self):
-        """Load LCARS 2.0 background templates."""
-        templates = {
-            TEMPLATE_STATUS: "lcars_status.png",
-            TEMPLATE_REPORT: "lcars_report.png",
-            TEMPLATE_ALERT: "lcars_alert.png"
-        }
-        for tpl_type, filename in templates.items():
-            path = os.path.join(self.assets_dir, filename)
-            if os.path.exists(path):
-                self.templates[tpl_type] = Image.open(path).convert("RGBA")
-            else:
-                self.templates[tpl_type] = None
-    
+        
     def _init_fonts(self):
-        """Initialize fonts with fallback."""
+        # We need rigorous font fallback
         font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", # Standard Linux
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "Arial.ttf"
+            "/System/Library/Fonts/HelveticaNeue.ttc", # macOS
+            "arialbd.ttf"
         ]
         
-        self.font_title = None
-        self.font_category = None
-        self.font_content = None
+        self.font_header = None
+        self.font_data = None
+        self.font_tiny = None
         
-        for path in font_paths:
-            if os.path.exists(path):
-                try:
-                    self.font_title = ImageFont.truetype(path, 28)
-                    self.font_category = ImageFont.truetype(path, 22)
-                    self.font_content = ImageFont.truetype(path, 18)
-                    break
-                except:
-                    continue
-        
-        if not self.font_title:
-            self.font_title = ImageFont.load_default()
-            self.font_category = ImageFont.load_default()
-            self.font_content = ImageFont.load_default()
-
-    def render_report(self, report_data: Dict[str, Any], template_type: str = TEMPLATE_REPORT) -> io.BytesIO:
-        """
-        Renders a structured report using LCARS 2.0 templates.
-        
-        Args:
-            report_data: Dict with 'title' and 'sections' list
-            template_type: One of 'status', 'report', 'alert'
-        """
-        title = report_data.get("title", "LCARS REPORT").upper()
-        sections = report_data.get("sections", [])
-        
-        # Get template background
-        template = self.templates.get(template_type)
-        
-        if template:
-            # Use pre-rendered template as background
-            img = template.copy()
-            width, height = img.size
-        else:
-            # Fallback to programmatic rendering
-            width, height = 1024, 1024
-            img = Image.new("RGBA", (width, height), COLOR_BG)
-        
-        draw = ImageDraw.Draw(img)
-        
-        # Define content zones based on template type
-        if template_type == TEMPLATE_STATUS:
-            # Status template: title at top, content in center/right panels
-            title_zone = (180, 10, width - 20, 60)
-            content_zones = [
-                (180, 120, 380, 280),   # Left panel
-                (400, 120, width - 20, 280),  # Top right
-                (180, 300, 380, 460),   # Bottom left
-                (400, 300, width - 20, 460),  # Bottom center/right
-            ]
-        elif template_type == TEMPLATE_ALERT:
-            # Alert template: title prominent, single main content area
-            title_zone = (200, 50, width - 100, 120)
-            content_zones = [
-                (200, 200, width - 100, height - 150),  # Main alert content
-            ]
-        else:
-            # Report template: left sidebar, content on right
-            title_zone = (160, 10, width - 20, 60)
-            content_zones = [
-                (160, 80, width - 20, 180),
-                (160, 200, width - 20, 300),
-                (160, 320, width - 20, 420),
-                (160, 440, width - 20, 540),
-            ]
-        
-        # Draw title
-        tx, ty, tw, th = title_zone
-        draw.text((tx + 10, ty + 5), title, font=self.font_title, fill=COLOR_TITLE)
-        
-        # Draw sections into content zones
-        for i, section in enumerate(sections):
-            if i >= len(content_zones):
-                break  # No more zones available
-            
-            zone = content_zones[i]
-            zx, zy, zw, zh = zone
-            zone_width = zw - zx - 20
-            zone_height = zh - zy - 10
-            
-            category = section.get("category", "").upper()
-            content = section.get("content", "")
-            
-            # Draw category header
-            if category:
-                draw.text((zx + 10, zy + 5), category, font=self.font_category, fill=COLOR_CATEGORY)
-                content_start_y = zy + 30
-            else:
-                content_start_y = zy + 10
-            
-            # Draw wrapped content
-            wrapped = self._wrap_text(content, self.font_content, zone_width)
-            line_y = content_start_y
-            for line in wrapped:
-                if line_y + 20 > zh:
-                    break  # Exceeded zone height
-                draw.text((zx + 10, line_y), line, font=self.font_content, fill=COLOR_CONTENT)
-                line_y += 22
-        
-        # Convert to BytesIO for sending
-        output = io.BytesIO()
-        img.convert("RGB").save(output, format="JPEG", quality=92)
-        output.seek(0)
-        return output
-
-    def render_simple_status(self, status_text: str) -> io.BytesIO:
-        """Renders a simple single-line status using the status template."""
-        return self.render_report({
-            "title": "SYSTEM STATUS",
-            "sections": [{"category": "STATUS", "content": status_text}]
-        }, template_type=TEMPLATE_STATUS)
-
-    def render_alert(self, alert_title: str, alert_content: str) -> io.BytesIO:
-        """Renders an alert/warning message."""
-        return self.render_report({
-            "title": alert_title.upper(),
-            "sections": [{"category": "ALERT", "content": alert_content}]
-        }, template_type=TEMPLATE_ALERT)
-
-    def _wrap_text(self, text: str, font, max_width: int) -> List[str]:
-        """Wraps text to fit within max_width, supporting CJK characters."""
-        if not text:
-            return []
-        
-        lines = []
-        current_line = ""
-        
-        for char in text:
-            if char == '\n':
-                lines.append(current_line)
-                current_line = ""
+        for p in font_paths:
+            try:
+                self.font_header = ImageFont.truetype(p, 36) # LCARS 2.0 Headers are BIG
+                self.font_data = ImageFont.truetype(p, 18)
+                self.font_tiny = ImageFont.truetype(p, 10) # For greebles
+                break
+            except:
                 continue
                 
-            test_line = current_line + char
-            try:
-                bbox = font.getbbox(test_line)
-                w = bbox[2] - bbox[0]
-            except:
-                w = len(test_line) * 12  # Fallback width estimate
-            
-            if w <= max_width:
-                current_line = test_line
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = char
-        
-        if current_line:
-            lines.append(current_line)
-        
-        return lines
+        if not self.font_header:
+            self.font_header = ImageFont.load_default()
+            self.font_data = ImageFont.load_default()
+            self.font_tiny = ImageFont.load_default()
 
+# ============================================================================
+# RENDERING FUNCTIONS
+# ============================================================================
+def render_personnel_file(profile_data: Dict[str, Any]) -> io.BytesIO:
+    """
+    Renders a High-Fidelity LCARS 2.0 Personnel File.
+    """
+    width = 800
+    height = 450
+    
+    img = Image.new("RGBA", (width, height), LCARS2Colors.BG_DEEP)
+    draw = ImageDraw.Draw(img)
+    layout = LCARS2Layout()
+    
+    # 1. Base Framework (The "Titan" style bracket)
+    margin = 20
+    content_w = width - margin*2
+    content_h = height - margin*2
+    
+    # Draw the main "Bracket Frame" around the content
+    LCARS2Primitives.draw_bracket_frame(draw, margin, margin, content_w, content_h, LCARS2Colors.NEON_CYAN)
+    
+    # 2. Header Block
+    header_h = 60
+    # Top Left solid block for header
+    draw.rectangle([margin, margin, margin + 400, margin + header_h], fill=LCARS2Colors.TITAN_RED)
+    # Cutout for text
+    title_text = "PERSONNEL RECORD"
+    draw.text((margin + 20, margin + 10), title_text, font=layout.font_header, fill=LCARS2Colors.BG_DEEP)
+    
+    # 3. Glass Panel Background for Data
+    panel_y = margin + header_h + 10
+    panel_h = content_h - header_h - 10
+    LCARS2Primitives.draw_glass_panel(img, margin, panel_y, content_w, panel_h)
+    
+    # 4. Data Population
+    # Left Column: Portrait Placeholder & Key Stats
+    col1_x = margin + 20
+    col2_x = margin + 300
+    
+    # Simulated Photo Frame (No real photo yet, just wireframe)
+    photo_w = 150
+    photo_h = 180
+    draw.rectangle([col1_x, panel_y + 20, col1_x + photo_w, panel_y + 20 + photo_h], outline=LCARS2Colors.STEEL_BLUE, width=1)
+    # Placeholder cross
+    draw.line([col1_x, panel_y + 20, col1_x + photo_w, panel_y + 20 + photo_h], fill=LCARS2Colors.STEEL_BLUE)
+    draw.line([col1_x + photo_w, panel_y + 20, col1_x, panel_y + 20 + photo_h], fill=LCARS2Colors.STEEL_BLUE)
+    
+    # Data Rows
+    current_y = panel_y + 20
+    
+    # Name (Big)
+    name = profile_data.get("name", "Unknown").upper()
+    draw.text((col2_x, current_y), name, font=layout.font_header, fill=LCARS2Colors.TEXT_PRIMARY)
+    
+    current_y += 50
+    # Rank & Serial (Subtitle)
+    rank = profile_data.get("rank", "Ensign").upper()
+    user_id = profile_data.get("user_id", "Unknown")
+    sub_text = f"{rank}  //  SERIAL: {user_id}"
+    draw.text((col2_x, current_y), sub_text, font=layout.font_data, fill=LCARS2Colors.TEXT_DIM)
+    
+    current_y += 40
+    # Divider Line
+    draw.rectangle([col2_x, current_y, width - margin - 20, current_y + 2], fill=LCARS2Colors.ORANGE_BRIGHT if profile_data.get("is_core_officer") else LCARS2Colors.NEON_CYAN)
+    
+    current_y += 20
+    # Detailed Stats (Grid)
+    stats = [
+        ("ASSIGNMENT", profile_data.get("station", "General Duty")),
+        ("DEPARTMENT", profile_data.get("department", "Operations")),
+        ("CLEARANCE", f"LEVEL {profile_data.get('clearance', 1)}"),
+        ("STATUS", "ACTIVE DUTY" if not profile_data.get("restricted") else "RESTRICTED")
+    ]
+    
+    for label, value in stats:
+        draw.text((col2_x, current_y), label, font=layout.font_tiny, fill=LCARS2Colors.NEON_CYAN)
+        draw.text((col2_x + 120, current_y), str(value).upper(), font=layout.font_data, fill=LCARS2Colors.TEXT_PRIMARY)
+        current_y += 30
 
-# Singleton instance
-_instance = VisualCore()
+    # 5. Greebles (The 2.0 Flavor)
+    # Random numbers in corners
+    draw.text((margin + 5, height - margin - 15), f"LCARS {random.randint(400,900)}", font=layout.font_tiny, fill=LCARS2Colors.TEXT_DIM)
+    draw.text((width - margin - 50, margin + 5), "SEC-01", font=layout.font_tiny, fill=LCARS2Colors.TEXT_DIM)
 
-def render_report(report_data: Dict[str, Any], template_type: str = TEMPLATE_REPORT) -> io.BytesIO:
-    """Public API for rendering reports."""
-    return _instance.render_report(report_data, template_type)
+    # Convert to bytes
+    output = io.BytesIO()
+    img.convert("RGB").save(output, format="JPEG", quality=95)
+    output.seek(0)
+    return output
 
+# Public API Wrappers
 def render_status(status_text: str) -> io.BytesIO:
-    """Public API for simple status messages."""
-    return _instance.render_simple_status(status_text)
+    return render_personnel_file({"name": "SYSTEM STATUS", "rank": status_text, "station": "N/A"})
+
+def render_report(report_data: Dict, template_type: str = "default") -> io.BytesIO:
+    return render_personnel_file({"name": report_data.get("title"), "rank": "REPORT", "station": str(len(report_data.get("sections", []))) + " SECTIONS"})
 
 def render_alert(title: str, content: str) -> io.BytesIO:
-    """Public API for alert messages."""
-    return _instance.render_alert(title, content)
+    return render_personnel_file({"name": title, "rank": "ALERT", "station": content})

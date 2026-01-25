@@ -118,7 +118,7 @@ class TemplateRenderer:
 
         # 2. Data Section (Enforce strict two-column layout)
         label_x = 385 
-        value_x = 780
+        value_x = 680
         data_y = 670 
         line_h = 80 
         

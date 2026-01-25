@@ -56,11 +56,14 @@ class FontLoader:
         self.data = None
         self.tiny = None
         
-        font_path = None
-        for p in common_paths:
-            if os.path.exists(p):
-                font_path = p
-                break
+        # Robust path finding
+        base_dir = os.path.dirname(__file__)
+        asset_font = os.path.join(base_dir, "assets", "font.ttf")
+        
+        # Priority list for fonts (including common Linux CJK paths)
+        common_paths = [
+            asset_font, # First priority: User provided
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
                 
         if font_path:
             try:

@@ -509,11 +509,11 @@ def get_personnel_file(target_mention: str, user_id: str) -> dict:
         img_io = visual_core.render_personnel_file(data)
         return {
             "ok": True,
-            "message": f"Displaying personnel file for {target_id}.",
+            "message": f"正在显示人员档案: {target_id}",
             "image_io": img_io
         }
     except Exception as e:
         return {
             "ok": False,
-            "message": f"Visual rendering failed: {e}"
+            "message": f"视觉渲染失败: {e}"
         }

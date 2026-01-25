@@ -38,19 +38,6 @@ class TStyle:
 
 class FontLoader:
     def __init__(self):
-        # Priority list for fonts (including common Linux CJK paths)
-        common_paths = [
-            "services/bot/app/assets/font.ttf", # User provided
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
-            "/usr/share/fonts/truetype/arphic/uming.ttc",
-            "/System/Library/Fonts/PingFang.ttc", # Local dev
-            "/System/Library/Fonts/HelveticaNeue.ttc"
-        ]
-        
         self.header = None
         self.label = None
         self.data = None
@@ -60,21 +47,34 @@ class FontLoader:
         base_dir = os.path.dirname(__file__)
         asset_font = os.path.join(base_dir, "assets", "font.ttf")
         
-        # Priority list for fonts (including common Linux CJK paths)
+        # Priority list for fonts
         common_paths = [
-            asset_font, # First priority: User provided
+            asset_font,
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/arphic/uming.ttc",
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/HelveticaNeue.ttc"
+        ]
+        
+        font_path = None
+        for p in common_paths:
+            if os.path.exists(p):
+                font_path = p
+                break
                 
         if font_path:
             try:
-                self.header = ImageFont.truetype(font_path, 40) # ANTONIO style large
-                self.label = ImageFont.truetype(font_path, 22)  # Section headers
-                self.data = ImageFont.truetype(font_path, 26)   # Main data
-                self.tiny = ImageFont.truetype(font_path, 14)   # Greebles
+                self.header = ImageFont.truetype(font_path, 40)
+                self.label = ImageFont.truetype(font_path, 22)
+                self.data = ImageFont.truetype(font_path, 26)
+                self.tiny = ImageFont.truetype(font_path, 14)
             except: pass
             
         if not self.header:
-            # Fallback
             self.header = ImageFont.load_default()
             self.label = ImageFont.load_default()
             self.data = ImageFont.load_default()

@@ -32,9 +32,23 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
     """Executes a ship tool with user context."""
     from . import tools
     result = None
+    
+    # Tool name aliasing - map AI shortcuts to actual function names
+    tool_aliases = {
+        "self_destruct": "initiate_self_destruct",
+        "destruct": "initiate_self_destruct",
+        "abort_destruct": "abort_self_destruct",
+        "cancel_destruct": "abort_self_destruct",
+    }
+    if tool in tool_aliases:
+        original_tool = tool
+        tool = tool_aliases[tool]
+        logger.info(f"[Dispatcher] Aliased tool '{original_tool}' -> '{tool}'")
+    
     try:
         if tool == "status":
             result = tools.get_status()
+
         elif tool == "time":
             result = tools.get_time()
         elif tool == "calc":

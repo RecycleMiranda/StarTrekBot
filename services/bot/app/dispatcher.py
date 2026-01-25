@@ -523,7 +523,7 @@ def handle_event(event: InternalEvent):
                     tool_result = _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
                     
                     if tool_result.get("ok"):
-                        reply_text = tool_result.get("message") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                        reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
                         # Check for image content from tool (e.g. Personnel File)
                         if "image_io" in tool_result:
                             img_io = tool_result["image_io"]

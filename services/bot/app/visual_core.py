@@ -101,10 +101,12 @@ class TemplateRenderer:
             y += font.size + spacing
             
     def render_personnel(self, data: Dict[str, Any], is_chinese: bool = False):
+        # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
+        
         # 1. Avatar Section (Bracket Alignment)
-        # MICRO-ADJUSTMENT: X=385 (CLEAR SPINE), SIZE=320
+        # NUDGING RIGHT TO CENTER IN BRACKETS (BOX)
         avatar_size = 320 
-        avatar_x, avatar_y = 385, 210  
+        avatar_x, avatar_y = 560, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -116,7 +118,7 @@ class TemplateRenderer:
             # Center "NO SIGNAL" in the box
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # 2. Data Section (Enforce strict two-column layout)
+        # 2. Data Section (Labels PINNED at 385, Values at 680)
         label_x = 385 
         value_x = 680
         data_y = 670 

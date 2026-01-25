@@ -400,6 +400,7 @@ def _parse_response(text: str) -> Dict:
             args = data.get("args") or {}
             # Validation
             # Validation
+            allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
                        "get_ship_schematic", "get_historical_archive", "query_technical_database",
                        "initiate_self_destruct", "authorize_sequence", "abort_self_destruct",
                        "lockdown_authority", "restrict_user", "lift_user_restriction", "update_user_profile",

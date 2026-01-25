@@ -107,24 +107,32 @@ class ProtocolManager:
         try:
             # In Docker, we map the repo root directly to /app
             repo_dir = "/app" if os.path.exists("/app/.git") else os.path.dirname(os.path.dirname(BASE_DIR))
+            logger.info(f"Initiating Git sync in: {repo_dir}")
             
             # 1. Add altered files (relative to repo root)
-            # Find relative paths for git add
             rel_json = os.path.relpath(PROTOCOLS_JSON, repo_dir)
             rel_md = os.path.relpath(STANDARDS_MD, repo_dir)
             
-            subprocess.run(["git", "add", rel_json, rel_md], cwd=repo_dir, check=False)
-            
-            # 2. Commit (Don't check for exit code in case nothing changed)
-            subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, check=False)
-            
-            # 3. Push to remote (Broadcast to subspace)
-            subprocess.run(["git", "push"], cwd=repo_dir, check=False)
-            
-            # 4. Log
-            logger.info(f"Autonomous Git push completed: {message}")
+            cp_add = subprocess.run(["git", "add", rel_json, rel_md], cwd=repo_dir, capture_output=True, text=True)
+            if cp_add.returncode != 0:
+                logger.warning(f"Git add failed: {cp_add.stderr}")
+
+            # 2. Commit
+            cp_commit = subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, capture_output=True, text=True)
+            if cp_commit.returncode == 0:
+                logger.info(f"Git commit success: {cp_commit.stdout.strip()}")
+            else:
+                logger.info(f"Git commit skipped/failed (possibly no changes): {cp_commit.stdout.strip()}")
+
+            # 3. Push to remote (Subspace broadcast)
+            cp_push = subprocess.run(["git", "push"], cwd=repo_dir, capture_output=True, text=True)
+            if cp_push.returncode == 0:
+                logger.info(f"Git push success: {cp_push.stdout.strip()}")
+            else:
+                logger.error(f"Git push failed: {cp_push.stderr.strip()}")
+
         except Exception as e:
-            logger.warning(f"Git sync failed (Ignored): {e}")
+            logger.error(f"Critical error during Git sync: {e}", exc_info=True)
 
     def _sync_to_markdown(self):
         """Generates a fresh FEDERATION_STANDARDS.md from current protocols."""

@@ -8,6 +8,7 @@ services:
       - NAPCAT_HOST=napcat
       - PROTOCOLS_PATH=/app/services/bot/app/config/federation_protocols.json
       - STANDARDS_MD_PATH=/app/services/bot/app/FEDERATION_STANDARDS.md
+      - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no
     volumes:
       - ..:/app
       - ~/.ssh:/root/.ssh:ro

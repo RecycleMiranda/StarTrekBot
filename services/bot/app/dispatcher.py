@@ -183,7 +183,39 @@ def handle_event(event: InternalEvent):
         logger.info(f"[Dispatcher] Route result: {route_result}")
         
         # Check if we should respond (computer mode or high confidence)
-        if route_result.get("route") == "computer" or route_result.get("confidence", 0) >= 0.7:
+        confidence = route_result.get("confidence", 0)
+        route = route_result.get("route", "chat")
+        
+        # Dual-Stage Triage
+        # Stage 1: Fast Rule High-Confidence (e.g. Wake Word / Manual Enter)
+        if route == "computer" and confidence >= 0.8:
+            should_respond = True
+        # Stage 2: Ambiguous Latch/Follow-up (0.5 < conf < 0.8) -> LLM Judge
+        elif 0.5 < confidence < 0.8:
+            logger.info(f"[Dispatcher] Borderline confidence ({confidence}), calling secondary judge...")
+            try:
+                from . import judge_gemini
+                judge_result = _executor.submit(
+                    _run_async, 
+                    judge_gemini.judge_intent(
+                        trigger={"text": event.text, "user_id": event.user_id},
+                        context=router.get_session_context(session_id)
+                    )
+                ).result(timeout=5)
+                
+                if judge_result.get("route") == "computer" and judge_result.get("confidence", 0) >= 0.7:
+                    logger.info(f"[Dispatcher] Judge confirmed intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
+                    should_respond = True
+                else:
+                    logger.info(f"[Dispatcher] Judge rejected intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
+                    should_respond = False
+            except Exception as e:
+                logger.warning(f"[Dispatcher] Judge failed: {e}. Falling back to chat.")
+                should_respond = False
+        else:
+            should_respond = False
+
+        if should_respond:
             # Handle "Wake-only" bleep
             if route_result.get("is_wake_only"):
                 logger.info("[Dispatcher] Wake-only detected, sending bleep.")

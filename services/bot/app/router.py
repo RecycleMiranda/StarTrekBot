@@ -9,7 +9,7 @@ _session_states: Dict[str, dict] = {}
 # Consts
 MODE_COMPUTER = "computer"
 MODE_CHAT = "chat"
-DEFAULT_TTL = 60 # Extended to 60s for easier follow-ups
+DEFAULT_TTL = 30 # Reduced to 30s for group chat safety
 MAX_HISTORY = 6  # Last 6 turns for context
 
 # Keywords and Regex
@@ -90,11 +90,19 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
     # 2. Wake Word
     match = RE_WAKE_WORD.match(text_clean)
     if match:
+        # If it's a fresh wake word and the session was partially stale (e.g. > 10s of silence)
+        # or if it was already expired, clear history to prevent "topic fixation"
+        silence_duration = now - state.get("last_activity", 0)
+        if is_expired or silence_duration > 15:
+            state["last_texts"] = [] # Clear history for fresh wake
+            logger.info(f"[Router] Fresh wake word detected after {silence_duration}s. Clearing context history.")
+            
         state["mode"] = MODE_COMPUTER
         state["expires_at"] = now + DEFAULT_TTL
+        state["last_activity"] = now
         _session_states[session_id] = state
         
-        # Check if it's ONLY the wake word (captured group 2 is empty or just whitespace/punct)
+        # Check if it's ONLY the wake word
         is_wake_only = not text_clean[match.end():].strip()
         result = _build_result(state, MODE_COMPUTER, 0.95, "wake_word")
         if is_wake_only:
@@ -120,7 +128,7 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
     if state["mode"] == MODE_COMPUTER and not is_expired:
         state["expires_at"] = now + DEFAULT_TTL # Refresh TTL
         _session_states[session_id] = state
-        return _build_result(state, MODE_COMPUTER, 0.7, "mode_latch")
+        return _build_result(state, MODE_COMPUTER, 0.6, "mode_latch")
 
     # 6. Default: Chat
     return _build_result(state, MODE_CHAT, 0.5, "default")

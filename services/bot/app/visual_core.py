@@ -58,13 +58,20 @@ class TemplateRenderer:
         # Increase resolution to 3000x1800 for high-fidelity output
         self.canvas_w = 3000
         self.canvas_h = 1800
-        self.img = self.template.resize((self.canvas_w, self.canvas_h), Image.Resampling.LANCZOS)
+        
+        # 1. Create a black base to prevent transparency issues (white background)
+        self.img = Image.new("RGBA", (self.canvas_w, self.canvas_h), (0, 0, 0, 255))
+        
+        # 2. Resize and paste template on top
+        resized_template = self.template.resize((self.canvas_w, self.canvas_h), Image.Resampling.LANCZOS)
+        self.img.alpha_composite(resized_template)
+        
         self.draw = ImageDraw.Draw(self.img)
         self.fonts = FontLoader()
 
     def draw_text_wrapped(self, text, x, y, max_line_width, font, fill, spacing=15):
         lines = []
-        words = list(text) # For CJK, word-by-char is safer
+        words = list(str(text)) 
         current_line = ""
         for word in words:
             test_line = current_line + word
@@ -78,16 +85,15 @@ class TemplateRenderer:
         
         for line in lines:
             self.draw.text((x, y), line, font=font, fill=fill)
-            # Use font size for line height approximation if getbbox is tricky
             y += font.size + spacing
 
     def render_personnel(self, data: Dict[str, Any]):
-        # Recalibrate coordinates for 3000x1800 based on visual feedback
-        # 1. REMOVED VERSION WATERMARK per user request
+        # --- RECALIBRATED COORDINATES FOR 3000x1800 CANVAS ---
         
-        # --- 1. Avatar Section (Inside the blue brackets) ---
-        avatar_x, avatar_y = 590, 750 
+        # 1. Avatar Section (Inside the top-left blue brackets)
+        # Brackets center is approx x=1000, y=550
         avatar_size = 580 
+        avatar_x, avatar_y = 710, 310 
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -98,10 +104,10 @@ class TemplateRenderer:
             self.draw.rectangle([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill=(15, 20, 35))
             self.draw.text((avatar_x + 135, avatar_y + 240), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # --- 2. Data Section (Below Avatar, avoid left vertical bar) ---
-        data_x = 940 
-        data_y = 1350 
-        line_h = 82 
+        # 2. Data Section (Shifted down and right to clear the side ornaments)
+        data_x = 750 
+        data_y = 1000 # Below the avatar box
+        line_h = 95 
         
         fields = [
             ("NAME / 姓名", data.get("name", "Unknown")),
@@ -114,19 +120,19 @@ class TemplateRenderer:
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
             self.draw.text((data_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
-            self.draw.text((data_x + 360, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
+            self.draw.text((data_x + 380, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
 
-        # --- 3. Bio Section (Far right, under BIO header) ---
-        # Template BIO header is approx x=2500 in 3000px scale
-        bio_x = 2520 
-        bio_y = 580  
+        # 3. Bio Section (Top Right, aligned with BIO header)
+        # Wrapped next to the large Starfleet logo
+        bio_x = 1750 
+        bio_y = 480  
         bio_content = data.get("biography", "")
         if not bio_content:
             bio_content = "FEDERATION PERSONNEL ARCHIVE STATUS: ACTIVE. NO ADDITIONAL BIOGRAPHICAL DATA UPLOADED."
             
-        self.draw_text_wrapped(bio_content, bio_x, bio_y, 420, self.fonts.bio, TStyle.TEXT_WHITE)
+        self.draw_text_wrapped(bio_content, bio_x, bio_y, 1100, self.fonts.bio, TStyle.TEXT_WHITE)
 
-        # --- 4. Record ID (Bottom Right Greeble) ---
+        # 4. Record ID (Bottom Greeble)
         self.draw.text((1650, 1530), f"RECORD ID: {data.get('user_id', '0000')}-GAMMA", font=self.fonts.tiny, fill=TStyle.TEXT_DIM)
 
     def save_to_bytes(self) -> io.BytesIO:

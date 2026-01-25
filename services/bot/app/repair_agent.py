@@ -314,9 +314,11 @@ class RepairAgent:
         try:
             from google import genai
             from google.genai import types
-            import os
+            from .config_manager import ConfigManager
+            config = ConfigManager.get_instance()
+            api_key = config.get("gemini_api_key", "")
             
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            client = genai.Client(api_key=api_key)
             
             response = client.models.generate_content(
                 model=model,

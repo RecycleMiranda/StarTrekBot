@@ -210,8 +210,9 @@ def handle_event(event: InternalEvent):
             
             logger.info(f"[Dispatcher] AI result: {result}")
             
-            if result and result.get("ok") and result.get("reply"):
-                reply_raw = result["reply"]
+            # Check if we have a valid result (tool_call has empty reply, which is ok)
+            if result and result.get("ok") and (result.get("reply") or result.get("intent") == "tool_call"):
+                reply_raw = result.get("reply", "")
                 intent = result.get("intent")
                 
                 image_b64 = None

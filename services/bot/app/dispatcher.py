@@ -390,6 +390,109 @@ def is_group_enabled(group_id: str | None) -> bool:
         
     return str(group_id) in whitelist
 
+async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None):
+    """
+    Helper to execute AI generation and processing logic.
+    Supports forcing a specific tool for diagnostic mode.
+    """
+    profile_str = permissions.format_profile_for_ai(user_profile)
+    
+    if force_tool:
+        # Synthetic result for forced tool execution
+        result = {
+            "ok": True,
+            "intent": "tool_call",
+            "tool": force_tool,
+            "args": force_args or {},
+            "is_chinese": True, # Assume Chinese for diagnostic mode
+            "original_query": event.text,
+            "needs_escalation": False
+        }
+    else:
+        # Normal AI generation
+        future = _executor.submit(
+            _run_async,
+            rp_engine_gemini.generate_computer_reply(
+                event.text, 
+                router.get_session_context(session_id),
+                {
+                    "user_profile": profile_str
+                }
+            )
+        )
+        result = future.result(timeout=15)
+    
+    logger.info(f"[Dispatcher] AI result: {result}")
+    
+    # Check if we have a valid result (tool_call has empty reply, which is ok)
+    if result and result.get("ok") and (result.get("reply") or result.get("intent") == "tool_call"):
+        reply_raw = result.get("reply", "")
+        intent = result.get("intent")
+        
+        image_b64 = None
+        if intent == "report" and isinstance(reply_raw, dict):
+            # Render image
+            img_io = visual_core.render_report(reply_raw)
+            image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+            reply_text = f"Generating visual report... (Intent: {intent})"
+        elif intent == "tool_call":
+            tool = result.get("tool")
+            args = result.get("args") or {}
+            is_chinese = result.get("is_chinese", False)
+            logger.info(f"[Dispatcher] Executing tool: {tool}({args}) [Lang: {'ZH' if is_chinese else 'EN'}]")
+            tool_result = _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
+            
+            if tool_result.get("ok"):
+                reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                # Check for image content from tool (e.g. Personnel File)
+                if "image_io" in tool_result:
+                    img_io = tool_result["image_io"]
+                    image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+            else:
+                reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
+            
+            intent = f"tool_res:{tool}"
+        else:
+            # Format report if it's a dict for text fallback
+            reply_text = report_builder.format_report_to_text(reply_raw)
+        
+        logger.info(f"[Dispatcher] Sending reply (intent={intent}): {reply_text[:100]}...")
+        
+        # Enqueue the response
+        sq = send_queue.SendQueue.get_instance()
+        session_key = f"qq:{event.group_id or event.user_id}"
+        
+        await sq.enqueue_send(session_key, reply_text, {
+            "group_id": event.group_id,
+            "user_id": event.user_id,
+            "reply_to": event.message_id,
+            "image_b64": image_b64
+        })
+        
+        # Add AI reply to history for context in next turn
+        if not result.get("needs_escalation"):
+            router.add_session_history(session_id, "assistant", reply_text, "Computer")
+        
+        # Check if escalation is needed
+        if result.get("needs_escalation"):
+            logger.info("[Dispatcher] Escalation needed, spawning background task...")
+            _executor.submit(
+                _handle_escalation,
+                result.get("original_query", event.text),
+                result.get("is_chinese", False),
+                event.group_id,
+                event.user_id,
+                session_key,
+                event.message_id,
+                result.get("escalated_model")
+            )
+        
+        return True
+    else:
+        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
+        return False
+
+
 def handle_event(event: InternalEvent):
     """
     Dispatcher for internal events with group filtering.

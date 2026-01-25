@@ -104,9 +104,9 @@ class TemplateRenderer:
         # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
         
         # 1. Avatar Section (Bracket Alignment)
-        # Centering inside the template brackets based on visual feedback
+        # FORCED LEFTWARD SHIFT PER USER REQUEST
         avatar_size = 320 
-        avatar_x, avatar_y = 515, 240  
+        avatar_x, avatar_y = 320, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -119,8 +119,8 @@ class TemplateRenderer:
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
         # 2. Data Section (Aligned with Avatar Left Edge)
-        label_x = 515 
-        value_x = 940
+        label_x = 320 
+        value_x = 780
         data_y = 670 
         line_h = 80 
         

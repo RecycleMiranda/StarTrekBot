@@ -101,8 +101,7 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
 
         # Format the system prompt - ensure no rogue braces
         formatted_sys = _get_system_prompt()
-        if "{quota_balance}" in formatted_sys:
-            formatted_sys = formatted_sys.format(quota_balance=balance)
+        formatted_sys = formatted_sys.replace("{quota_balance}", str(balance))
         full_prompt = (
             f"System: {formatted_sys}\n\n"
             f"Context:\n{history_str}\n\n"
@@ -145,8 +144,11 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         qm = quota_manager.get_quota_manager()
         balance = qm.get_balance(user_id, "Ensign")
 
+        raw_prompt = _get_escalation_prompt()
+        formatted_prompt = raw_prompt.replace("{user_profile}", user_profile_str).replace("{quota_balance}", str(balance))
+        
         prompt = (
-            f"System: {_get_escalation_prompt().format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
+            f"System: {formatted_prompt}\n\n"
             f"Query: {trigger_text}"
         )
 

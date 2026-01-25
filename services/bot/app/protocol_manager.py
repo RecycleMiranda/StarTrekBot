@@ -37,9 +37,18 @@ class ProtocolManager:
         return self._protocols.get("system_prompts", {}).get(category, {}).get(key, default)
 
     def get_immutable(self) -> str:
-        """Returns all immutable directives as a single block."""
+        """Returns all immutable directives as a single flattened block."""
         directives = self._protocols.get("immutable_directives", {})
-        return "\n".join(directives.values()) if isinstance(directives, dict) else ""
+        if not isinstance(directives, dict):
+            return ""
+        
+        flat_lines = []
+        for val in directives.values():
+            if isinstance(val, dict):
+                flat_lines.extend([str(v) for v in val.values()])
+            else:
+                flat_lines.append(str(val))
+        return "\n".join(flat_lines)
 
     def get_lexicon(self, category: str, default: str = "") -> str:
         return self._protocols.get("lexicon", {}).get(category, default)

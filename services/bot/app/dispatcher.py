@@ -60,6 +60,9 @@ def _run_async(coro):
             loop.close()
 
 
+# Global session mode tracking
+SESSION_MODES = {}
+
 def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
     """Executes a ship tool with user context."""
     from . import tools
@@ -103,6 +106,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         "self_repair": "enter_repair_mode",
         "exit_repair": "exit_repair_mode",
         "end_repair": "exit_repair_mode",
+        "exit_diagnostic": "exit_repair_mode",
         "read_module": "read_repair_module",
         "view_code": "read_repair_module",
         "module_outline": "get_repair_module_outline",
@@ -154,7 +158,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         # --- Self-Destruct 3-Step Flow ---
         elif tool == "initialize_self_destruct":
             result = tools.initialize_self_destruct(
-                args.get("seconds", 60), 
+                args.get("duration", 30), 
                 args.get("silent", False), 
                 str(event.user_id), 
                 profile.get("clearance", 1), 
@@ -169,18 +173,15 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             )
             
         elif tool == "activate_self_destruct":
-            result = _run_async(tools.activate_self_destruct(
+            result = tools.activate_self_destruct(
                 str(event.user_id), 
                 profile.get("clearance", 1), 
-                session_id,
-                _destruct_notify
-            ))
+                session_id
+            )
             
         # --- Cancel Flow ---
         elif tool == "request_cancel_self_destruct":
             result = tools.request_cancel_self_destruct(
-                str(event.user_id), 
-                profile.get("clearance", 1), 
                 session_id
             )
             
@@ -209,9 +210,16 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 session_id,
                 args.get("module") or args.get("target_module")
             )
+            if result.get("ok"):
+                SESSION_MODES[session_id] = "diagnostic"
+                logger.info(f"[Dispatcher] Session {session_id} entered persistent diagnostic mode")
             
         elif tool == "exit_repair_mode":
             result = tools.exit_repair_mode(session_id)
+            if result.get("ok") or result.get("exit_repair_mode"):
+                SESSION_MODES.pop(session_id, None)
+                logger.info(f"[Dispatcher] Session {session_id} exited diagnostic mode")
+
             
         elif tool == "read_repair_module":
             result = tools.read_repair_module(
@@ -400,6 +408,28 @@ def handle_event(event: InternalEvent):
     # Build session ID
     session_id = f"{event.platform}:{event.group_id or event.user_id}"
     
+    # --- DIAGNOSTIC MODE INTERCEPT ---
+    if SESSION_MODES.get(session_id) == "diagnostic":
+        logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
+        
+        # Check for exit command
+        if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
+            # Route to exit_repair_mode
+            route_result = {"route": "computer", "confidence": 1.0}
+            from . import permissions
+            user_profile = permissions.get_user_profile(str(event.user_id), event.nickname, event.title)
+            # Create synthetic result for execution
+            _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode"))
+            return True
+        else:
+            # Force route to ask_about_code
+            from . import permissions
+            user_profile = permissions.get_user_profile(str(event.user_id), event.nickname, event.title)
+            # Use _execute_ai_logic but force the tool call
+            # Or better, construct a synthetic AI result to feed into the pipeline
+            _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text}))
+            return True
+    
     # --- ACCESS CONTROL GATING (Legacy & Security) ---
     from .permissions import is_user_restricted, is_command_locked, get_user_profile
     
@@ -489,95 +519,10 @@ def handle_event(event: InternalEvent):
             user_profile = permissions.get_user_profile(event.user_id, nickname, title)
             profile_str = permissions.format_profile_for_ai(user_profile)
 
-            # Generate AI reply in a separate thread (it's now a sync call inside)
-            future = _executor.submit(
-                rp_engine_gemini.generate_computer_reply,
-                trigger_text=event.text,
-                context=router.get_session_context(session_id),
-                meta={
-                    "session_id": session_id, 
-                    "user_id": event.user_id,
-                    "user_profile": profile_str
-                }
-            )
-            result = future.result(timeout=15)  # 15 second timeout
+            # Generate AI reply using helper
+            _run_async(_execute_ai_logic(event, user_profile, session_id))
+            return True
             
-            logger.info(f"[Dispatcher] AI result: {result}")
-            
-            # Check if we have a valid result (tool_call has empty reply, which is ok)
-            if result and result.get("ok") and (result.get("reply") or result.get("intent") == "tool_call"):
-                reply_raw = result.get("reply", "")
-                intent = result.get("intent")
-                
-                image_b64 = None
-                if intent == "report" and isinstance(reply_raw, dict):
-                    # Render image
-                    img_io = visual_core.render_report(reply_raw)
-                    image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
-                    reply_text = f"Generating visual report... (Intent: {intent})"
-                elif intent == "tool_call":
-                    tool = result.get("tool")
-                    args = result.get("args") or {}
-                    is_chinese = result.get("is_chinese", False)
-                    logger.info(f"[Dispatcher] Executing tool: {tool}({args}) [Lang: {'ZH' if is_chinese else 'EN'}]")
-                    tool_result = _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
-                    
-                    if tool_result.get("ok"):
-                        reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
-                        # Check for image content from tool (e.g. Personnel File)
-                        if "image_io" in tool_result:
-                            img_io = tool_result["image_io"]
-                            image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
-                    else:
-                        reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
-                    
-                    intent = f"tool_res:{tool}"
-                else:
-                    # Format report if it's a dict for text fallback
-                    reply_text = report_builder.format_report_to_text(reply_raw)
-                
-                logger.info(f"[Dispatcher] Sending reply (intent={intent}): {reply_text[:100]}...")
-                
-                # Enqueue the response
-                sq = send_queue.SendQueue.get_instance()
-                session_key = f"qq:{event.group_id or event.user_id}"
-                
-                # Run async enqueue_send in thread
-                enqueue_future = _executor.submit(
-                    _run_async,
-                    sq.enqueue_send(session_key, reply_text, {
-                        "group_id": event.group_id,
-                        "user_id": event.user_id,
-                        "reply_to": event.message_id,
-                        "image_b64": image_b64
-                    })
-                )
-                enqueue_result = enqueue_future.result(timeout=5)
-                logger.info(f"[Dispatcher] Enqueued: {enqueue_result}")
-                
-                # Add AI reply to history for context in next turn (only if not escalating, 
-                # as escalation will send a better answer soon)
-                if not result.get("needs_escalation"):
-                    router.add_session_history(session_id, "assistant", reply_text, "Computer")
-                
-                # Check if escalation is needed - spawn background task for follow-up
-                if result.get("needs_escalation"):
-                    logger.info("[Dispatcher] Escalation needed, spawning background task...")
-                    _executor.submit(
-                        _handle_escalation,
-                        result.get("original_query", event.text),
-                        result.get("is_chinese", False),
-                        event.group_id,
-                        event.user_id,
-                        session_key,
-                        event.message_id,
-                        result.get("escalated_model")
-                    )
-                
-                return True
-
-            else:
-                logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
         else:
             logger.info(f"[Dispatcher] Route is chat/low confidence, not responding.")
     except Exception as e:

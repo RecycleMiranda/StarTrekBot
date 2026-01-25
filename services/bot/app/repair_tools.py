@@ -43,6 +43,181 @@ PROTECTED_MODULES = {
     "repair_tools.py",  # Can't modify itself!
 }
 
+
+def is_module_accessible(module_name: str) -> tuple[bool, str]:
+    """Check if a module can be accessed by the repair system."""
+    # Normalize the name
+    if not module_name.endswith(".py"):
+        module_name = module_name + ".py"
+    
+    if module_name in PROTECTED_MODULES:
+        return False, f"PROTECTED: {module_name} is a core system module and cannot be modified."
+    
+    if module_name not in MODIFIABLE_MODULES:
+        return False, f"RESTRICTED: {module_name} is not in the modifiable whitelist."
+    
+    module_path = APP_BASE / module_name
+    if not module_path.exists():
+        return False, f"NOT FOUND: {module_name} does not exist."
+    
+    return True, "OK"
+
+
+def read_module(module_name: str) -> dict:
+    """
+    Read a module's source code with line numbers.
+    Returns the content and metadata.
+    """
+    accessible, reason = is_module_accessible(module_name)
+    if not accessible:
+        return {"ok": False, "message": reason}
+    
+    if not module_name.endswith(".py"):
+        module_name = module_name + ".py"
+    
+    module_path = APP_BASE / module_name
+    
+    try:
+        with open(module_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        lines = content.split("\n")
+        numbered_content = "\n".join(f"{i+1:4d}: {line}" for i, line in enumerate(lines))
+        
+        return {
+            "ok": True,
+            "module": module_name,
+            "path": str(module_path),
+            "content": content,
+            "numbered_content": numbered_content,
+            "line_count": len(lines),
+            "size_bytes": len(content.encode("utf-8")),
+            "message": f"Successfully read {module_name} ({len(lines)} lines)"
+        }
+    except Exception as e:
+        logger.error(f"[RepairTools] Failed to read {module_name}: {e}")
+        return {"ok": False, "message": f"READ ERROR: {str(e)}"}
+
+
+def validate_syntax(content: str) -> dict:
+    """
+    Validate Python syntax without executing the code.
+    """
+    try:
+        ast.parse(content)
+        return {"ok": True, "valid": True, "message": "Syntax is valid."}
+    except SyntaxError as e:
+        return {
+            "ok": True,
+            "valid": False,
+            "message": f"SYNTAX ERROR at line {e.lineno}: {e.msg}",
+            "line": e.lineno,
+            "offset": e.offset,
+            "error": e.msg
+        }
+
+
+def backup_module(module_name: str) -> dict:
+    """
+    Create a timestamped backup of a module.
+    """
+    if not module_name.endswith(".py"):
+        module_name = module_name + ".py"
+    
+    module_path = APP_BASE / module_name
+    if not module_path.exists():
+        return {"ok": False, "message": f"Module {module_name} not found."}
+    
+    # Create backup directory if needed
+    BACKUP_DIR.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"{module_name}.{timestamp}.bak"
+    backup_path = BACKUP_DIR / backup_name
+    
+    try:
+        shutil.copy2(module_path, backup_path)
+        logger.info(f"[RepairTools] Backed up {module_name} to {backup_path}")
+        return {
+            "ok": True,
+            "backup_path": str(backup_path),
+            "message": f"Backup created: {backup_name}"
+        }
+    except Exception as e:
+        logger.error(f"[RepairTools] Backup failed: {e}")
+        return {"ok": False, "message": f"BACKUP ERROR: {str(e)}"}
+
+
+def list_backups(module_name: str) -> dict:
+    """
+    List all available backups for a module.
+    """
+    if not module_name.endswith(".py"):
+        module_name = module_name + ".py"
+    
+    if not BACKUP_DIR.exists():
+        return {"ok": True, "backups": [], "message": "No backups found."}
+    
+    backups = []
+    for f in BACKUP_DIR.glob(f"{module_name}.*.bak"):
+        stat = f.stat()
+        backups.append({
+            "name": f.name,
+            "path": str(f),
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+        })
+    
+    backups.sort(key=lambda x: x["modified"], reverse=True)
+    
+    return {
+        "ok": True,
+        "backups": backups,
+        "count": len(backups),
+        "message": f"Found {len(backups)} backup(s) for {module_name}"
+    }
+
+
+def rollback_module(module_name: str, backup_index: int = 0) -> dict:
+    """
+    Restore a module from backup.
+    backup_index: 0 = most recent, 1 = second most recent, etc.
+    """
+    accessible, reason = is_module_accessible(module_name)
+    if not accessible:
+        return {"ok": False, "message": reason}
+    
+    if not module_name.endswith(".py"):
+        module_name = module_name + ".py"
+    
+    backups_result = list_backups(module_name)
+    if not backups_result["ok"] or not backups_result["backups"]:
+        return {"ok": False, "message": f"No backups available for {module_name}"}
+    
+    if backup_index >= len(backups_result["backups"]):
+        return {"ok": False, "message": f"Backup index {backup_index} out of range. Only {len(backups_result['backups'])} backup(s) available."}
+    
+    backup = backups_result["backups"][backup_index]
+    backup_path = Path(backup["path"])
+    module_path = APP_BASE / module_name
+    
+    try:
+        shutil.copy2(backup_path, module_path)
+        logger.info(f"[RepairTools] Rolled back {module_name} from {backup_path}")
+        
+        # Try to hot reload
+        reload_result = hot_reload_module(module_name)
+        
+        return {
+            "ok": True,
+            "restored_from": backup["name"],
+            "reload_success": reload_result.get("ok", False),
+            "message": f"Restored {module_name} from {backup['name']}"
+        }
+    except Exception as e:
+        logger.error(f"[RepairTools] Rollback failed: {e}")
+        return {"ok": False, "message": f"ROLLBACK ERROR: {str(e)}"}
+
 def git_sync_changes(file_path: Path, message: str) -> dict:
     """
     Commit and push a file to git.

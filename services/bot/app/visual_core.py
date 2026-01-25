@@ -100,13 +100,10 @@ class TemplateRenderer:
             self.draw.text((x, y), line, font=font, fill=fill)
             y += font.size + spacing
 
-    def render_personnel(self, data: Dict[str, Any], is_chinese: bool = False):
-        # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
-        
         # 1. Avatar Section (Bracket Alignment)
-        # NUDGING RIGHT TO CLEAR SPINE, VALUES PINNED
+        # NUDGING LEFT SLIGHTLY AND WIDENING GAP
         avatar_size = 320 
-        avatar_x, avatar_y = 440, 210  
+        avatar_x, avatar_y = 400, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -119,9 +116,9 @@ class TemplateRenderer:
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
         # 2. Data Section (Aligned with Avatar Left Edge)
-        label_x = 440 
-        value_x = 720
-        data_y = 670 
+        label_x = 400 
+        value_x = 850
+        data_y = 720 
         line_h = 80 
         
         # Translation Map for Values
@@ -145,13 +142,16 @@ class TemplateRenderer:
         
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
+            # USE BASELINE ALIGNMENT (anchor="ls") to ensure vertical alignment 
+            # with different font sizes (42 vs 52)
+            
             # Left Column: Label
-            self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
-            # Right Column: Value (Synced Y for horizontal alignment)
-            self.draw.text((value_x, curr_y), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
+            self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE, anchor="ls")
+            # Right Column: Value (Pinned X, widening gap)
+            self.draw.text((value_x, curr_y), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE, anchor="ls")
 
         # 3. Bio Section (Aligned with "BIO" Header on right)
-        bio_x = 1180 
+        bio_x = 1200 
         bio_y = 350  
         bio_content = data.get("biography", "")
         if not bio_content:

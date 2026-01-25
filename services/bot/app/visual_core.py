@@ -43,6 +43,8 @@ class FontLoader:
             "services/bot/app/assets/font.ttf", # User provided
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
             "/usr/share/fonts/truetype/arphic/uming.ttc",
             "/System/Library/Fonts/PingFang.ttc", # Local dev

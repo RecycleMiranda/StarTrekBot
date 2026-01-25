@@ -409,16 +409,14 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             "needs_escalation": False
         }
     else:
-        # Normal AI generation
+        # Normal AI generation in thread pool (generate_computer_reply is sync)
         future = _executor.submit(
-            _run_async,
-            rp_engine_gemini.generate_computer_reply(
-                event.text, 
-                router.get_session_context(session_id),
-                {
-                    "user_profile": profile_str
-                }
-            )
+            rp_engine_gemini.generate_computer_reply,
+            event.text, 
+            router.get_session_context(session_id),
+            {
+                "user_profile": profile_str
+            }
         )
         result = future.result(timeout=15)
     

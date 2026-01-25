@@ -180,7 +180,11 @@ def get_user_profile(user_id: str, nickname: Optional[str] = None, title: Option
         # Station Boost: Core station officers get at least level 5 clearance for ops
         if is_core and clearance < 5:
             clearance = 5
-            
+        profile = {
+            "name": nickname or "Unknown",
+            "rank": rank,
+            "department": "OPERATIONS", # Default department
+            "clearance": clearance,
             "station": station,
             "is_core_officer": is_core,
             "biography": ""

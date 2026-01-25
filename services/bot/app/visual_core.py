@@ -99,11 +99,12 @@ class TemplateRenderer:
         for line in lines:
             self.draw.text((x, y), line, font=font, fill=fill)
             y += font.size + spacing
-
+            
+    def render_personnel(self, data: Dict[str, Any], is_chinese: bool = False):
         # 1. Avatar Section (Bracket Alignment)
         # NUDGING LEFT SLIGHTLY AND WIDENING GAP
         avatar_size = 320 
-        avatar_x, avatar_y = 400, 210  
+        avatar_x, avatar_y = 450, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -115,9 +116,9 @@ class TemplateRenderer:
             # Center "NO SIGNAL" in the box
             self.draw.text((avatar_x + 65, avatar_y + 130), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # 2. Data Section (Aligned with Avatar Left Edge)
-        label_x = 400 
-        value_x = 850
+        # 2. Data Section (Enforce strict two-column layout)
+        label_x = 450 
+        value_x = 920
         data_y = 720 
         line_h = 80 
         

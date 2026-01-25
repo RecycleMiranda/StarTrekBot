@@ -101,6 +101,18 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             value = args.get("value")
             action = args.get("action", "set")  # Default to 'set' for backwards compat
             
+            # Step 0: Handle nested dict structures from AI
+            # AI sometimes sends: {chinese_style: {action: 'remove', suffix: '123'}}
+            for potential_key in ["chinese_style", "persona", "wake_response", "decision_logic", "security_protocols"]:
+                if potential_key in args and isinstance(args[potential_key], dict):
+                    nested = args[potential_key]
+                    key = potential_key
+                    action = nested.get("action", action)
+                    # Extract value from nested dict - check common value keys
+                    value = nested.get("value") or nested.get("suffix") or nested.get("content") or nested.get("text") or ""
+                    logger.info(f"[Dispatcher] Extracted from nested dict: key={key}, action={action}, value={value}")
+                    break
+            
             # Step 1: Normalize the key - translate prompt labels to actual JSON keys
             key_translation = {
                 "STYLE/LANGUAGE RULES": "chinese_style",
@@ -125,7 +137,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 key = key_translation[key]
                 logger.info(f"[Dispatcher] Translated key '{original_key}' -> '{key}'")
             
-            # Step 2: Expanded Smart Mapping for shorthand args
+            # Step 2: Expanded Smart Mapping for shorthand args (non-dict values only)
             if not key or value is None:
                 mappers = {
                     "chinese_style": ["chinese_style", "style", "reply_style", "reply_suffix", "suffix"],
@@ -137,7 +149,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 found = False
                 for target_key, synonyms in mappers.items():
                     for syn in synonyms:
-                        if syn in args:
+                        if syn in args and not isinstance(args[syn], dict):
                             key = target_key
                             value = args[syn]
                             logger.info(f"[Dispatcher] Smart-mapped protocol update: {key}={value} (from {syn})")
@@ -146,7 +158,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                     if found: break
             
             # Action Detection: Infer intent from the value string if action wasn't explicit
-            if action == "set" and value:
+            if action == "set" and value and isinstance(value, str):
                 value_lower = value.lower()
                 # Check for "add" or "append" signals
                 if any(sig in value_lower for sig in ["add ", "append ", "include ", "also ", "在末尾加", "添加"]):
@@ -161,6 +173,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                     for sig in ["remove ", "cancel ", "delete ", "stop ", "取消", "删除", "不要"]:
                         value = value.replace(sig, "").strip()
                     logger.info(f"[Dispatcher] Detected REMOVE intent: {value}")
+
             
             # Final Safeguard: If we still don't have a key, reject.
             if not key:

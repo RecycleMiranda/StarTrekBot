@@ -30,17 +30,18 @@ def _run_async(coro):
 def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
     """Executes a ship tool with user context."""
     from . import tools
+    result = None
     try:
         if tool == "status":
-            return tools.get_status()
+            result = tools.get_status()
         elif tool == "time":
-            return tools.get_time()
+            result = tools.get_time()
         elif tool == "calc":
-            return tools.calc(args.get("expr", ""))
+            result = tools.calc(args.get("expr", ""))
         elif tool == "replicate":
-            return tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"), clearance=profile.get("clearance", 1))
+            result = tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"), clearance=profile.get("clearance", 1))
         elif tool == "holodeck":
-            return tools.reserve_holodeck(
+            result = tools.reserve_holodeck(
                 args.get("program", "Standard Grid"), 
                 args.get("hours", 1.0), 
                 str(event.user_id), 
@@ -49,11 +50,11 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 disable_safety=args.get("disable_safety", False)
             )
         elif tool == "get_ship_schematic":
-            return tools.get_ship_schematic(args.get("ship_name", "Galaxy"), clearance=profile.get("clearance", 1))
+            result = tools.get_ship_schematic(args.get("ship_name", "Galaxy"), clearance=profile.get("clearance", 1))
         elif tool == "get_historical_archive":
-            return tools.get_historical_archive(args.get("topic", "Federation"))
+            result = tools.get_historical_archive(args.get("topic", "Federation"))
         elif tool == "personal_log":
-            return tools.personal_log(args.get("content", ""), str(event.user_id))
+            result = tools.personal_log(args.get("content", ""), str(event.user_id))
             
         # --- Self-Destruct & Auth ---
         elif tool == "initiate_self_destruct":
@@ -68,7 +69,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 from .self_destruct import get_destruct_manager
                 dm = get_destruct_manager()
                 asyncio.create_task(dm.start_sequence(session_id, args.get("seconds", 60), args.get("silent", False), _destruct_notify))
-            return res
+            result = res
             
         elif tool == "authorize_sequence":
             res = tools.authorize_sequence(
@@ -82,30 +83,34 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 dm = get_destruct_manager()
                 meta = res.get("metadata", {})
                 asyncio.create_task(dm.start_sequence(session_id, meta.get("duration", 60), meta.get("silent", False), _destruct_notify))
-            return res
+            result = res
             
         elif tool == "abort_self_destruct":
-            return tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
+            result = tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
             
         elif tool == "get_personnel_file":
-            return tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
+            result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
             
         elif tool == "update_biography":
-            return tools.update_biography(args.get("content", ""), str(event.user_id))
+            result = tools.update_biography(args.get("content", ""), str(event.user_id))
             
         elif tool == "update_protocol":
-            return tools.update_protocol(
+            result = tools.update_protocol(
                 args.get("category", "rp_engine"),
                 args.get("key", "persona"),
                 args.get("value", ""),
                 str(event.user_id),
                 profile.get("clearance", 1)
             )
+        else:
+            return {"ok": False, "message": f"Unknown tool: {tool}", "error": "unknown_tool"}
             
-        return {"ok": False, "error": f"unknown_tool: {tool}"}
+        if result and "ok" not in result:
+            result["ok"] = True
+        return result
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "message": f"Execution error: {str(e)}", "error": str(e)}
 
 async def _destruct_notify(session_id: str, message: str):
     """Sends background countdown messages to the chat platform."""

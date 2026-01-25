@@ -12,12 +12,12 @@ def get_status() -> dict:
     Returns mock starship status.
     """
     return {
+        "ok": True,
+        "message": f"STATUS REPORT: Shields at {92}%. Warp capability nominal. Alert status: GREEN.",
         "shields_percent": 92,
         "warp_factor": 0.0,
         "alert": "green",
-        "power_status": "nominal",
-        "ts": int(time.time()),
-        "tz": "CST"
+        "power_status": "nominal"
     }
 
 def get_time() -> dict:
@@ -26,6 +26,8 @@ def get_time() -> dict:
     """
     now = datetime.datetime.now()
     return {
+        "ok": True,
+        "message": f"Current system time: {now.strftime('%H:%M:%S')} (CST)",
         "iso": now.strftime("%H:%M:%S"),
         "unix": int(time.time()),
         "tz": "CST"

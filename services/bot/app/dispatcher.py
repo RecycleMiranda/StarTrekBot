@@ -93,6 +93,15 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         elif tool == "update_biography":
             return tools.update_biography(args.get("content", ""), str(event.user_id))
             
+        elif tool == "update_protocol":
+            return tools.update_protocol(
+                args.get("category", "rp_engine"),
+                args.get("key", "persona"),
+                args.get("value", ""),
+                str(event.user_id),
+                profile.get("clearance", 1)
+            )
+            
         return {"ok": False, "error": f"unknown_tool: {tool}"}
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")

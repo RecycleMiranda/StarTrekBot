@@ -546,3 +546,22 @@ def update_biography(content: str, user_id: str) -> dict:
         "ok": True,
         "message": "COMMAND SUCCESSFUL: Personal biography updated in Starfleet Database."
     }
+def update_protocol(category: str, key: str, value: str, user_id: str, clearance: int = 1) -> dict:
+    """
+    Updates a system protocol or prompt. Requires Level 10+ clearance.
+    """
+    if clearance < 10:
+        return {"ok": False, "message": "Access denied. Level 10 clearance required for protocol modification."}
+    
+    from .protocol_manager import get_protocol_manager
+    pm = get_protocol_manager()
+    success = pm.update_protocol(category, key, value)
+    
+    if success:
+        return {
+            "ok": True,
+            "message": f"Protocol updated: {category}.{key}. Federation Standards updated.",
+            "result": "ACK"
+        }
+    else:
+        return {"ok": False, "message": "Failed to update protocol. System file write error."}

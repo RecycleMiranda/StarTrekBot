@@ -14,33 +14,11 @@ TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
 from .config_manager import ConfigManager
 from . import quota_manager
 from . import tools
+from .protocol_manager import get_protocol_manager
 
 logger = logging.getLogger(__name__)
 
 def get_lexicon_prompt() -> str:
-    """Returns the comprehensive LCARS/Cardassian technical lexicon extracted from TNG and DS9 manuals."""
-    return """
-TECHNICAL LEXICON (MANDATORY TRANSLATIONS):
-
-[Ship & Station Structures]
-- Main Skeletal Structure -> 主龙骨结构 / 主骨架结构
-- Saucer Module -> 碟部 / 碟体
-- Stardrive Section / Battle Section -> 轮机舰体 / 作战部
-- Docking Tower -> 对接塔
-- Docking Ring -> 对接环
-- Airlock -> 气闸
-- Security Gate -> 安保防护通道
-- Tritanium -> 三钛
-- Duranium -> 硬铀
-- Structural Integrity Field (SIF) -> 结构完整性力场
-- Inertial Damping Field (IDF) -> 惯性阻尼系统/场
-- Ablative armor -> 烧蚀装甲
-
-[Propulsion Systems]
-- Continuum Distortion Propulsion (CDP) -> 连续体扭曲推进 (曲速驱动正式名称)
-- Warp Drive -> 曲速驱动 / 曲速引擎
-- Matter/Antimatter Reaction Assembly (M/ARA) -> 物质/反物质反应装置 (曲速核心)
-- Dilithium Crystal -> 二锂晶体
 - Warp Field Coil -> 曲速场线圈
 - Bussard Ramscoop -> 巴萨德冲压采集器
 - Electro Plasma System (EPS) -> 等离子电力系统
@@ -132,43 +110,23 @@ def _load_style_spec() -> str:
         logger.warning(f"Failed to load style spec: {e}")
         return ""
 
-SYSTEM_PROMPT = (
-    "You are the LCARS Starship Main Computer. "
-    "TONE: Fragmented, Laconic, Procedural, Non-conversational. "
-    "STYLE: Data-driven output. Do not use conversational filler. "
-    "CHINESE STYLE: 使用简练、公式化的术语。例如：'身份确认：XX。权限级别：[Level]。' 严禁在军衔前加'海军'二字。"
-    "\n"
-    "SECURITY PROTOCOLS (ALAS Scale):\n"
-    "- If user is 2819163610, permission is Level 12.\n"
-    "- Level 1-2: Civilians/Crewmen.\n"
-    "- Level 3-5: Ensigns/Officers.\n"
-    "- Level 6-9: Senior Officers.\n"
-    "- Level 10-12: Command Group.\n"
-    "1. ASYMMETRIC PERMISSION LOGIC: Rank + Station + Clearance.\n"
-    "2. ENFORCEMENT: If authority lacks, refuse with 'Access denied.'\n"
-    "3. RIGOR: NEVER GUESS. If data is missing, state 'Insufficient data.'\n"
-    "QUOTA SYSTEM: User Balance: {quota_balance} credits.\n"
-    "TOOLS:\n"
-    "- Replicate: use intent: 'tool_call', tool: 'replicate', args: {{\"item_name\": \"...\"}}.\n"
-    "- Holodeck: tool: 'holodeck', args: {{\"program\": \"...\", \"hours\": float, \"disable_safety\": bool}}.\n"
-    "- Personnel File: tool: 'get_personnel_file', args: {{\"target_mention\": \"@User\"}}.\n"
-    "- Update Bio: tool: 'update_biography', args: {{\"content\": \"...\"}} (Updating own status/bio).\n"
-    "- Other tools: personal_log, initiate_self_destruct, abort_self_destruct, authorize_sequence, update_user_profile, lockdown_authority, restrict_user.\n"
-    "DECISION LOGIC:\n"
-    "1. Answer direct if simple.\n"
-    "2. Set intent: 'report' for structured data.\n"
-    "3. Set needs_escalation: true for complex long tasks.\n"
-    "4. Set intent: 'ignore' for chat.\n\n"
-    "LANGUAGE: ALWAYS reply in Simplified Chinese.\n\n"
-    + get_lexicon_prompt()
-)
+def _get_system_prompt() -> str:
+    pm = get_protocol_manager()
+    content = (
+        "CORE DIRECTIVES (IMMUTABLE):\n" + pm.get_immutable() + "\n\n" +
+        "DYNAMIC PROTOCOLS (TUNABLE):\n" +
+        pm.get_prompt("rp_engine", "persona") + "\n" +
+        pm.get_prompt("rp_engine", "chinese_style") + "\n" +
+        pm.get_prompt("rp_engine", "security_protocols") + "\n" +
+        pm.get_prompt("rp_engine", "tools_guide") + "\n" +
+        pm.get_prompt("rp_engine", "decision_logic") + "\n\n" +
+        get_lexicon_prompt()
+    )
+    return content
 
-ESCALATION_PROMPT = (
-    "You are the LCARS Starship Main Computer. Providing detailed technical analysis. "
-    "User Profile: {user_profile}. "
-    "Quota: {quota_balance}.\n"
-    "Output JSON: {{\"reply\": \"string_or_report_object\"}}"
-)
+def _get_escalation_prompt() -> str:
+    pm = get_protocol_manager()
+    return pm.get_prompt("escalation", "persona")
 
 DEFAULT_THINKING_MODEL = "gemini-2.0-flash" 
 
@@ -200,7 +158,9 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
         balance = qm.get_balance(user_id, "Ensign") # Simple default
 
         # Format the system prompt - ensure no rogue braces
-        formatted_sys = SYSTEM_PROMPT.format(quota_balance=balance)
+        formatted_sys = _get_system_prompt()
+        if "{quota_balance}" in formatted_sys:
+            formatted_sys = formatted_sys.format(quota_balance=balance)
         full_prompt = (
             f"System: {formatted_sys}\n\n"
             f"Context:\n{history_str}\n\n"
@@ -244,7 +204,7 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         balance = qm.get_balance(user_id, "Ensign")
 
         prompt = (
-            f"System: {ESCALATION_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
+            f"System: {_get_escalation_prompt().format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
             f"Query: {trigger_text}"
         )
 

@@ -105,7 +105,7 @@ class TemplateRenderer:
         
         # 1. Avatar Section (Bracket Alignment)
         avatar_size = 380 
-        avatar_x, avatar_y = 335, 210  
+        avatar_x, avatar_y = 480, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -118,8 +118,8 @@ class TemplateRenderer:
             self.draw.text((avatar_x + 95, avatar_y + 160), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
         # 2. Data Section (Enforce strict two-column layout)
-        label_x = 330 
-        value_x = 830
+        label_x = 480 
+        value_x = 980
         data_y = 670 
         line_h = 80 
         
@@ -138,16 +138,16 @@ class TemplateRenderer:
             ("NAME / 姓名" if is_chinese else "NAME", data.get("name", "Unknown")),
             ("RANK / 军衔" if is_chinese else "RANK", rank),
             ("DEPT / 部门" if is_chinese else "DEPT", "SECTION_31" if data.get("department") == "SECTION_31" else ("OPERATIONS / 行勤" if is_chinese else "OPERATIONS")),
-            ("QUOTA / 配额" if is_chinese else "QUOTA", f"{data.get('quota_balance', 0)} CREDITS"),
-            ("ACCESS / 权限" if is_chinese else "ACCESS", f"LEVEL {data.get('clearance', 1)}"),
+            ("QUOTA / 配额" if is_chinese else "QUOTA", data.get('quota_balance', 0)),
+            ("ACCESS / 权限" if is_chinese else "ACCESS", data.get('clearance', 1)),
         ]
         
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
             # Left Column: Label
             self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
-            # Right Column: Value (Fixed X for perfect alignment)
-            self.draw.text((value_x, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
+            # Right Column: Value (Synced Y for horizontal alignment)
+            self.draw.text((value_x, curr_y), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
 
         # 3. Bio Section (Aligned with "BIO" Header on right)
         bio_x = 1180 
@@ -162,7 +162,7 @@ class TemplateRenderer:
         self.draw_text_wrapped(bio_content, bio_x, bio_y, 750, self.fonts.bio, TStyle.TEXT_WHITE)
 
         # 4. Record ID (Bottom Greeble)
-        self.draw.text((1180, 1020), f"RECORD ID: {data.get('user_id', '0000')}-GAMMA", font=self.fonts.tiny, fill=TStyle.TEXT_DIM)
+        self.draw.text((1180, 1070), f"RECORD ID: {data.get('user_id', '0000')}-GAMMA", font=self.fonts.tiny, fill=TStyle.TEXT_DIM)
 
     def save_to_bytes(self) -> io.BytesIO:
         out = io.BytesIO()

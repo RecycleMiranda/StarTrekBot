@@ -11,6 +11,7 @@ services:
     volumes:
       - ..:/app
       - ~/.ssh:/root/.ssh:ro
+    working_dir: /app/services/bot
     ports:
       - "8080:8080"
     networks:

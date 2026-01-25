@@ -47,6 +47,12 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         # Activate aliases
         "start_destruct": "activate_self_destruct",
         "engage_destruct": "activate_self_destruct",
+        "begin_destruct": "activate_self_destruct",
+        "start_countdown": "activate_self_destruct",
+        # Status aliases
+        "destruct_status": "get_destruct_status",
+        "check_destruct": "get_destruct_status",
+        "destruct_info": "get_destruct_status",
         # Cancel aliases
         "abort_self_destruct": "request_cancel_self_destruct",
         "abort_destruct": "request_cancel_self_destruct",
@@ -58,7 +64,24 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         # Confirm cancel aliases
         "confirm_cancel_destruct": "confirm_cancel_self_destruct",
         "finalize_cancel": "confirm_cancel_self_destruct",
+        # Repair mode aliases
+        "repair_mode": "enter_repair_mode",
+        "diagnose": "enter_repair_mode",
+        "diagnostic": "enter_repair_mode",
+        "self_repair": "enter_repair_mode",
+        "exit_repair": "exit_repair_mode",
+        "end_repair": "exit_repair_mode",
+        "read_module": "read_repair_module",
+        "view_code": "read_repair_module",
+        "module_outline": "get_repair_module_outline",
+        "code_outline": "get_repair_module_outline",
+        "rollback": "rollback_repair_module",
+        "undo_repair": "rollback_repair_module",
+        "list_backups": "list_repair_backups",
+        "show_backups": "list_repair_backups",
     }
+
+
     if tool in tool_aliases:
         original_tool = tool
         tool = tool_aliases[tool]
@@ -136,9 +159,51 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 profile.get("clearance", 1), 
                 session_id
             )
+            
+        elif tool == "get_destruct_status":
+            result = tools.get_destruct_status(session_id)
+            
+        # --- Repair Mode Tools ---
+        elif tool == "enter_repair_mode":
+            result = tools.enter_repair_mode(
+                str(event.user_id),
+                profile.get("clearance", 1),
+                session_id,
+                args.get("module") or args.get("target_module")
+            )
+            
+        elif tool == "exit_repair_mode":
+            result = tools.exit_repair_mode(session_id)
+            
+        elif tool == "read_repair_module":
+            result = tools.read_repair_module(
+                args.get("module") or args.get("name", ""),
+                profile.get("clearance", 1)
+            )
+            
+        elif tool == "get_repair_module_outline":
+            result = tools.get_repair_module_outline(
+                args.get("module") or args.get("name", ""),
+                profile.get("clearance", 1)
+            )
+            
+        elif tool == "rollback_repair_module":
+            result = tools.rollback_repair_module(
+                args.get("module") or args.get("name", ""),
+                profile.get("clearance", 1),
+                args.get("backup_index", 0)
+            )
+            
+        elif tool == "list_repair_backups":
+            result = tools.list_repair_backups(
+                args.get("module") or args.get("name", ""),
+                profile.get("clearance", 1)
+            )
 
             
         elif tool == "get_personnel_file":
+
+
             result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
             
         elif tool == "update_biography":

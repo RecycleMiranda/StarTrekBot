@@ -257,6 +257,16 @@ def personal_log(content: str, user_id: str) -> dict:
 
 # --- SELF-DESTRUCT TOOLS (3-Step Flow) ---
 
+def get_destruct_status(session_id: str) -> dict:
+    """
+    Query the current self-destruct sequence status.
+    Returns state, remaining time, authorization status, etc.
+    """
+    from .self_destruct import get_destruct_manager
+    dm = get_destruct_manager()
+    return dm.get_status(session_id)
+
+
 def initialize_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str) -> dict:
     """
     Step 1: Initialize the self-destruct sequence.
@@ -340,7 +350,96 @@ def authorize_sequence(action_type: str, user_id: str, clearance: int, session_i
         return {"ok": False, "message": f"Unknown action type: {action_type}"}
 
 
+# --- SELF-REPAIR TOOLS ---
+
+def enter_repair_mode(user_id: str, clearance: int, session_id: str, target_module: str = None) -> dict:
+    """
+    Enter repair/diagnostic mode for a specific module.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required for repair mode."}
+    
+    from .repair_agent import get_repair_agent
+    agent = get_repair_agent()
+    session = agent.start_session(session_id, user_id, target_module)
+    
+    msg = f"REPAIR MODE ACTIVATED. "
+    if target_module:
+        from . import repair_tools
+        accessible, reason = repair_tools.is_module_accessible(target_module)
+        if accessible:
+            msg += f"Target module: {target_module}. Ready for diagnostic commands."
+        else:
+            msg += f"Warning: {reason}"
+    else:
+        msg += f"No target module specified. Available modules: {', '.join(repair_tools.MODIFIABLE_MODULES)}"
+    
+    return {
+        "ok": True,
+        "in_repair_mode": True,
+        "target_module": target_module,
+        "message": msg
+    }
+
+
+def exit_repair_mode(session_id: str) -> dict:
+    """Exit repair mode."""
+    from .repair_agent import get_repair_agent
+    agent = get_repair_agent()
+    return agent.end_session(session_id)
+
+
+def read_repair_module(module_name: str, clearance: int) -> dict:
+    """
+    Read a module's source code in repair mode.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required."}
+    
+    from . import repair_tools
+    return repair_tools.read_module(module_name)
+
+
+def get_repair_module_outline(module_name: str, clearance: int) -> dict:
+    """
+    Get structural outline of a module.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required."}
+    
+    from . import repair_tools
+    return repair_tools.get_module_outline(module_name)
+
+
+def rollback_repair_module(module_name: str, clearance: int, backup_index: int = 0) -> dict:
+    """
+    Rollback a module to a previous backup.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required."}
+    
+    from . import repair_tools
+    return repair_tools.rollback_module(module_name, backup_index)
+
+
+def list_repair_backups(module_name: str, clearance: int) -> dict:
+    """
+    List available backups for a module.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Level 12 clearance required."}
+    
+    from . import repair_tools
+    return repair_tools.list_backups(module_name)
+
+
 # --- ACCESS CONTROL TOOLS ---
+
 
 def lockdown_authority(state: bool, user_id: str, clearance: int, session_id: str) -> dict:
     """

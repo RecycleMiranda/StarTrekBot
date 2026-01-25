@@ -155,6 +155,39 @@ class DestructManager:
             return None
         return seq
     
+    def get_status(self, session_id: str) -> dict:
+        """Returns the current status of any self-destruct sequence."""
+        session_id = str(session_id)
+        seq = self.get_sequence(session_id)
+        
+        if not seq:
+            return {
+                "ok": True,
+                "active": False,
+                "state": DestructState.IDLE.value,
+                "message": "No active self-destruct sequence."
+            }
+        
+        authorizers_needed = max(0, DestructSequence.MIN_AUTHORIZERS - len(seq.authorizers))
+        cancel_authorizers_needed = max(0, DestructSequence.MIN_AUTHORIZERS - len(seq.cancel_authorizers))
+        
+        return {
+            "ok": True,
+            "active": True,
+            "state": seq.state.value,
+            "duration_seconds": seq.duration_seconds,
+            "remaining_seconds": seq.remaining if seq.state == DestructState.ACTIVE else None,
+            "authorizers_count": len(seq.authorizers),
+            "authorizers_needed": authorizers_needed,
+            "cancel_authorizers_count": len(seq.cancel_authorizers),
+            "cancel_authorizers_needed": cancel_authorizers_needed,
+            "silent_mode": seq.silent_mode,
+            "message": f"Self-destruct sequence is in '{seq.state.value}' state." + 
+                       (f" {seq.remaining} seconds remaining." if seq.state == DestructState.ACTIVE else "") +
+                       (f" {authorizers_needed} more authorizations needed." if seq.state == DestructState.INITIALIZED else "")
+        }
+
+    
     def initialize(self, session_id: str, user_id: str, clearance: int, duration: int = 60, silent: bool = False) -> dict:
         """Step 1: Initialize the self-destruct sequence."""
         session_id = str(session_id)

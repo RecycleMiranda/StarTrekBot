@@ -100,7 +100,10 @@ class ProtocolManager:
 ### 2.1 Persona & Tone
 {rp.get('persona', 'N/A')}
 
-### 2.2 Response Strategy (Negotiation & Debate)
+### 2.2 Wake Word Response
+Current: `{rp.get('wake_response', '*Computer Acknowledgment Chirp*')}`
+
+### 2.3 Response Strategy (Negotiation & Debate)
 {rp.get('decision_logic', 'N/A')}
 
 ### 2.3 Security ALAS Scale

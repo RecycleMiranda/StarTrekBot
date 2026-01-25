@@ -12,6 +12,7 @@ from . import rp_engine_gemini
 from . import permissions
 from . import report_builder
 from . import visual_core
+from .protocol_manager import get_protocol_manager
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +190,9 @@ def handle_event(event: InternalEvent):
                 sq = send_queue.SendQueue.get_instance()
                 session_key = f"qq:{event.group_id or event.user_id}"
                 
-                # Classic Star Trek computer chirping sound representation
-                bleep_text = "*Computer Acknowledgment Chirp*"
+                # Fetch dynamic wake response from protocols
+                pm = get_protocol_manager()
+                bleep_text = pm.get_prompt("rp_engine", "wake_response", "*Computer Acknowledgment Chirp*")
                 
                 # Use executor to avoid "loop already running" error
                 _executor.submit(

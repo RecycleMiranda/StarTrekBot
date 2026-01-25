@@ -1,6 +1,9 @@
+import logging
 import time
 import re
 from typing import Optional, Dict, List
+
+logger = logging.getLogger(__name__)
 
 # In-memory session state
 # { session_id: { mode: str, expires_at: int, last_texts: list[str] } }

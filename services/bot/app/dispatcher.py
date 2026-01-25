@@ -516,18 +516,22 @@ def handle_event(event: InternalEvent):
         logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
         
         # Check for exit command
+        sender = event.raw.get("sender", {})
+        nickname = sender.get("card") or sender.get("nickname")
+        title = sender.get("title") # QQ Group Title
+
         if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
             # Route to exit_repair_mode
             route_result = {"route": "computer", "confidence": 1.0}
             from . import permissions
-            user_profile = permissions.get_user_profile(str(event.user_id), event.nickname, event.title)
+            user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
             # Create synthetic result for execution
             _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode"))
             return True
         else:
             # Force route to ask_about_code
             from . import permissions
-            user_profile = permissions.get_user_profile(str(event.user_id), event.nickname, event.title)
+            user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
             # Use _execute_ai_logic but force the tool call
             # Or better, construct a synthetic AI result to feed into the pipeline
             _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text}))

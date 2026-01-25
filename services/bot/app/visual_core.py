@@ -104,9 +104,9 @@ class TemplateRenderer:
         # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
         
         # 1. Avatar Section (Bracket Alignment)
-        # NUDGING RIGHT TO CENTER IN BRACKETS (BOX)
+        # NUDGING RIGHT AND DOWN FOR ABSOLUTE CENTERING
         avatar_size = 320 
-        avatar_x, avatar_y = 560, 210  
+        avatar_x, avatar_y = 580, 260  
         
         avatar_img = data.get("avatar") 
         if avatar_img:

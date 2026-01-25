@@ -101,9 +101,32 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             value = args.get("value")
             action = args.get("action", "set")  # Default to 'set' for backwards compat
             
-            # Expanded Smart Mapping: Map arbitrary AI-hallucinated keys to standard keys
+            # Step 1: Normalize the key - translate prompt labels to actual JSON keys
+            key_translation = {
+                "STYLE/LANGUAGE RULES": "chinese_style",
+                "REPLY STYLE/SUFFIX": "chinese_style",
+                "style": "chinese_style",
+                "reply_style": "chinese_style",
+                "reply_suffix": "chinese_style",
+                "suffix": "chinese_style",
+                "IDENTITY": "persona",
+                "identity": "persona",
+                "role": "persona",
+                "SECURITY": "security_protocols",
+                "security": "security_protocols",
+                "DECISION LOGIC": "decision_logic",
+                "logic": "decision_logic",
+                "strategy": "decision_logic",
+                "wake_sound": "wake_response",
+                "wake_word": "wake_response",
+            }
+            if key and key in key_translation:
+                original_key = key
+                key = key_translation[key]
+                logger.info(f"[Dispatcher] Translated key '{original_key}' -> '{key}'")
+            
+            # Step 2: Expanded Smart Mapping for shorthand args
             if not key or value is None:
-                # Map specific concepts to their target keys
                 mappers = {
                     "chinese_style": ["chinese_style", "style", "reply_style", "reply_suffix", "suffix"],
                     "persona": ["persona", "identity", "role"],

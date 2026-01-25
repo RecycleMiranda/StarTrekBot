@@ -20,13 +20,45 @@ logger = logging.getLogger(__name__)
 _executor = ThreadPoolExecutor(max_workers=4)
 
 def _run_async(coro):
-    """Run async coroutine in a new event loop in a separate thread."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """Run async coroutine, handling both sync and async contexts."""
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        # Check if there's already a running loop
+        loop = asyncio.get_running_loop()
+        # We're in an async context, create a task instead
+        import concurrent.futures
+        future = concurrent.futures.Future()
+        
+        async def run_and_set():
+            try:
+                result = await coro
+                future.set_result(result)
+            except Exception as e:
+                future.set_exception(e)
+        
+        # Schedule in the current loop via a new thread
+        def run_in_thread():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        
+        # Run in thread pool to avoid blocking
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_in_thread)
+            return future.result(timeout=60)
+            
+    except RuntimeError:
+        # No running loop, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
 
 def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
     """Executes a ship tool with user context."""

@@ -172,7 +172,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         # --- Self-Destruct 3-Step Flow ---
         elif tool == "initialize_self_destruct":
             result = tools.initialize_self_destruct(
-                args.get("duration", 30), 
+                args.get("duration", 300), 
                 args.get("silent", False), 
                 str(event.user_id), 
                 profile.get("clearance", 1), 
@@ -281,7 +281,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 session_id, 
                 str(event.user_id), 
                 args.get("question", ""), 
-                profile.get("clearance", 1)
+                profile.get("clearance", 1),
+                language="zh" if is_chinese else "en"
             )
 
             

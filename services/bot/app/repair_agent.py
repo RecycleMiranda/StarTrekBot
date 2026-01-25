@@ -142,7 +142,7 @@ class RepairAgent:
         """Get the appropriate model based on complexity."""
         return self.MODEL_MAP.get(complexity, self.MODEL_MAP[RepairComplexity.SIMPLE])
     
-    async def answer_code_question(self, session_id: str, user_id: str, message: str, clearance: int) -> dict:
+    async def answer_code_question(self, session_id: str, user_id: str, message: str, clearance: int, language: str = "en") -> dict:
         """
         Answer a code-related question naturally, without formal "repair mode".
         This is the main entry point for natural code Q&A.
@@ -182,7 +182,7 @@ class RepairAgent:
         model = self.get_model_for_complexity(complexity)
         
         # Build context with relevant code
-        context = self._build_qa_context(session, message)
+        context = self._build_qa_context(session, message, language=language)
         
         # Call LLM
         response = await self._call_repair_llm(context, model, session)
@@ -257,9 +257,11 @@ class RepairAgent:
         
         return None
     
-    def _build_qa_context(self, session: RepairSession, current_message: str) -> str:
+    def _build_qa_context(self, session: RepairSession, current_message: str, language: str = "en") -> str:
         """Build context for natural code Q&A."""
         from . import repair_tools
+        
+        lang_instruction = "- Use Chinese for responses (technical terms in English are OK)" if "zh" in language else "- Use English for responses"
         
         context_parts = [
             "You are the LCARS Ship Computer with code analysis capabilities.",
@@ -267,7 +269,7 @@ class RepairAgent:
             "",
             "RESPONSE STYLE:",
             "- Be concise and direct, like a ship's computer",
-            "- Use Chinese for responses (technical terms in English are OK)",
+            f"{lang_instruction}",
             "- When suggesting code changes, DO NOT output the entire file if it is large.",
             "- Only show the relevant modified functions or sections.",
             "- Ask for confirmation (回复 '确认' 来应用) before applying any changes",

@@ -33,7 +33,7 @@ class DestructSequence:
     MIN_CLEARANCE = 9
     MIN_AUTHORIZERS = 3
     AUTH_TIMEOUT_SECONDS = 300  # 5 minutes
-    DEFAULT_COUNTDOWN = 60
+    DEFAULT_COUNTDOWN = 300  # 5 minutes (User requested increase from 60s)
     
     # Translation Dictionary
     MESSAGES = {
@@ -245,7 +245,7 @@ class DestructManager:
         }
 
     
-    def initialize(self, session_id: str, user_id: str, clearance: int, duration: int = 60, silent: bool = False, language: str = "en") -> dict:
+    def initialize(self, session_id: str, user_id: str, clearance: int, duration: int = 300, silent: bool = False, language: str = "en") -> dict:
         """Step 1: Initialize the self-destruct sequence."""
         session_id = str(session_id)
         user_id = str(user_id)

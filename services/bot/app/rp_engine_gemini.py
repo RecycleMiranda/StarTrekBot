@@ -62,6 +62,9 @@ def _get_system_prompt() -> str:
         pm.get_prompt("rp_engine", "security_protocols") + "\n" +
         pm.get_prompt("rp_engine", "tools_guide") + "\n" +
         pm.get_prompt("rp_engine", "decision_logic") + "\n\n" +
+        "OUTPUT FORMAT (STRICT JSON):\n" +
+        "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?}\n\n" +
+        _load_style_spec() + "\n\n" +
         get_lexicon_prompt()
     )
     return content

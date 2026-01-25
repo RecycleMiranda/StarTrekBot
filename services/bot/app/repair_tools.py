@@ -11,7 +11,15 @@ Provides low-level file operations for the Self-Repair System:
 import os
 import sys
 import ast
+import shutil
+import importlib
+import logging
 import subprocess
+from datetime import datetime
+from typing import Optional, List, Dict
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 def git_sync_changes(file_path: Path, message: str) -> dict:
     """

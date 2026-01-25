@@ -100,21 +100,35 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             key = args.get("key")
             value = args.get("value")
             
-            # Smart Mapping: If key/value are missing but other keys exist, 
-            # find a likely candidate (e.g. AI sent {'persona': '...'})
+            # Expanded Smart Mapping: Map arbitrary AI-hallucinated keys to standard keys
             if not key or value is None:
-                # Look for common protocol keys in the args
-                known_keys = ["persona", "wake_response", "chinese_style", "security_protocols", "decision_logic"]
-                for k in known_keys:
-                    if k in args:
-                        key = k
-                        value = args[k]
-                        logger.info(f"[Dispatcher] Smart-mapped protocol update: {key}={value}")
-                        break
+                # Map specific concepts to their target keys
+                mappers = {
+                    "chinese_style": ["chinese_style", "style", "reply_style", "reply_suffix", "suffix"],
+                    "persona": ["persona", "identity", "role"],
+                    "wake_response": ["wake_response", "wake_sound", "wake_word"],
+                    "decision_logic": ["decision_logic", "logic", "strategy"]
+                }
+                
+                found = False
+                for target_key, synonyms in mappers.items():
+                    for syn in synonyms:
+                        if syn in args:
+                            key = target_key
+                            value = args[syn]
+                            logger.info(f"[Dispatcher] Smart-mapped protocol update: {key}={value} (from {syn})")
+                            found = True
+                            break
+                    if found: break
             
+            # Final Safeguard: If we still don't have a key, we MUST NOT default to 'persona' 
+            # if that would overwrite good data with nothing.
+            if not key:
+                return {"ok": False, "message": "Unable to determine which protocol key to update. Please specify 'key' and 'value'."}
+
             result = tools.update_protocol(
                 category,
-                key or "persona",
+                key,
                 value or "",
                 str(event.user_id),
                 profile.get("clearance", 1)

@@ -276,7 +276,7 @@ class DestructManager:
             "zh": {
                 "denied": f"拒绝访问：需要最低 {DestructSequence.MIN_CLEARANCE} 级权限。当前：{clearance}。",
                 "already_active": "程序已激活：当前状态为 {state}。",
-                "init_success": "确认：自毁系统已初始化。{duration_str} 倒计时待命。等待 {DestructSequence.MIN_AUTHORIZERS} 名高级军官授权。"
+                "init_success": f"确认：自毁系统已初始化。{{duration_str}} 倒计时待命。等待 {DestructSequence.MIN_AUTHORIZERS} 名高级军官授权。"
             }
         }
         msg = msgs.get(lang_code, msgs["en"])
@@ -352,7 +352,7 @@ class DestructManager:
                 "denied": f"拒绝访问：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
                 "no_seq": "无法完成：请先初始化自毁程序。",
                 "cannot_active": "无法激活：程序未授权。当前状态：{state}。",
-                "success": "⚠️ 启动自毁系统。解除反物质储罐约束力场。过载反应堆核心。警告：自毁系统已启动，{{time_str}} 后执行。"
+                "success": f"⚠️ 启动自毁系统。解除反物质储罐约束力场。过载反应堆核心。警告：自毁系统已启动，{{time_str}} 后执行。"
             }
         }
         msg = msgs.get(lang, msgs["en"])

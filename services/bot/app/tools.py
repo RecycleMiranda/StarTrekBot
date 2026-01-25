@@ -464,13 +464,16 @@ def query_technical_database(query: str) -> dict:
         "sections": [{"category": "Search Results", "content": "\n".join(results)}]
     }
 
-def get_personnel_file(target_mention: str, user_id: str) -> dict:
+def get_personnel_file(target_mention: str, user_id: str, is_chinese: bool = False) -> dict:
     """
     Retrieves and visualizes a personnel file card.
     """
     from .permissions import get_user_profile
     from .quota_manager import get_quota_manager
     from . import visual_core
+    from PIL import Image
+    import httpx
+    import io
     
     # 1. Resolve Target ID
     target_id = str(user_id) # Default to self
@@ -503,12 +506,24 @@ def get_personnel_file(target_mention: str, user_id: str) -> dict:
         "user_id": target_id,
         "quota_balance": balance,
         "biography": profile.get("biography", ""),
-        "restricted": False # TODO: check restricted status
+        "restricted": False, # TODO: check restricted status
+        "avatar": None
     }
     
-    # 5. Render Image
+    # 5. Fetch Avatar (OneBot/QQ style)
     try:
-        img_io = visual_core.render_personnel_file(data)
+        avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(avatar_url)
+            if resp.status_code == 200:
+                avatar_bytes = io.BytesIO(resp.content)
+                data["avatar"] = Image.open(avatar_bytes).convert("RGBA")
+    except Exception as ae:
+        logger.warning(f"Failed to fetch avatar for {target_id}: {ae}")
+
+    # 6. Render Image
+    try:
+        img_io = visual_core.render_personnel_file(data, is_chinese=is_chinese)
         return {
             "ok": True,
             "message": f"正在显示人员档案: {target_id}",

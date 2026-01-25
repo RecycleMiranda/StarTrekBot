@@ -100,12 +100,12 @@ class TemplateRenderer:
             self.draw.text((x, y), line, font=font, fill=fill)
             y += font.size + spacing
 
-    def render_personnel(self, data: Dict[str, Any]):
+    def render_personnel(self, data: Dict[str, Any], is_chinese: bool = False):
         # --- RECALIBRATED COORDINATES FOR 2000x1200 CANVAS ---
         
         # 1. Avatar Section (Bracket Alignment)
         avatar_size = 380 
-        avatar_x, avatar_y = 480, 210  
+        avatar_x, avatar_y = 335, 210  
         
         avatar_img = data.get("avatar") 
         if avatar_img:
@@ -114,32 +114,50 @@ class TemplateRenderer:
                 self.img.paste(avatar_img, (avatar_x, avatar_y))
         else:
             self.draw.rectangle([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill=(15, 20, 35))
-            self.draw.text((avatar_x + 90, avatar_y + 160), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
+            # Center "NO SIGNAL" in the box
+            self.draw.text((avatar_x + 95, avatar_y + 160), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # 2. Data Section (Shifted to clear vertical ornaments)
-        data_x = 520 
+        # 2. Data Section (Enforce strict two-column layout)
+        label_x = 330 
+        value_x = 830
         data_y = 670 
         line_h = 80 
         
+        # Translation Map for Values
+        rank_zh = {
+            "Admiral": "上将", "Captain": "上校", "Commander": "中校", 
+            "Lt. Commander": "少校", "Lieutenant": "上尉", "Lieutenant J.G.": "中尉",
+            "Ensign": "少尉", "Crewman": "船员", "Civilian": "平民"
+        }
+        
+        rank = data.get("rank", "Ensign")
+        if is_chinese:
+            rank = f"{rank} / {rank_zh.get(rank, '未知')}"
+            
         fields = [
-            ("NAME / 姓名", data.get("name", "Unknown")),
-            ("RANK / 军衔", data.get("rank", "Ensign")),
-            ("DEPT / 部门", data.get("department", "Operations")),
-            ("QUOTA / 配额", f"{data.get('quota_balance', 0)} CREDITS"),
-            ("ACCESS / 权限", f"LEVEL {data.get('clearance', 1)}"),
+            ("NAME / 姓名" if is_chinese else "NAME", data.get("name", "Unknown")),
+            ("RANK / 军衔" if is_chinese else "RANK", rank),
+            ("DEPT / 部门" if is_chinese else "DEPT", "SECTION_31" if data.get("department") == "SECTION_31" else ("OPERATIONS / 行勤" if is_chinese else "OPERATIONS")),
+            ("QUOTA / 配额" if is_chinese else "QUOTA", f"{data.get('quota_balance', 0)} CREDITS"),
+            ("ACCESS / 权限" if is_chinese else "ACCESS", f"LEVEL {data.get('clearance', 1)}"),
         ]
         
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
-            self.draw.text((data_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
-            self.draw.text((data_x + 280, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
+            # Left Column: Label
+            self.draw.text((label_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
+            # Right Column: Value (Fixed X for perfect alignment)
+            self.draw.text((value_x, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
 
         # 3. Bio Section (Aligned with "BIO" Header on right)
         bio_x = 1180 
         bio_y = 350  
         bio_content = data.get("biography", "")
         if not bio_content:
-            bio_content = "FEDERATION PERSONNEL ARCHIVE STATUS: ACTIVE. NO ADDITIONAL BIOGRAPHICAL DATA UPLOADED."
+            default_bio = "FEDERATION PERSONNEL ARCHIVE STATUS: ACTIVE. NO ADDITIONAL BIOGRAPHICAL DATA UPLOADED."
+            if is_chinese:
+                default_bio = "联邦人事档案状态：活跃。未上传额外履历数据。"
+            bio_content = default_bio
             
         self.draw_text_wrapped(bio_content, bio_x, bio_y, 750, self.fonts.bio, TStyle.TEXT_WHITE)
 
@@ -152,11 +170,11 @@ class TemplateRenderer:
         out.seek(0)
         return out
 
-def render_personnel_file(data: Dict[str, Any]) -> io.BytesIO:
+def render_personnel_file(data: Dict[str, Any], is_chinese: bool = False) -> io.BytesIO:
     base_dir = os.path.dirname(__file__)
     template_path = os.path.join(base_dir, "assets", "personnel_template.png")
     tr = TemplateRenderer(template_path)
-    tr.render_personnel(data)
+    tr.render_personnel(data, is_chinese=is_chinese)
     return tr.save_to_bytes()
 
 def render_report(data: Dict, template_type: str = "default") -> io.BytesIO:

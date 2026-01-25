@@ -27,7 +27,7 @@ def _run_async(coro):
     finally:
         loop.close()
 
-def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str) -> dict:
+def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
     """Executes a ship tool with user context."""
     from . import tools
     try:
@@ -88,7 +88,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             return tools.abort_self_destruct(str(event.user_id), profile.get("clearance", 1), session_id)
             
         elif tool == "get_personnel_file":
-            return tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id))
+            return tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
             
         elif tool == "update_biography":
             return tools.update_biography(args.get("content", ""), str(event.user_id))
@@ -225,8 +225,9 @@ def handle_event(event: InternalEvent):
                 elif intent == "tool_call":
                     tool = result.get("tool")
                     args = result.get("args") or {}
-                    logger.info(f"[Dispatcher] Executing tool: {tool}({args})")
-                    tool_result = _execute_tool(tool, args, event, user_profile, session_id)
+                    is_chinese = result.get("is_chinese", False)
+                    logger.info(f"[Dispatcher] Executing tool: {tool}({args}) [Lang: {'ZH' if is_chinese else 'EN'}]")
+                    tool_result = _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
                     
                     if tool_result.get("ok"):
                         reply_text = tool_result.get("message") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"

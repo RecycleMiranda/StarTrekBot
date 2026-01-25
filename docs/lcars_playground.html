@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LCARS 2.0 Design Playground</title>
+    <style>
+        /* 
+           =========== 你的设计控制台 =========== 
+           修改这里的变量来调整设计！
+           保存文件后刷新浏览器即可预览。
+        */
+        :root {
+            /* 1. 颜色盘 */
+            --bg-color: #05070a;
+            /* 背景色 (深黑) */
+            --primary: #37a6d1;
+            /* 主色 (青) */
+            --secondary: #2a7193;
+            /* 次要颜色 (深青) */
+            --accent: #ff977b;
+            /* 强调色 (橙) */
+            --accent-active: #ff6753;
+            /* 激活/警报色 (红橙) */
+
+            --text-main: #dfe1e8;
+            /*主要文字色 */
+            --text-dim: #6d748c;
+            /* 次要文字色 */
+
+            --glass-bg: rgba(55, 166, 209, 0.15);
+            /* 内容区玻璃背景色 */
+
+            /* 2. 几何参数 */
+            --gap: 3px;
+            /* 积木之间的间隙 (Titan标准是3px) */
+            --radius-large: 60px;
+            /* 大弯角的半径 */
+            --radius-small: 15px;
+            /* 按钮/胶囊的半径 */
+            --border-width: 2px;
+            /* 边框线条的粗细 */
+
+            /* 3. 字体设置 */
+            font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: var(--text-main);
+        }
+
+        /* 整个卡片容器 */
+        .card-container {
+            width: 800px;
+            height: 500px;
+            position: relative;
+            display: grid;
+            grid-template-columns: 80px 1fr;
+            /* 左侧栏宽度 80px */
+            grid-template-rows: 60px 1fr 40px;
+            /* 顶部60px, 底部40px */
+            gap: var(--gap);
+        }
+
+        /* === 顶部区域 === */
+        .header-curve {
+            background: var(--primary);
+            border-top-left-radius: var(--radius-large);
+            border-bottom-left-radius: 0;
+            width: 100%;
+            height: 100%;
+            /* 把左下角切掉 */
+            mask: radial-gradient(circle at 0 100%, transparent var(--radius-large), white var(--radius-large));
+            -webkit-mask: radial-gradient(circle at bottom left, transparent var(--radius-large), black var(--radius-large));
+        }
+
+        .header-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--gap);
+        }
+
+        .header-title-bar {
+            background: var(--primary);
+            height: 100%;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            padding-left: 20px;
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--bg-color);
+            text-transform: uppercase;
+        }
+
+        .header-block {
+            width: 60px;
+            height: 100%;
+            background: var(--accent);
+        }
+
+        .header-block-sm {
+            width: 30px;
+            height: 100%;
+            background: var(--secondary);
+        }
+
+        /* === 左侧栏区域 === */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: var(--gap);
+        }
+
+        .sidebar-block {
+            width: 100%;
+            height: 100px;
+            background: var(--accent);
+        }
+
+        .sidebar-block-2 {
+            width: 100%;
+            height: 60px;
+            background: var(--primary);
+        }
+
+        .sidebar-block-3 {
+            width: 100%;
+            height: 80px;
+            background: var(--secondary);
+            flex-grow: 1;
+        }
+
+        /* 底部弯钩 */
+        .sidebar-bottom-curve {
+            width: 100%;
+            height: 80px;
+            background: var(--primary);
+            border-bottom-left-radius: var(--radius-large);
+        }
+
+        /* === 内容区域 === */
+        .content-area {
+            position: relative;
+            background: var(--glass-bg);
+            padding: 40px;
+
+            /* 支架边框逻辑 - 用伪元素画 */
+        }
+
+        /* 四个角的支架 */
+        .bracket {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: var(--border-width) solid var(--primary);
+            transition: all 0.3s;
+        }
+
+        .tl {
+            top: 0;
+            left: 0;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .tr {
+            top: 0;
+            right: 0;
+            border-left: none;
+            border-bottom: none;
+        }
+
+        .bl {
+            bottom: 0;
+            left: 0;
+            border-right: none;
+            border-top: none;
+        }
+
+        .br {
+            bottom: 0;
+            right: 0;
+            border-left: none;
+            border-top: none;
+        }
+
+        /* 内容文字 */
+        .data-row {
+            display: flex;
+            margin-bottom: 25px;
+            align-items: baseline;
+            border-bottom: 1px solid rgba(55, 166, 209, 0.2);
+            padding-bottom: 5px;
+        }
+
+        .data-label {
+            width: 120px;
+            color: var(--primary);
+            font-size: 18px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .data-value {
+            color: var(--text-main);
+            font-size: 24px;
+            font-family: inherit;
+        }
+
+        /* === 底部区域 === */
+        .footer {
+            grid-column: 2 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .indicator-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .active-pill {
+            background: var(--primary);
+            padding: 5px 20px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: var(--bg-color);
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card-container">
+        <!-- 第1行：Header -->
+        <div class="header-curve"></div> <!-- 左上角弯管 -->
+        <div class="header-bar">
+            <div class="header-title-bar">Personnel File</div>
+            <div class="header-block"></div>
+            <div class="header-block-sm"></div>
+            <div class="header-block-sm"></div>
+        </div>
+
+        <!-- 第2行：侧边栏 + 内容 -->
+        <div class="sidebar">
+            <div class="sidebar-block"></div>
+            <div class="sidebar-block-2"></div>
+            <div class="sidebar-block-3"></div>
+            <div class="sidebar-bottom-curve"></div>
+        </div>
+
+        <div class="content-area">
+            <!-- 支架装饰 -->
+            <div class="bracket tl"></div>
+            <div class="bracket tr"></div>
+            <div class="bracket bl"></div>
+            <div class="bracket br"></div>
+
+            <!-- 数据行 -->
+            <div class="data-row">
+                <div class="data-label">姓名 / NAME</div>
+                <div class="data-value">ZHANG MIRANDA</div>
+            </div>
+            <div class="data-row">
+                <div class="data-label">军衔 / RANK</div>
+                <div class="data-value">ADMIRAL</div>
+            </div>
+            <div class="data-row">
+                <div class="data-label">部门 / DEPT</div>
+                <div class="data-value">SECTION 31</div>
+            </div>
+            <div class="data-row">
+                <div class="data-label">权限 / ACCESS</div>
+                <div class="data-value">LEVEL 10 ALPHA</div>
+            </div>
+        </div>
+
+        <!-- 第3行：Footer -->
+        <div></div> <!-- 左侧留空 -->
+        <div class="footer">
+            <div class="active-pill">SYSTEM ONLINE</div>
+            <span>LCARS 2.4</span>
+            <div class="indicator-dot" style="background:var(--accent)"></div>
+            <div class="indicator-dot" style="background:var(--primary)"></div>
+            <div class="indicator-dot" style="background:var(--secondary)"></div>
+        </div>
+    </div>
+
+</body>
+
+</html>

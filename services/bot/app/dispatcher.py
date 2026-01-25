@@ -90,6 +90,9 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         elif tool == "get_personnel_file":
             return tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id))
             
+        elif tool == "update_biography":
+            return tools.update_biography(args.get("content", ""), str(event.user_id))
+            
         return {"ok": False, "error": f"unknown_tool: {tool}"}
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")

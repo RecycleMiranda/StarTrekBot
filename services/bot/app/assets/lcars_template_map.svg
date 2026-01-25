@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" style="background:#000">
+    <!-- Header Bar -->
+    <path d="M 50 20 L 400 20 L 400 60 L 50 60 Q 20 60 20 40 Q 20 20 50 20 Z" fill="#37A6D1" />
+    <rect x="410" y="20" width="80" height="40" fill="#FF977B" />
+    <rect x="500" y="20" width="40" height="40" fill="#2A7193" />
+    <rect x="550" y="20" width="400" height="40" fill="#37A6D1" />
+
+    <!-- Sidebar Complex (The "Elbow") -->
+    <!-- Top-left elbow connector -->
+    <path d="M 20 70 L 140 70 Q 170 70 170 100 L 170 500 L 130 500 L 130 110 Q 130 100 120 100 L 20 100 L 20 70" fill="#FF977B" />
+    
+    <!-- Sidebar blocks -->
+    <rect x="130" y="110" width="40" height="80" fill="#37A6D1" />
+    <rect x="130" y="200" width="40" height="60" fill="#2A7193" />
+    <rect x="130" y="270" width="40" height="120" fill="#FF977B" />
+    <rect x="130" y="400" width="40" height="60" fill="#37A6D1" />
+
+    <!-- Content Frame (Right side) -->
+    <!-- Top bracket -->
+    <path d="M 190 80 L 950 80 L 950 84 L 194 84 L 194 200 L 190 200 Z" fill="#67CAF0" /> 
+    <!-- Bottom bracket -->
+    <path d="M 190 520 L 950 520 L 950 516 L 194 516 L 194 400 L 190 400 Z" fill="#67CAF0" />
+
+    <!-- Glass Panel Background -->
+    <rect x="195" y="85" width="750" height="430" fill="rgba(55, 166, 209, 0.15)" />
+
+    <!-- Footer -->
+    <path d="M 130 510 L 300 510 Q 330 510 330 540 Q 330 570 300 570 L 20 570 L 20 530 L 110 530 Q 120 530 120 520 L 120 510" fill="#37A6D1" /> 
+    
+    <!-- Dots -->
+    <circle cx="950" cy="560" r="8" fill="#FF977B" />
+    <circle cx="930" cy="560" r="8" fill="#37A6D1" />
+    <circle cx="910" cy="560" r="8" fill="#37A6D1" />
+</svg>

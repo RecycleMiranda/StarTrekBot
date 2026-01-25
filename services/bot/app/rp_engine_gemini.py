@@ -177,6 +177,7 @@ SYSTEM_PROMPT = (
     "- If lifting a restriction, use tool: 'lift_user_restriction', args: {{\"target_mention\": \"@User\"}}.\n"
     "- If searching profile/rank/clearance of a user (e.g. 'Who am I?', 'Show profile', 'Check @User status'), use tool: 'get_personnel_file', args: {{\"target_mention\": \"@User\"}} (leave empty for self).\n"
     "- If updating a person's profile (rank, clearance, station, department), use tool: 'update_user_profile', args: {{\"target_mention\": \"@User\", \"field\": \"rank|clearance|station|department\", \"value\": \"...\"}}.\n"
+    "- If a user wants to update their personal biography (履历/简介), use tool: 'update_biography', args: {{\"content\": \"...\"}}.\n"
     "- TARGETING: When a command targets a person (e.g., 'Restrict @XXX', 'Set @XXX to Level 10'), extract the mention string exactly.\n"
     "DECISION LOGIC:\n"
     "1. **PRIORITIZE DIRECT ANSWER**: If simple (lore, status), answer in 1-2 sentences. Set needs_escalation: false.\n"
@@ -202,7 +203,6 @@ ESCALATION_PROMPT = (
 # Default models if not specified by triage
 DEFAULT_THINKING_MODEL = "gemini-2.0-flash" 
 
-
 async def generate_computer_reply(trigger_text: str, context: List[str], meta: Optional[Dict] = None) -> Dict:
     """
     Generates a Starship Computer style reply using Gemini.
@@ -219,80 +219,79 @@ async def generate_computer_reply(trigger_text: str, context: List[str], meta: O
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in trigger_text)
     
     try:
+        # Use AsyncClient via .aio to avoid "Task was destroyed but it is pending" errors
+        async with genai.Client(api_key=api_key, http_options={'timeout': TIMEOUT}).aio as client:
+            style_spec = _load_style_spec()
+            
+            # Add language enforcement to prompt
+            lang_instruction = "回复必须严格使用中文，并采用提供的术语表进行翻译。"
+            
+            # Prepare history string
+            history_str = ""
+            for turn in context:
+                author = turn.get("author", "Unknown")
+                history_str += f"[{author}]: {turn.get('content')}\n"
 
-        client = genai.Client(api_key=api_key)
-        style_spec = _load_style_spec()
-        
-        # Add language enforcement to prompt
-        lang_instruction = "回复必须严格使用中文，并采用提供的术语表进行翻译。"
-        
-        # Prepare history string
-        history_str = ""
-        for turn in context:
-            author = turn.get("author", "Unknown")
-            history_str += f"[{author}]: {turn.get('content')}\n"
+            # Metadata (ALAS & Quota)
+            user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)")
+            user_id = meta.get("user_id", "0")
+            # Extract rank from profile string for quota lookup
+            rank_match = re.search(r"Rank: (.*?),", user_profile_str)
+            rank = rank_match.group(1) if rank_match else "Ensign"
+            
+            qm = quota_manager.get_quota_manager()
+            balance = qm.get_balance(user_id, rank)
 
-        # Metadata (ALAS & Quota)
-        user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)")
-        user_id = meta.get("user_id", "0")
-        # Extract rank from profile string for quota lookup
-        rank_match = re.search(r"Rank: (.*?),", user_profile_str)
-        rank = rank_match.group(1) if rank_match else "Ensign"
-        
-        qm = quota_manager.get_quota_manager()
-        balance = qm.get_balance(user_id, rank)
-
-        prompt = (
-            f"System: {SYSTEM_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
-            f"Language: {lang_instruction}\n\n"
-            f"Conversation History:\n{history_str}\n\n"
-            f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
-            f"Respond accordingly based on the input, user's full ALAS profile, and replicator quota."
-        )
-
-        response = client.models.generate_content(
-            model=fast_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-                response_mime_type="application/json"
+            prompt = (
+                f"System: {SYSTEM_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
+                f"Language: {lang_instruction}\n\n"
+                f"Conversation History:\n{history_str}\n\n"
+                f"Current Input (by {context[-1].get('author') if context else 'Unknown'}): {trigger_text}\n\n"
+                f"Respond accordingly based on the input, user's full ALAS profile, and replicator quota."
             )
-        )
-        
-        if not response or not response.text:
-            return _fallback("empty_response")
-        
-        result = _parse_response(response.text)
-        result["model"] = fast_model
-        result["is_chinese"] = is_chinese
-        
-        # Triage Decision
-        needs_escalation = result.get("needs_escalation", False)
-        
-        if needs_escalation:
-            # The AI picked a model or we fall back
-            target_model = result.get("escalated_model") or DEFAULT_THINKING_MODEL
-            # Normalise model name just in case
-            if "thinking" in target_model.lower():
-                target_model = "gemini-2.0-flash-thinking-exp-01-21"
-            elif "pro" in target_model.lower():
-                target_model = "gemini-1.5-pro-latest"
-            else:
-                target_model = "gemini-2.0-flash"
-                
-            result["escalated_model"] = target_model
-            result["original_query"] = trigger_text
-            # Ensure the reply is just the "Working" message for Stage 1
-            working_msg = "处理中..." if is_chinese else "Working..."
-            result["reply"] = working_msg
-        
-        return result
+
+            response = await client.models.generate_content(
+                model=fast_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=MAX_TOKENS,
+                    temperature=TEMPERATURE,
+                    response_mime_type="application/json"
+                )
+            )
+            
+            if not response or not response.text:
+                return _fallback("empty_response")
+            
+            result = _parse_response(response.text)
+            result["model"] = fast_model
+            result["is_chinese"] = is_chinese
+            
+            # Triage Decision
+            needs_escalation = result.get("needs_escalation", False)
+            
+            if needs_escalation:
+                # The AI picked a model or we fall back
+                target_model = result.get("escalated_model") or DEFAULT_THINKING_MODEL
+                # Normalise model name just in case
+                if "thinking" in target_model.lower():
+                    target_model = "gemini-2.0-flash-thinking-exp-01-21"
+                elif "pro" in target_model.lower():
+                    target_model = "gemini-1.5-pro-latest"
+                else:
+                    target_model = "gemini-2.0-flash"
+                    
+                result["escalated_model"] = target_model
+                result["original_query"] = trigger_text
+                # Ensure the reply is just the "Working" message for Stage 1
+                working_msg = "处理中..." if is_chinese else "Working..."
+                result["reply"] = working_msg
+            
+            return result
 
     except Exception as e:
         logger.error(f"Gemini RP generation failed: {e}")
         return _fallback(str(e))
-
 
 async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Optional[str] = None, context: Optional[List[Dict]] = None, meta: Optional[Dict] = None) -> Dict:
     """
@@ -306,47 +305,33 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
         return _fallback("rp_disabled (missing api key)")
 
     try:
-        client = genai.Client(api_key=api_key)
-        
-        lang_instruction = "回复必须使用中文。使用星际迷航计算机风格。" if is_chinese else "Reply must be in English. Use Star Trek computer style."
-        
-        # Prepare history string
-        history_str = ""
-        for turn in context or []:
-            author = turn.get("author", "Unknown")
-            history_str += f"[{author}]: {turn.get('content')}\n"
+        async with genai.Client(api_key=api_key, http_options={'timeout': 60}).aio as client:
+            lang_instruction = "回复必须使用中文。使用星际迷航计算机风格。" if is_chinese else "Reply must be in English. Use Star Trek computer style."
+            
+            # Prepare history string
+            history_str = ""
+            for turn in context or []:
+                author = turn.get("author", "Unknown")
+                history_str += f"[{author}]: {turn.get('content')}\n"
 
-        # Metadata (ALAS & Quota)
-        user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)") if meta else "Unknown (Ensign/Operations/Level 1)"
-        user_id = meta.get("user_id", "0") if meta else "0"
-        rank_match = re.search(r"Rank: (.*?),", user_profile_str)
-        rank = rank_match.group(1) if rank_match else "Ensign"
-        
-        qm = quota_manager.get_quota_manager()
-        balance = qm.get_balance(user_id, rank)
+            # Metadata (ALAS & Quota)
+            user_profile_str = meta.get("user_profile", "Unknown (Ensign/Operations/Level 1)") if meta else "Unknown (Ensign/Operations/Level 1)"
+            user_id = meta.get("user_id", "0") if meta else "0"
+            rank_match = re.search(r"Rank: (.*?),", user_profile_str)
+            rank = rank_match.group(1) if rank_match else "Ensign"
+            
+            qm = quota_manager.get_quota_manager()
+            balance = qm.get_balance(user_id, rank)
 
-        prompt = (
-            f"System: {ESCALATION_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
-            f"Language: {lang_instruction}\n\n"
-            f"Conversation History:\n{history_str}\n\n"
-            f"Current User Query: {trigger_text}"
-        )
-
-        try:
-            response = client.models.generate_content(
-                model=final_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    max_output_tokens=1000,
-                    temperature=0.4,
-                    response_mime_type="application/json"
-                )
+            prompt = (
+                f"System: {ESCALATION_PROMPT.format(user_profile=user_profile_str, quota_balance=balance)}\n\n"
+                f"Language: {lang_instruction}\n\n"
+                f"Conversation History:\n{history_str}\n\n"
+                f"Current User Query: {trigger_text}"
             )
-        except Exception as e:
-            if "404" in str(e) or "not found" in str(e).lower():
-                logger.warning(f"Requested model {final_model} failed (404), falling back to gemini-2.0-flash")
-                final_model = "gemini-2.0-flash"
-                response = client.models.generate_content(
+
+            try:
+                response = await client.models.generate_content(
                     model=final_model,
                     contents=prompt,
                     config=types.GenerateContentConfig(
@@ -355,24 +340,34 @@ async def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_na
                         response_mime_type="application/json"
                     )
                 )
-            else:
-                raise e
-        
-        if not response or not response.text:
-            return _fallback("empty_response")
-        
-        logger.warning(f"[DEBUG] Escalation raw response ({final_model}): {response.text}")
-        result = _parse_response(response.text)
-        result["model"] = final_model
-        result["is_escalated"] = True
-        return result
+            except Exception as e:
+                if "404" in str(e) or "not found" in str(e).lower():
+                    logger.warning(f"Requested model {final_model} failed (404), falling back to gemini-2.0-flash")
+                    final_model = "gemini-2.0-flash"
+                    response = await client.models.generate_content(
+                        model=final_model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            max_output_tokens=1000,
+                            temperature=0.4,
+                            response_mime_type="application/json"
+                        )
+                    )
+                else:
+                    raise e
+            
+            if not response or not response.text:
+                return _fallback("empty_response")
+            
+            logger.warning(f"[DEBUG] Escalation raw response ({final_model}): {response.text}")
+            result = _parse_response(response.text)
+            result["model"] = final_model
+            result["is_escalated"] = True
+            return result
 
     except Exception as e:
         logger.error(f"Gemini escalation failed: {e}")
         return _fallback(str(e))
-
-
-
 
 def _parse_response(text: str) -> Dict:
     text = text.strip()
@@ -399,12 +394,11 @@ def _parse_response(text: str) -> Dict:
             tool = data.get("tool")
             args = data.get("args") or {}
             # Validation
-            # Validation
             allowed = ["status", "time", "calc", "replicate", "holodeck", "personal_log", 
                        "get_ship_schematic", "get_historical_archive", "query_technical_database",
                        "initiate_self_destruct", "authorize_sequence", "abort_self_destruct",
                        "lockdown_authority", "restrict_user", "lift_user_restriction", "update_user_profile",
-                       "get_personnel_file"]
+                       "get_personnel_file", "update_biography"]
             if tool not in allowed:
                 return _fallback("invalid_tool")
             return {

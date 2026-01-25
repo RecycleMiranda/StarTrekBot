@@ -47,6 +47,7 @@ class UserProfile(TypedDict):
     clearance: int
     station: str
     is_core_officer: bool
+    biography: str
 
 # LCARS Departments
 DEPARTMENTS = {
@@ -109,7 +110,8 @@ USER_PROFILES: Dict[str, UserProfile] = {
         "department": "SECTION_31",
         "clearance": 11,
         "station": "Command Center",
-        "is_core_officer": True
+        "is_core_officer": True,
+        "biography": "Senior Section 31 Agent. High-level operative in the 24th Century."
     }
 }
 
@@ -119,7 +121,8 @@ DEFAULT_PROFILE: UserProfile = {
     "department": "OPERATIONS",
     "clearance": 1,
     "station": "General Duty",
-    "is_core_officer": False
+    "is_core_officer": False,
+    "biography": ""
 }
 
 def resolve_station_from_title(title_text: str) -> Tuple[str, bool]:
@@ -178,13 +181,9 @@ def get_user_profile(user_id: str, nickname: Optional[str] = None, title: Option
         if is_core and clearance < 5:
             clearance = 5
             
-        profile = {
-            "name": nickname or "Unknown",
-            "rank": rank,
-            "department": "OPERATIONS", # Default department
-            "clearance": clearance,
             "station": station,
-            "is_core_officer": is_core
+            "is_core_officer": is_core,
+            "biography": ""
         }
     
     return profile

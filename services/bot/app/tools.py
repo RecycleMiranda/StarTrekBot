@@ -517,3 +517,15 @@ def get_personnel_file(target_mention: str, user_id: str) -> dict:
             "ok": False,
             "message": f"视觉渲染失败: {e}"
         }
+def update_biography(content: str, user_id: str) -> dict:
+    """
+    Updates the biography field in the user's personal profile.
+    """
+    from .permissions import update_user_profile_data
+    
+    update_user_profile_data(user_id, {"biography": content})
+    
+    return {
+        "ok": True,
+        "message": "COMMAND SUCCESSFUL: Personal biography updated in Starfleet Database."
+    }

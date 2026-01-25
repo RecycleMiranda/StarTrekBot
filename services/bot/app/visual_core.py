@@ -18,14 +18,14 @@ class TStyle:
 class FontLoader:
     def __init__(self):
         base_dir = os.path.dirname(__file__)
-        asset_font = os.path.join(base_dir, "assets", "font.ttf")
+        asset_font = os.path.join(base_dir, "assets", "NotoSansSC-Bold.otf")
+        shouxuan_font = os.path.join(base_dir, "assets", "shouxuan.ttf") # Path to be filled by user or existing file
         
         common_paths = [
+            shouxuan_font,
             asset_font,
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "/System/Library/Fonts/PingFang.ttc",
-            "/System/Library/Fonts/HelveticaNeue.ttc"
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc", # Serif fallback for SongTi
+            "/System/Library/Fonts/PingFang.ttc"
         ]
         
         font_path = None
@@ -36,12 +36,13 @@ class FontLoader:
                 
         if font_path:
             try:
-                self.title = ImageFont.truetype(font_path, 80)
-                self.header = ImageFont.truetype(font_path, 60)
-                self.label = ImageFont.truetype(font_path, 32)
-                self.data = ImageFont.truetype(font_path, 40)
-                self.bio = ImageFont.truetype(font_path, 36)
-                self.tiny = ImageFont.truetype(font_path, 20)
+                # Use bigger sizes for 3000px HD canvas
+                self.title = ImageFont.truetype(font_path, 120)
+                self.header = ImageFont.truetype(font_path, 90)
+                self.label = ImageFont.truetype(font_path, 48)
+                self.data = ImageFont.truetype(font_path, 60)
+                self.bio = ImageFont.truetype(font_path, 54)
+                self.tiny = ImageFont.truetype(font_path, 30)
             except: pass
             
         if not self.header:
@@ -50,14 +51,14 @@ class FontLoader:
 class TemplateRenderer:
     def __init__(self, template_path: str):
         self.template = Image.open(template_path).convert("RGBA")
-        # Base size for coordinate mapping: 2000 x 1200
-        self.canvas_w = 2000
-        self.canvas_h = 1200
+        # Increase resolution to 3000x1800 for high-fidelity output
+        self.canvas_w = 3000
+        self.canvas_h = 1800
         self.img = self.template.resize((self.canvas_w, self.canvas_h), Image.Resampling.LANCZOS)
         self.draw = ImageDraw.Draw(self.img)
         self.fonts = FontLoader()
 
-    def draw_text_wrapped(self, text, x, y, max_line_width, font, fill, spacing=10):
+    def draw_text_wrapped(self, text, x, y, max_line_width, font, fill, spacing=15):
         lines = []
         words = list(text) # For CJK, word-by-char is safer
         current_line = ""
@@ -77,31 +78,26 @@ class TemplateRenderer:
             y += font.size + spacing
 
     def render_personnel(self, data: Dict[str, Any]):
-        # --- 1. Top Areas (Avatar & Watermark) ---
-        # Watermark to confirm new engine is active
-        self.draw.text((1600, 50), "INTEGRATED DESIGN V2.1", font=self.fonts.tiny, fill=(100, 100, 150))
+        # Recalibrate coordinates for 3000x1800 based on visual feedback
+        # 1. REMOVED VERSION WATERMARK per user request
         
-        avatar_x, avatar_y = 485, 420
-        avatar_size = 370
+        # --- 1. Avatar Section (Inside the blue brackets) ---
+        avatar_x, avatar_y = 590, 750 
+        avatar_size = 580 
         
         avatar_img = data.get("avatar") 
         if avatar_img:
-            # Resize and paste
             if hasattr(avatar_img, 'resize'):
                 avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.Resampling.LANCZOS)
                 self.img.paste(avatar_img, (avatar_x, avatar_y))
         else:
-            # Placeholder color
             self.draw.rectangle([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill=(15, 20, 35))
-            self.draw.text((avatar_x + 90, avatar_y + 160), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
+            self.draw.text((avatar_x + 135, avatar_y + 240), "NO SIGNAL", font=self.fonts.label, fill=TStyle.TEXT_DIM)
 
-        # Second Frame: Rank Insignia or mirror?
-        # Let's leave it blank or put a decorative logo
-        
-        # --- 2. Data Section (Below Frames) ---
-        data_x = 450
-        data_y = 820
-        line_h = 70
+        # --- 2. Data Section (Below Avatar, avoid left vertical bar) ---
+        data_x = 940 
+        data_y = 1350 
+        line_h = 82 
         
         fields = [
             ("NAME / 姓名", data.get("name", "Unknown")),
@@ -114,25 +110,25 @@ class TemplateRenderer:
         for i, (label, val) in enumerate(fields):
             curr_y = data_y + i * line_h
             self.draw.text((data_x, curr_y), label, font=self.fonts.label, fill=TStyle.TEXT_ORANGE)
-            # Offset value
-            self.draw.text((data_x + 240, curr_y - 12), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
+            self.draw.text((data_x + 360, curr_y - 8), str(val).upper(), font=self.fonts.data, fill=TStyle.TEXT_WHITE)
 
-        # --- 3. Bio Section (Right Column) ---
-        # Template "BIO" is at x=2800 (5000 scale) -> x=1120 (2000 scale)
-        bio_x = 1150
-        bio_y = 360
+        # --- 3. Bio Section (Far right, under BIO header) ---
+        # Template BIO header is approx x=2500 in 3000px scale
+        bio_x = 2520 
+        bio_y = 580  
         bio_content = data.get("biography", "")
         if not bio_content:
             bio_content = "FEDERATION PERSONNEL ARCHIVE STATUS: ACTIVE. NO ADDITIONAL BIOGRAPHICAL DATA UPLOADED."
             
-        self.draw_text_wrapped(bio_content, bio_x, bio_y, 720, self.fonts.bio, TStyle.TEXT_WHITE)
+        self.draw_text_wrapped(bio_content, bio_x, bio_y, 420, self.fonts.bio, TStyle.TEXT_WHITE)
 
-        # --- 4. Extra Greebles ---
-        self.draw.text((1150, 1020), f"RECORD ID: {data.get('user_id', '0000')}-GAMMA", font=self.fonts.tiny, fill=TStyle.TEXT_DIM)
+        # --- 4. Record ID (Bottom Right Greeble) ---
+        self.draw.text((1650, 1530), f"RECORD ID: {data.get('user_id', '0000')}-GAMMA", font=self.fonts.tiny, fill=TStyle.TEXT_DIM)
 
     def save_to_bytes(self) -> io.BytesIO:
         out = io.BytesIO()
-        self.img.convert("RGB").save(out, format="JPEG", quality=92)
+        # SWITCH TO PNG FOR LOSSLESS QUALITY
+        self.img.save(out, format="PNG")
         out.seek(0)
         return out
 

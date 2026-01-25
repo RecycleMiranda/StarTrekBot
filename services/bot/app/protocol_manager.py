@@ -72,8 +72,14 @@ class ProtocolManager:
     def get_lexicon(self, category: str, default: str = "") -> str:
         return self._protocols.get("lexicon", {}).get(category, default)
 
-    def update_protocol(self, category: str, key: str, value: str) -> bool:
-        """Updates a protocol value and syncs to MD. BLOCKS IMMUTABLE OVERWRITES."""
+    def update_protocol(self, category: str, key: str, value: str, action: str = "set") -> bool:
+        """
+        Updates a protocol value with smart merge logic.
+        Actions:
+        - 'set': Replaces the entire value (default, for backwards compat).
+        - 'append': Adds the new value to the end of the existing value.
+        - 'remove': Removes the specified substring from the existing value.
+        """
         if category == "immutable_directives":
             logger.warning("ATTEMPT TO MODIFY IMMUTABLE DIRECTIVE BLOCKED.")
             return False
@@ -83,7 +89,27 @@ class ProtocolManager:
         if category not in self._protocols["system_prompts"]:
             self._protocols["system_prompts"][category] = {}
         
-        self._protocols["system_prompts"][category][key] = value
+        current_value = self._protocols["system_prompts"][category].get(key, "")
+        
+        if action == "append":
+            # Intelligently append, adding a separator if needed
+            if current_value:
+                new_value = current_value.rstrip() + " " + value.strip()
+            else:
+                new_value = value.strip()
+            logger.info(f"[ProtocolManager] Appending to {key}: '{value}'")
+        elif action == "remove":
+            # Remove the specified substring
+            new_value = current_value.replace(value, "").strip()
+            # Clean up double spaces
+            import re
+            new_value = re.sub(r'\s+', ' ', new_value).strip()
+            logger.info(f"[ProtocolManager] Removing from {key}: '{value}'")
+        else:  # action == "set" or unknown
+            new_value = value
+            logger.info(f"[ProtocolManager] Setting {key} to: '{value}'")
+        
+        self._protocols["system_prompts"][category][key] = new_value
         
         # Save JSON
         try:

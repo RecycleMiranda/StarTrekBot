@@ -99,6 +99,7 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             category = args.get("category", "rp_engine")
             key = args.get("key")
             value = args.get("value")
+            action = args.get("action", "set")  # Default to 'set' for backwards compat
             
             # Expanded Smart Mapping: Map arbitrary AI-hallucinated keys to standard keys
             if not key or value is None:
@@ -121,8 +122,24 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                             break
                     if found: break
             
-            # Final Safeguard: If we still don't have a key, we MUST NOT default to 'persona' 
-            # if that would overwrite good data with nothing.
+            # Action Detection: Infer intent from the value string if action wasn't explicit
+            if action == "set" and value:
+                value_lower = value.lower()
+                # Check for "add" or "append" signals
+                if any(sig in value_lower for sig in ["add ", "append ", "include ", "also ", "在末尾加", "添加"]):
+                    action = "append"
+                    # Strip the action word from the value
+                    for sig in ["add ", "append ", "include ", "also ", "在末尾加", "添加"]:
+                        value = value.replace(sig, "").strip()
+                    logger.info(f"[Dispatcher] Detected APPEND intent: {value}")
+                # Check for "remove" or "cancel" signals
+                elif any(sig in value_lower for sig in ["remove ", "cancel ", "delete ", "stop ", "取消", "删除", "不要"]):
+                    action = "remove"
+                    for sig in ["remove ", "cancel ", "delete ", "stop ", "取消", "删除", "不要"]:
+                        value = value.replace(sig, "").strip()
+                    logger.info(f"[Dispatcher] Detected REMOVE intent: {value}")
+            
+            # Final Safeguard: If we still don't have a key, reject.
             if not key:
                 return {"ok": False, "message": "Unable to determine which protocol key to update. Please specify 'key' and 'value'."}
 
@@ -131,7 +148,8 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 key,
                 value or "",
                 str(event.user_id),
-                profile.get("clearance", 1)
+                profile.get("clearance", 1),
+                action=action
             )
         else:
             return {"ok": False, "message": f"Unknown tool: {tool}", "error": "unknown_tool"}

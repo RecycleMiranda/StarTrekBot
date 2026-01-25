@@ -548,21 +548,24 @@ def update_biography(content: str, user_id: str) -> dict:
         "ok": True,
         "message": "COMMAND SUCCESSFUL: Personal biography updated in Starfleet Database."
     }
-def update_protocol(category: str, key: str, value: str, user_id: str, clearance: int = 1) -> dict:
+def update_protocol(category: str, key: str, value: str, user_id: str, clearance: int = 1, action: str = "set") -> dict:
     """
     Updates a system protocol or prompt. Requires Level 10+ clearance.
+    Actions: 'set' (overwrite), 'append' (add to existing), 'remove' (delete from existing).
     """
     if clearance < 10:
         return {"ok": False, "message": "Access denied. Level 10 clearance required for protocol modification."}
     
     from .protocol_manager import get_protocol_manager
     pm = get_protocol_manager()
-    success = pm.update_protocol(category, key, value)
+    success = pm.update_protocol(category, key, value, action=action)
+    
+    action_verb = {"set": "set", "append": "appended to", "remove": "removed from"}.get(action, "updated")
     
     if success:
         return {
             "ok": True,
-            "message": f"Protocol updated: {category}.{key}. Federation Standards updated.",
+            "message": f"Protocol {action_verb}: {category}.{key}. Federation Standards updated.",
             "result": "ACK"
         }
     else:

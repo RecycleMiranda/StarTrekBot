@@ -164,7 +164,8 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
                 args.get("silent", False), 
                 str(event.user_id), 
                 profile.get("clearance", 1), 
-                session_id
+                session_id,
+                language="zh" if is_chinese else "en"
             )
             
         elif tool == "authorize_self_destruct":
@@ -175,11 +176,53 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
             )
             
         elif tool == "activate_self_destruct":
-            result = tools.activate_self_destruct(
+            # Define callback for async notifications
+            async def notify_callback(sid, message):
+                sq = send_queue.SendQueue.get_instance()
+                # Need session key logic from main loop - simplified here assuming QQ group
+                session_key = f"{event.platform}:{event.group_id or event.user_id}"
+                await sq.enqueue_send(session_key, message, {
+                    "group_id": event.group_id,
+                    "user_id": event.user_id
+                })
+            
+            # Since _execute_tool is sync but activate is async in tools.py,
+            # we need to bridge this. However, tools.activate returns a coroutine.
+            # We must await it. But _execute_tool is currently synchronous.
+            # FIX: We will return the coroutine and let the caller handle it or
+            # use a helper to run it sync if needed.
+            # Actually, standard tools.py activate is async.
+            # Given _execute_tool is run via _run_async wrapper in `handle_event` (line 631), 
+            # we are inside an async context? No, line 631 is `_run_async(_execute_ai_logic...)`.
+            # `_execute_ai_logic` calls `future.result()` which blocks.
+            # This is complex. Let's look at `tools.py`.
+            # `activate_self_destruct` is defined as `async def`.
+            # We need to run it synchronously here or refactor.
+            # Simplest correct way: Use the same event loop or run_coroutine_threadsafe.
+            # For now, let's use a sync wrapper if possible, or just run it.
+            
+            # Re-check: _execute_tool is expected to return a dict.
+            # If we call an async function, we get a coroutine.
+            # We need to execute it.
+            import asyncio
+            
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+            # If we are already in a loop (which we are if called from async context),
+            # but _execute_tool is called from a thread pool executor?
+            # Dispatcher lines 415-422 show `future = _executor.submit(...)`.
+            # So we are in a separate thread! We can use asyncio.run() safely if it's a new loop.
+            
+            result = asyncio.run(tools.activate_self_destruct(
                 str(event.user_id), 
                 profile.get("clearance", 1), 
-                session_id
-            )
+                session_id,
+                notify_callback
+            ))
             
         # --- Cancel Flow ---
         elif tool == "request_cancel_self_destruct":

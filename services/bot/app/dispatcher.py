@@ -518,42 +518,19 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         return False
 
 
-def handle_event(event: InternalEvent):
+async def handle_event(event: InternalEvent):
     """
-    Dispatcher for internal events with group filtering.
+    Main entry point for processing incoming events.
     """
-    if not is_group_enabled(event.group_id):
+    logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
+    
+    # Session ID logic (Group ID takes precedence)
+    session_id = event.group_id if event.group_id else f"p_{event.user_id}"
+    
+    # Check whitelist
+    if not is_group_enabled(event.group_id or session_id if "group" in session_id else None):
         logger.info(f"[Dispatcher] Group {event.group_id} not in whitelist. Dropping event.")
         return False
-
-    logger.info(f"[Dispatcher] Handling Event: {event.model_dump_json(indent=2)}")
-    
-    # Skip empty messages
-    if not event.text or not event.text.strip():
-        logger.info("[Dispatcher] Empty message, skipping.")
-        return False
-    
-    # Build session ID
-    session_id = f"{event.platform}:{event.group_id or event.user_id}"
-    
-    # --- DIAGNOSTIC MODE INTERCEPT ---
-    if SESSION_MODES.get(session_id) == "diagnostic":
-        logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
-        
-        # Check for exit command
-        sender = event.raw.get("sender", {})
-        nickname = sender.get("card") or sender.get("nickname")
-        title = sender.get("title") # QQ Group Title
-
-        if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
-            # Route to exit_repair_mode
-            route_result = {"route": "computer", "confidence": 1.0}
-            from . import permissions
-            user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
-            # Create synthetic result for execution
-            _run_async(_execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode"))
-            return True
-        else:
         
     try:
         # Skip empty messages
@@ -572,7 +549,6 @@ def handle_event(event: InternalEvent):
 
             if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
                 # Route to exit_repair_mode
-                route_result = {"route": "computer", "confidence": 1.0}
                 from . import permissions
                 user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
                 # Create synthetic result for execution
@@ -582,8 +558,6 @@ def handle_event(event: InternalEvent):
                 # Force route to ask_about_code
                 from . import permissions
                 user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
-                # Use _execute_ai_logic but force the tool call
-                # Or better, construct a synthetic AI result to feed into the pipeline
                 await _execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text})
                 return True
         
@@ -596,8 +570,9 @@ def handle_event(event: InternalEvent):
             return False
             
         # Command Lockout Check
-        if is_command_locked(): # Assuming COMMAND_LOCKOUT_ACTIVE is replaced by is_command_locked()
+        if is_command_locked():
             # Only allow Level 8+ during lockout
+
             profile = get_user_profile(str(event.user_id), event.nickname, event.title)
             if profile.get("clearance", 1) < 8:
                 logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")

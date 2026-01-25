@@ -57,12 +57,12 @@ def _get_system_prompt() -> str:
     pm = get_protocol_manager()
     content = (
         "CORE DIRECTIVES (IMMUTABLE):\n" + pm.get_immutable() + "\n\n" +
-        "DYNAMIC PROTOCOLS (TUNABLE):\n" +
-        pm.get_prompt("rp_engine", "persona") + "\n" +
-        pm.get_prompt("rp_engine", "chinese_style") + "\n" +
-        pm.get_prompt("rp_engine", "security_protocols") + "\n" +
-        pm.get_prompt("rp_engine", "tools_guide") + "\n" +
-        pm.get_prompt("rp_engine", "decision_logic") + "\n\n" +
+        "BASE STYLE SPECIFICATION:\n" + _load_style_spec() + "\n\n" +
+        "DYNAMIC PROTOCOLS (TUNABLE - HIGH PRIORITY):\n" +
+        "IDENTITY: " + pm.get_prompt("rp_engine", "persona") + "\n" +
+        "REPLY STYLE/SUFFIX: " + pm.get_prompt("rp_engine", "chinese_style") + "\n" +
+        "SECURITY: " + pm.get_prompt("rp_engine", "security_protocols") + "\n" +
+        "DECISION LOGIC: " + pm.get_prompt("rp_engine", "decision_logic") + "\n\n" +
         "CURRENT SHIP STATUS:\n" +
         f"- Local Time: {datetime.datetime.now().strftime('%H:%M:%S')}\n" +
         f"- Date: {datetime.datetime.now().strftime('%Y-%m-%d')}\n" +
@@ -70,8 +70,10 @@ def _get_system_prompt() -> str:
         "- Stardate: 79069.1 (Calculated for 2026)\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?}\n\n" +
-        _load_style_spec() + "\n\n" +
-        get_lexicon_prompt()
+        "FINAL INSTRUCTION:\n" +
+        "You MUST strictly apply the 'REPLY STYLE/SUFFIX' rule from the DYNAMIC PROTOCOLS section to the 'reply' value in your JSON output. " +
+        "This rule overrides any conflicting formatting in the examples provided earlier.\n\n" +
+        "TECHNICAL LEXICON:\n" + get_lexicon_prompt()
     )
     return content
 

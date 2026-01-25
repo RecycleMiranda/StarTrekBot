@@ -103,6 +103,8 @@ def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, se
         "repair_mode": "enter_repair_mode",
         "diagnose": "enter_repair_mode",
         "diagnostic": "enter_repair_mode",
+        "activate_diagnostic_mode": "enter_repair_mode",
+        "enter_diagnostic_mode": "enter_repair_mode",
         "self_repair": "enter_repair_mode",
         "exit_repair": "exit_repair_mode",
         "end_repair": "exit_repair_mode",

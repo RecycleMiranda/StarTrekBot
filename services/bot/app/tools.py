@@ -409,3 +409,56 @@ def update_user_profile(target_mention: str, field: str, value: str, user_id: st
         "message": f"PERSONNEL RECORD UPDATED: User {target_id}, Field: {field}, New Value: {value}. Protocols refreshed.",
         "target_id": target_id
     }
+
+def query_technical_database(query: str) -> dict:
+    """
+    Queries the Star Trek Technical Knowledge Base (TNG & DS9 Manuals).
+    Searches clean text manuals and the unified glossary.
+    """
+    import os
+    
+    base_path = "/Users/wanghaozhe/Documents/GitHub/StarTrekBot"
+    files_to_search = [
+        os.path.join(base_path, "tng_manual_clean.txt"),
+        os.path.join(base_path, "ds9_manual_clean.txt"),
+        os.path.join("/Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7", "Star_Trek_Technical_Glossary.md")
+    ]
+    
+    results = []
+    query_lower = query.lower()
+    
+    for fpath in files_to_search:
+        if not os.path.exists(fpath):
+            continue
+        
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Find all occurrences with context
+                # Simple implementation: split by lines and find lines containing query
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if query_lower in line.lower():
+                        # Get 3 lines of context
+                        start = max(0, i - 2)
+                        end = min(len(lines), i + 3)
+                        snippet = "\n".join(lines[start:end])
+                        source = os.path.basename(fpath)
+                        results.append(f"Source: {source}\n{snippet}\n---")
+                        
+                        if len(results) >= 5: # Limit results
+                            break
+                if len(results) >= 5:
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to search {fpath}: {e}")
+            
+    if not results:
+        return {"ok": False, "message": f"Insufficient data found for query: '{query}' in technical database."}
+        
+    return {
+        "ok": True,
+        "message": "DATA RETRIEVED FROM TECHNICAL ARCHIVES:\n" + "\n".join(results),
+        "title": "TECHNICAL DATABASE QUERY RESULT",
+        "sections": [{"category": "Search Results", "content": "\n".join(results)}]
+    }

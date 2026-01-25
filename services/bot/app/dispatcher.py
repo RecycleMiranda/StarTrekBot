@@ -170,40 +170,39 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             )
             
         # --- Self-Destruct 3-Step Flow ---
-        elif tool == "initialize_self_destruct":
-            result = tools.initialize_self_destruct(
-                args.get("duration", 300), 
-                args.get("silent", False), 
-                str(event.user_id), 
-                profile.get("clearance", 1), 
-                session_id,
-                language="zh" if is_chinese else "en"
-            )
-            
-        elif tool == "authorize_self_destruct":
-            result = tools.authorize_self_destruct(
-                str(event.user_id), 
-                profile.get("clearance", 1), 
-                session_id
-            )
-            
-        elif tool == "activate_self_destruct":
+        elif tool in ["initialize_self_destruct", "activate_self_destruct"]:
             # Define callback for async notifications
             async def notify_callback(sid, message):
                 sq = send_queue.SendQueue.get_instance()
-                # Need session key logic from main loop - simplified here assuming QQ group
                 session_key = f"{event.platform}:{event.group_id or event.user_id}"
                 await sq.enqueue_send(session_key, message, {
                     "group_id": event.group_id,
                     "user_id": event.user_id
                 })
             
-            # Directly await the async tool on the main loop
-            result = await tools.activate_self_destruct(
+            if tool == "initialize_self_destruct":
+                result = await tools.initialize_self_destruct(
+                    args.get("duration", 300), 
+                    args.get("silent", False), 
+                    str(event.user_id), 
+                    profile.get("clearance", 1), 
+                    session_id,
+                    notify_callback,
+                    language="zh" if is_chinese else "en"
+                )
+            else: # activate_self_destruct
+                result = await tools.activate_self_destruct(
+                    str(event.user_id), 
+                    profile.get("clearance", 1), 
+                    session_id,
+                    notify_callback
+                )
+            
+        elif tool == "authorize_self_destruct":
+            result = tools.authorize_self_destruct(
                 str(event.user_id), 
                 profile.get("clearance", 1), 
-                session_id,
-                notify_callback
+                session_id
             )
             
         # --- Cancel Flow ---

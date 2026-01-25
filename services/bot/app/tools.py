@@ -267,20 +267,21 @@ def get_destruct_status(session_id: str) -> dict:
     return dm.get_status(session_id)
 
 
-def initialize_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str, language: str = "en") -> dict:
+async def initialize_self_destruct(seconds: int, silent: bool, user_id: str, clearance: int, session_id: str, notify_callback, language: str = "en") -> dict:
     """
-    Step 1: Initialize the self-destruct sequence.
-    Requires Level 9+. Creates a pending sequence awaiting authorization.
+    Step 2 (Version 1.8): Initialize and start the self-destruct countdown.
+    Requires Level 9+. This will only succeed if 3 unique signatures have been 
+    previously collected via 'authorize_self_destruct' (or if called by Level 11+).
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
-    return dm.initialize(session_id, user_id, clearance, duration=seconds, silent=silent, language=language)
+    return await dm.initialize(session_id, user_id, clearance, duration=seconds, silent=silent, language=language, notify_callback=notify_callback)
 
 
 def authorize_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
     """
-    Step 2: Add authorization signature to pending self-destruct.
-    Requires Level 9+. Minimum 3 unique authorizers needed.
+    Step 1 (Version 1.8): Record an authorization signature. 
+    Requires Level 8+. 3 unique signatures must be recorded BEFORE calling 'initialize'.
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
@@ -289,12 +290,11 @@ def authorize_self_destruct(user_id: str, clearance: int, session_id: str) -> di
 
 async def activate_self_destruct(user_id: str, clearance: int, session_id: str, notify_callback) -> dict:
     """
-    Step 3: Activate the countdown.
-    Requires Level 9+. Level 12 can bypass authorization step.
+    Alternate trigger for Step 2. In Version 1.8, 'initialize' handles activation.
     """
     from .self_destruct import get_destruct_manager
     dm = get_destruct_manager()
-    return await dm.activate(session_id, user_id, clearance, notify_callback)
+    return await dm.initialize(session_id, user_id, clearance, notify_callback=notify_callback)
 
 
 def request_cancel_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:

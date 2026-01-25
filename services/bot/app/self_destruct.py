@@ -30,20 +30,25 @@ class DestructState(Enum):
 class DestructSequence:
     """Represents a self-destruct sequence with full state tracking."""
     
-    MIN_CLEARANCE = 9
+    CLE_INIT = 9
+    CLE_AUTH = 8
+    CLE_ACTIVATE = 9
+    CLE_CANCEL = 9
+    CLE_AUTH_CANCEL = 11
+    
     MIN_AUTHORIZERS = 3
     AUTH_TIMEOUT_SECONDS = 300  # 5 minutes
-    DEFAULT_COUNTDOWN = 300  # 5 minutes (User requested increase from 60s)
+    DEFAULT_COUNTDOWN = 300  # 5 minutes
     
     # Translation Dictionary
     MESSAGES = {
         "zh": {
             "dup_auth_init": "重复授权：发起者无法自我授权。",
             "dup_auth_id": "重复授权：该身份已记录。",
-            "auth_complete": "授权完成：{count} 名军官已确认。等待激活指令。",
+            "auth_complete": "授权码集齐，输入最终授权码后确认自毁",
             "vouch_accepted": "授权已确认：还需要 {needed} 个签名。",
             "dup_cancel_auth": "重复授权：该取消请求的身份已记录。",
-            "cancel_auth_complete": "取消授权完成：{count} 名军官已确认。等待确认。",
+            "cancel_auth_complete": "授权码集齐，输入最终授权码后确认取消自毁",
             "cancel_vouch_accepted": "取消担保已接受：还需要 {needed} 个签名以授权取消。",
             "alert_prefix": "⚠️ 自毁警报：",
             "countdown": "自毁将在 {time_str} 后执行。",
@@ -59,9 +64,9 @@ class DestructSequence:
             "cancel_auth_complete": "CANCELLATION AUTHORIZED: {count} officers confirmed. Awaiting confirmation.",
             "cancel_vouch_accepted": "CANCEL VOUCH ACCEPTED: {needed} more signature(s) required to authorize cancellation.",
             "alert_prefix": "⚠️ AUTO-DESTRUCT ALERT: ",
-            "countdown": "Self-destruct in {seconds} seconds.",
-            "detonated": "💥 AUTO-DESTRUCT SEQUENCE COMPLETE. SHIP HAS BEEN DESTROYED.",
-            "cancelled": "Self-destruct countdown for {session_id} cancelled."
+            "countdown": "Self-destruct in {time_str}.",
+            "detonated": "AUTO-DESTRUCT SEQUENCE COMPLETE: REACTOR CORE BREACHED.",
+            "cancelled": "Self-destruct sequence cancelled."
         }
     }
 
@@ -87,12 +92,16 @@ class DestructSequence:
         minutes = seconds // 60
         secs = seconds % 60
         
-        if self.language and ("zh" in self.language.lower() or "cn" in self.language.lower()):
+        if self.language == "zh":
             if minutes > 0:
+                if secs == 0:
+                    return f"{minutes}分"
                 return f"{minutes}分{secs}秒"
             return f"{secs}秒"
         else:
             if minutes > 0:
+                if secs == 0:
+                    return f"{minutes}m"
                 return f"{minutes}m {secs}s"
             return f"{secs}s"
 
@@ -106,9 +115,6 @@ class DestructSequence:
     
     def add_authorizer(self, user_id: str) -> dict:
         """Add an authorizer to the sequence."""
-        if user_id == self.initiator_id:
-            return {"ok": False, "message": self._msg("dup_auth_init")}
-        
         if user_id in self.authorizers:
             return {"ok": False, "message": self._msg("dup_auth_id")}
         
@@ -186,9 +192,12 @@ class DestructSequence:
 class DestructManager:
     """Singleton manager for all self-destruct sequences."""
     _instance = None
+    OWNER_ID = "1993596624"  # From 1.8 script
     
     def __init__(self):
         self.sequences: Dict[str, DestructSequence] = {}
+        # Track authorizations per session BEFORE initialization
+        self.pending_authorizers: Dict[str, Set[str]] = {}
     
     @classmethod
     def get_instance(cls):
@@ -260,8 +269,8 @@ class DestructManager:
         }
 
     
-    def initialize(self, session_id: str, user_id: str, clearance: int, duration: int = 300, silent: bool = False, language: str = "en") -> dict:
-        """Step 1: Initialize the self-destruct sequence."""
+    async def initialize(self, session_id: str, user_id: str, clearance: int, duration: int = 300, silent: bool = False, language: str = "en", notify_callback: Callable = None) -> dict:
+        """Step 1 (Version 1.8): Initialize and start countdown if authorized."""
         session_id = str(session_id)
         user_id = str(user_id)
         
@@ -269,69 +278,109 @@ class DestructManager:
         
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Minimum Clearance Level {DestructSequence.MIN_CLEARANCE} required. Current: {clearance}.",
+                "denied": "ACCESS DENIED.",
                 "already_active": "SEQUENCE ALREADY ACTIVE: Current state is {state}.",
-                "init_success": f"AUTO-DESTRUCT INITIALIZED: {duration} second countdown pending. Awaiting authorization from {DestructSequence.MIN_AUTHORIZERS} senior officers."
+                "not_worthy": "ARE YOU WORTHY?",
+                "low_clearance": "INSUFFICIENT CLEARANCE.",
+                "auth_needed": "INSUFFICIENT AUTHORIZATION.",
+                "success": f"AUTO-DESTRUCT ACTIVATED: {{duration_str}} countdown pending. Detonation core primed."
             },
             "zh": {
-                "denied": f"拒绝访问：需要最低 {DestructSequence.MIN_CLEARANCE} 级权限。当前：{clearance}。",
+                "denied": "拒绝访问。",
                 "already_active": "程序已激活：当前状态为 {state}。",
-                "init_success": f"确认：自毁系统已初始化。{{duration_str}} 倒计时待命。等待 {DestructSequence.MIN_AUTHORIZERS} 名高级军官授权。"
+                "not_worthy": "你配吗？",
+                "low_clearance": "权限不足",
+                "auth_needed": "授权人数不足 拒绝访问",
+                "success": f"确认，自毁系统已启动。反应堆核心 {{duration_str}} 后破裂..."
             }
         }
         msg = msgs.get(lang_code, msgs["en"])
 
-        if clearance < DestructSequence.MIN_CLEARANCE:
-            return {"ok": False, "message": msg["denied"]}
-        
+        # Check existing sequence
         existing = self.get_sequence(session_id)
         if existing and existing.state != DestructState.IDLE:
             return {"ok": False, "message": msg["already_active"].format(state=existing.state.value)}
+
+        # Owner / Master bypass
+        is_owner = (user_id == self.OWNER_ID)
+        is_master = (clearance >= 11)
         
+        if not is_owner and not is_master:
+            if clearance < DestructSequence.CLE_INIT:
+                return {"ok": False, "message": msg["low_clearance"]}
+            
+            # Normal Level 9+ must have 3 authorizations
+            auths = self.pending_authorizers.get(session_id, set())
+            if len(auths) < DestructSequence.MIN_AUTHORIZERS:
+                return {"ok": False, "message": msg["auth_needed"]}
+
+        # Create and start immediately
         seq = DestructSequence(session_id, user_id, duration, silent, language=language)
         self.sequences[session_id] = seq
         
+        # Start countdown immediately if authorized/bypassed
+        seq.state = DestructState.ACTIVE
+        if notify_callback:
+            seq.countdown_task = asyncio.create_task(seq.run_countdown(notify_callback))
+        
         duration_str = seq._format_time(duration)
+        # Clear pending authorizers after starting
+        if session_id in self.pending_authorizers:
+            del self.pending_authorizers[session_id]
+            
         return {
             "ok": True,
             "state": seq.state.value,
-            "message": msg["init_success"].format(duration_str=duration_str)
+            "message": msg["success"].format(duration_str=duration_str)
         }
     
     def authorize(self, session_id: str, user_id: str, clearance: int) -> dict:
-        """Step 2: Add authorization signature."""
+        """Step 1b (Version 1.8): Store authorization before initialization."""
         session_id = str(session_id)
         user_id = str(user_id)
         
-        # We need check existing sequence to know language for error messages, 
-        # but if no sequence, default to EN or guess based on context? Default EN for bare errors.
         seq = self.get_sequence(session_id)
-        lang = seq.language if seq else "en"
+        lang = seq.language if seq else ("zh" if "zh" in str(session_id) else "en") # Fallback
         
         msgs = {
             "en": {
-                "ineligible": f"INELIGIBLE: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required to authorize.",
-                "no_seq": "NO PENDING SEQUENCE: Initialize self-destruct first.",
-                "invalid_state": "INVALID STATE: Sequence is in '{state}' state, not awaiting authorization."
+                "ineligible": f"INELIGIBLE: Clearance Level {DestructSequence.CLE_AUTH}+ required.",
+                "already_active": "SEQUENCE ACTIVE: Cannot authorize during active countdown.",
+                "dup": "DUPLICATE: You have already authorized.",
+                "complete": "AUTHORIZATION COMPLETE: Codes collected. Awaiting final authorization to initialize.",
+                "accepted": "AUTHORIZATION ACCEPTED: {needed} more signature(s) required."
             },
             "zh": {
-                "ineligible": f"无权操作：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限才能授权。",
-                "no_seq": "无待处理程序：请先初始化自毁程序。",
-                "invalid_state": "状态无效：程序处于“{state}”状态，并非等待授权中。"
+                "ineligible": f"无权操作：需要 {DestructSequence.CLE_AUTH} 级以上权限才能授权。",
+                "already_active": "无法完成：自毁系统已启动。",
+                "dup": "无法完成，你已授权",
+                "complete": "授权码集齐，输入最终授权码后确认自毁",
+                "accepted": "接受授权 还需{needed}人授权"
             }
         }
         msg = msgs.get(lang, msgs["en"])
         
-        if clearance < DestructSequence.MIN_CLEARANCE:
+        if clearance < DestructSequence.CLE_AUTH:
             return {"ok": False, "message": msg["ineligible"]}
         
-        if not seq:
-            return {"ok": False, "message": msg["no_seq"]}
+        if seq and seq.state == DestructState.ACTIVE:
+            return {"ok": False, "message": msg["already_active"]}
+            
+        if session_id not in self.pending_authorizers:
+            self.pending_authorizers[session_id] = set()
+            
+        auths = self.pending_authorizers[session_id]
+        if user_id in auths:
+            return {"ok": False, "message": msg["dup"]}
+            
+        auths.add(user_id)
+        count = len(auths)
         
-        if seq.state != DestructState.INITIALIZED:
-            return {"ok": False, "message": msg["invalid_state"].format(state=seq.state.value)}
-        
-        return seq.add_authorizer(user_id)
+        if count >= DestructSequence.MIN_AUTHORIZERS:
+            return {"ok": True, "message": msg["complete"]}
+            
+        needed = DestructSequence.MIN_AUTHORIZERS - count
+        return {"ok": True, "message": msg["accepted"].format(needed=needed)}
     
     async def activate(self, session_id: str, user_id: str, clearance: int, notify_callback: Callable) -> dict:
         """Step 3: Activate the countdown."""
@@ -343,13 +392,13 @@ class DestructManager:
             
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required.",
+                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.CLE_ACTIVATE}+ required.",
                 "no_seq": "NO PENDING SEQUENCE: Initialize self-destruct first.",
                 "cannot_active": "CANNOT ACTIVATE: Sequence not authorized. Current state: {state}.",
-                "success": "⚠️ AUTO-DESTRUCT ACTIVATED: Detonation in {seconds} seconds. Abandon ship."
+                "success": f"⚠️ AUTO-DESTRUCT ACTIVATED: Detonation in {{time_str}}. Abandon ship."
             },
             "zh": {
-                "denied": f"拒绝访问：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
+                "denied": f"拒绝访问：需要 {DestructSequence.CLE_ACTIVATE} 级以上权限。",
                 "no_seq": "无法完成：请先初始化自毁程序。",
                 "cannot_active": "无法激活：程序未授权。当前状态：{state}。",
                 "success": f"⚠️ 启动自毁系统。解除反物质储罐约束力场。过载反应堆核心。警告：自毁系统已启动，{{time_str}} 后执行。"
@@ -357,7 +406,7 @@ class DestructManager:
         }
         msg = msgs.get(lang, msgs["en"])
         
-        if clearance < DestructSequence.MIN_CLEARANCE:
+        if clearance < DestructSequence.CLE_ACTIVATE:
             return {"ok": False, "message": msg["denied"]}
         
         if not seq:
@@ -391,19 +440,19 @@ class DestructManager:
         
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required.",
+                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.CLE_CANCEL}+ required.",
                 "no_active": "NO ACTIVE SEQUENCE: Nothing to cancel.",
                 "cancel_requested": "CANCEL REQUESTED: {needed} more senior officer signatures required to authorize cancellation."
             },
             "zh": {
-                "denied": f"拒绝访问：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
+                "denied": f"拒绝访问：需要 {DestructSequence.CLE_CANCEL} 级以上权限。",
                 "no_active": "无活动程序：无需取消。",
                 "cancel_requested": "已请求取消：还需要 {needed} 个高级军官签名以授权取消。"
             }
         }
         msg = msgs.get(lang, msgs["en"])
         
-        if clearance < DestructSequence.MIN_CLEARANCE:
+        if clearance < DestructSequence.CLE_CANCEL:
             return {"ok": False, "message": msg["denied"]}
         
         if not seq or seq.state == DestructState.IDLE:
@@ -434,19 +483,19 @@ class DestructManager:
         
         msgs = {
             "en": {
-                "ineligible": f"INELIGIBLE: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required.",
+                "ineligible": f"INELIGIBLE: Clearance Level {DestructSequence.CLE_AUTH_CANCEL}+ required.",
                 "no_seq": "NO PENDING SEQUENCE.",
                 "invalid_state": "INVALID STATE: Sequence is '{state}', not awaiting cancel authorization."
             },
             "zh": {
-                "ineligible": f"无权操作：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
+                "ineligible": f"无权操作：需要 {DestructSequence.CLE_AUTH_CANCEL} 级以上权限。",
                 "no_seq": "无待处理程序。",
                 "invalid_state": "状态无效：程序处于“{state}”，并非等待取消授权。"
             }
         }
         msg = msgs.get(lang, msgs["en"])
         
-        if clearance < DestructSequence.MIN_CLEARANCE:
+        if clearance < DestructSequence.CLE_AUTH_CANCEL:
             return {"ok": False, "message": msg["ineligible"]}
         
         if not seq:
@@ -466,19 +515,19 @@ class DestructManager:
         
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.MIN_CLEARANCE}+ required.",
+                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.CLE_CANCEL}+ required.",
                 "no_seq": "NO PENDING SEQUENCE.",
                 "cannot_confirm": "CANNOT CONFIRM: Cancel not yet authorized. Current state: '{state}'."
             },
             "zh": {
-                "denied": f"拒绝访问：需要 {DestructSequence.MIN_CLEARANCE} 级以上权限。",
+                "denied": f"拒绝访问：需要 {DestructSequence.CLE_CANCEL} 级以上权限。",
                 "no_seq": "无待处理程序。",
                 "cannot_confirm": "无法确认：取消尚未获得授权。当前状态：“{state}”。"
             }
         }
-        msg = msgs.get(lang, msgs["en"])
+        msg = msgs.get(lang.lower(), msgs["en"])
         
-        if clearance < DestructSequence.MIN_CLEARANCE:
+        if clearance < DestructSequence.CLE_CANCEL:
             return {"ok": False, "message": msg["denied"]}
         
         if not seq:

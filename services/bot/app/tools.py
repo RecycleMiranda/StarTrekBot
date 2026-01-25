@@ -3,6 +3,7 @@ import datetime
 import ast
 import operator
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -501,6 +502,7 @@ def get_personnel_file(target_mention: str, user_id: str) -> dict:
         "is_core_officer": profile.get("is_core_officer", False),
         "user_id": target_id,
         "quota_balance": balance,
+        "biography": profile.get("biography", ""),
         "restricted": False # TODO: check restricted status
     }
     

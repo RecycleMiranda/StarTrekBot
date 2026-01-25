@@ -465,7 +465,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             args = result.get("args") or {}
             is_chinese = result.get("is_chinese", False)
             logger.info(f"[Dispatcher] Executing tool: {tool}({args}) [Lang: {'ZH' if is_chinese else 'EN'}]")
-            tool_result = _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
+            # Await the tool execution (it might be async)
+            tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
             
             if tool_result.get("ok"):
                 reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"

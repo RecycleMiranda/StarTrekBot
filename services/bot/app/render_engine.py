@@ -97,85 +97,90 @@ class LCARS_Renderer:
         content = item.get("content", "")
         img_raw = item.get("image_b64") or item.get("image_path")
         
-        # 1. Dynamic Framing Logic (Fixed with Middle-Stretch)
-        try:
-            with Image.open(self.frame_left).convert("RGBA") as f_l, \
-                 Image.open(self.frame_right).convert("RGBA") as f_r:
-                
-                # Scale caps to match item height
-                scale_h = max_h / f_l.height
-                lw = int(f_l.width * scale_h)
-                rw = int(f_r.width * scale_h)
-                
-                f_l_s = f_l.resize((lw, max_h), Image.Resampling.LANCZOS)
-                f_r_s = f_r.resize((rw, max_h), Image.Resampling.LANCZOS)
-                
-                # Draw Left and Right Caps
-                canvas.alpha_composite(f_l_s, pos)
-                canvas.alpha_composite(f_r_s, (pos[0] + max_w - rw, pos[1]))
-                
-                # Fill the middle by stretching a slice
-                # We take a 4px slice from the right edge of the left cap (after scaling)
-                middle_w = max_w - lw - rw
-                if middle_w > 0:
-                    mid_slice = f_l_s.crop((lw - 5, 0, lw - 1, max_h)) # Take a slice from the vertical bar part
-                    mid_body = mid_slice.resize((middle_w, max_h), Image.Resampling.NEAREST)
-                    canvas.alpha_composite(mid_body, (pos[0] + lw, pos[1]))
-                
-        except Exception as e:
-            logger.warning(f"Frame rendering failed: {e}")
-
-        # 2. Image Overlay (if exists)
+        # 1. Image Attempt Logic
+        image_to_draw = None
         if img_raw:
             try:
                 if item.get("image_b64"):
-                    img = Image.open(BytesIO(base64.b64decode(item["image_b64"]))).convert("RGBA")
-                else:
-                    img = Image.open(img_raw).convert("RGBA")
-                
-                # Fit image into the center of the frame
-                target_w = max_w - 100
-                target_h = max_h - 160
-                img.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                
-                ix = pos[0] + (max_w - img.width) // 2
-                iy = pos[1] + (max_h - img.height) // 2 + 20
-                canvas.alpha_composite(img, (ix, iy))
+                    image_to_draw = Image.open(BytesIO(base64.b64decode(item["image_b64"]))).convert("RGBA")
+                elif item.get("image_path") and os.path.exists(item["image_path"]):
+                    image_to_draw = Image.open(item["image_path"]).convert("RGBA")
             except Exception as e:
-                logger.warning(f"Image load failed for {item_id}: {e}")
+                logger.warning(f"Image load failed for {item_id}, falling back to text: {e}")
 
-        # 3. Text/Label Overlay - 精校坐标 (Fine-tuned coordinates)
+        # 2. Layout Selection
+        if image_to_draw:
+            # --- IMAGE MODE (With Brackets) ---
+            # Dynamic Framing (Preventing Overlap & Stretching)
+            try:
+                with Image.open(self.frame_left).convert("RGBA") as f_l, \
+                     Image.open(self.frame_right).convert("RGBA") as f_r:
+                    # Scale to match item height
+                    scale_h = max_h / f_l.height
+                    lw, rw = int(f_l.width * scale_h), int(f_r.width * scale_h)
+                    
+                    # CROP: Limit caps to avoid overlap if max_w is small
+                    # Also helps if the assets have huge empty areas
+                    max_cap_w = max_w // 4
+                    lw = min(lw, max_cap_w)
+                    rw = min(rw, max_cap_w)
+                    
+                    f_l_s = f_l.resize((int(f_l.width * scale_h), max_h), Image.Resampling.LANCZOS).crop((f_l.width * scale_h - lw, 0, f_l.width * scale_h, max_h))
+                    f_r_s = f_r.resize((int(f_r.width * scale_h), max_h), Image.Resampling.LANCZOS).crop((0, 0, rw, max_h))
+                    
+                    # Draw caps at the extreme edges of max_w
+                    canvas.alpha_composite(f_l_s, pos)
+                    canvas.alpha_composite(f_r_s, (pos[0] + max_w - rw, pos[1]))
+                    
+                    # Stretch middle
+                    middle_w = max_w - lw - rw
+                    if middle_w > 0:
+                        # Use a slice from the left cap's vertical section
+                        mid_slice = f_l_s.crop((lw - 5, 0, lw - 1, max_h))
+                        mid_body = mid_slice.resize((middle_w, max_h), Image.Resampling.NEAREST)
+                        canvas.alpha_composite(mid_body, (pos[0] + lw, pos[1]))
+            except Exception as e:
+                logger.warning(f"Framing failed: {e}")
+
+            # Draw Image
+            target_w, target_h = max_w - 100, max_h - 160
+            image_to_draw.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+            ix = pos[0] + (max_w - image_to_draw.width) // 2
+            iy = pos[1] + (max_h - image_to_draw.height) // 2 + 20
+            canvas.alpha_composite(image_to_draw, (ix, iy))
+        else:
+            # --- TEXT MODE (Clean Header, Full Width) ---
+            # Optional: Draw a subtle top/bottom bar instead of brackets
+            draw.line([(pos[0] + 40, pos[1] + 55), (pos[0] + max_w - 40, pos[1] + 55)], fill=(150, 150, 255, 100), width=2)
+            
+            # Content Rendering
+            margin_l, margin_t = 50, 90
+            text_y = pos[1] + margin_t
+            wrap_w = max_w - margin_l - 40
+            for line in self._wrap_text(content, f_c, wrap_w):
+                if text_y + 40 > pos[1] + max_h - 20: break
+                draw.text((pos[0] + margin_l, text_y), line, fill=(255, 255, 255, 255), font=f_c)
+                text_y += 42
+
+        # 3. Universal Labels
         label_y = pos[1] + 15
-        # ID Label (Top Left)
         draw.text((pos[0] + 45, label_y), item_id, fill=(255, 150, 0, 255), font=f_id)
-        # Title (Top Center)
         tw = f_id.getlength(title)
         draw.text((pos[0] + (max_w - tw) // 2, label_y), title, fill=(200, 200, 255, 255), font=f_id)
 
-        # 4. Content Overlay (Only for text blocks)
-        if not img_raw:
-            margin_l = 80
-            margin_t = 100
-            text_y = pos[1] + margin_t
-            wrap_w = max_w - margin_l - 60
-            for line in self._wrap_text(content, f_c, wrap_w):
-                if text_y + 40 > pos[1] + max_h - 30: break
-                draw.text((pos[0] + margin_l, text_y), line, fill=(255, 255, 255, 255), font=f_c)
-                text_y += 40
-
     def _wrap_text(self, text, font, max_width):
         lines = []
-        words = list(text) # Char wrap for Chinese
+        if not text: return []
+        # Support both Chinese and English wrapping
         current_line = ""
-        for char in words:
+        for char in text:
             test_line = current_line + char
-            w = font.getlength(test_line)
-            if w <= max_width:
+            if font.getlength(test_line) <= max_width:
                 current_line = test_line
             else:
-                lines.append(current_line)
+                if current_line: lines.append(current_line)
                 current_line = char
-        lines.append(current_line)
+        if current_line: lines.append(current_line)
         return lines
 
 _renderer = None

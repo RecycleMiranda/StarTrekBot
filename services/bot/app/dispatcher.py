@@ -398,6 +398,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         event.meta["image_b64"] = target_item["image_b64"]
                 else:
                     result = {"ok": False, "message": f"无法完成：未能在当前结果集中找到编号为 {target_id} 的条目。"}
+            
+        elif tool == "get_shield_status":
             from .ship_systems import get_ship_systems
             result = {"ok": True, "message": get_ship_systems().get_shield_status()}
             
@@ -689,9 +691,12 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
         # SUPPRESSION: If we have an image_b64 and it's a tool result (like a report), 
         # minimize the text part to avoid duplication with the visual content.
-        if image_b64 and intent.startswith("tool_res:"):
+        if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha")):
             # If it's a search result, the user already sees the data on the screen
             reply_text = "Accessing Federation Database... Data report displayed below."
+            logger.info(f"[Dispatcher] Redundant text suppressed for {intent}")
+        
+        logger.info(f"[Dispatcher] Final reply check (intent={intent}): {reply_text[:100]}...")
         sq = send_queue.SendQueue.get_instance()
         session_key = f"qq:{event.group_id or event.user_id}"
         

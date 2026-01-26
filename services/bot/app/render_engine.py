@@ -223,12 +223,14 @@ class LCARS_Renderer:
                 for sentence in sentences:
                     lines = self._wrap_text_clean(sentence, f_c, wrap_w)
                     needed_h = len(lines) * line_height
-                    if text_y + needed_h > pos[1] + h - 10: return 
+                    if text_y + needed_h > pos[1] + h - 10: return # Standard exit
                     
+                    # Stylize English/Chinese markers if present
                     for line in lines:
-                        draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_c)
+                        color = (180, 180, 255, 255) if "[EN]" in line else (255, 255, 255, 255)
+                        draw.text((pos[0] + 30, text_y), line, fill=color, font=f_c)
                         text_y += line_height
-                    text_y += 5 
+                    text_y += 3 
                 text_y += para_spacing # Gap between paragraphs
 
     def _split_sentences(self, text):

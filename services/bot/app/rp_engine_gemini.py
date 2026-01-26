@@ -196,30 +196,33 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         lang_instruction = "Output Language: Simplified Chinese (zh-CN)." if is_chinese else "Output Language: Federation Standard (English)."
         
         prompt = (
+            "NO CONVERSATIONAL FILLER: Start the output IMMEDIATELY with the technical content.\n"
             "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a comprehensive report.\n"
-            f"{lang_instruction}\n"
             f"{lang_instruction}\n"
             "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
             "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
-            "NO CONVERSATIONAL FILLER: Do NOT include phrases like 'Here is the information', 'As per your request', or any introductory/concluding remarks. Start the output IMMEDIATELY with the technical content.\n"
+            "BILINGUAL REQUIREMENT: Since the user is communicating in Chinese, produce a SYNCHRONIZED BILINGUAL report.\n"
+            "FORMAT: Present each technical point in English first, followed immediately by its professional Chinese translation.\n"
+            "Example:\n[EN] Crew complement: 430\n[ZH] 船员编制：430\n"
             "RELEVANCY CHECK: \n"
             "- If the record is IRRELEVANT to the user query, output: 'Insufficient data in current archives for specific query. Proceeding with general data match.'\n"
             "- If the record IS relevant, perform a deep synthesis to provide a detailed briefing.\n\n"
             f"USER QUERY: {query}\n\n"
             f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Technical Briefing - Start Immediately):"
+            "COMPUTER OUTPUT (Bilingual Synchronized Briefing - Start Immediately):"
         )
 
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=500,
+                max_output_tokens=2000,
                 temperature=0.3
             )
         )
         
-        return response.text.strip() if response.text else "Data analysis complete. (Empty synthesis)"
+        reply = response.text if response.text else "Subspace interference. Synthesis failed."
+        return _strip_filler(reply)
 
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
@@ -267,3 +270,28 @@ def _fallback(reason: str) -> Dict:
         "intent": "refuse",
         "reason": reason
     }
+
+def _strip_filler(text: str) -> str:
+    """Programmatically removes common conversational filler intros."""
+    import re
+    # List of common conversational intros to strip
+    patterns = [
+        r"^(Here's|Here is|Sure|Okay|OK|As requested|Based on the data),? (the|some|most)? (information|specs|details|data|technical brief|report)( you requested| about| for)?.*?:",
+        r"^I've (found|synthesized|analyzed) the technical details for.*?:",
+        r"^根据您(提供|查询)的数据.*?：",
+        r"^(好的|没问题|这是为您查询到的).*?：",
+        r"^下面是.*?的技术参数：",
+        r"^Accessing (Federation|Starfleet) Database.*?:"
+    ]
+    
+    lines = text.split('\n')
+    if not lines: return text
+    
+    # Check if first line matches any filler pattern
+    first_line = lines[0].strip()
+    for p in patterns:
+        if re.match(p, first_line, re.IGNORECASE):
+            logger.info(f"[NeuralEngine] Programmatically stripped AI filler: '{first_line}'")
+            return '\n'.join(lines[1:]).strip()
+    
+    return text.strip()

@@ -243,18 +243,23 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                             page_item["title"] = f"{page_item['title']} (RECORD {i+1})"
                         final_items.append(page_item)
 
+                # Define Items Per Page (ipp): 1 for single-topic deep briefs, 4 for list results
+                raw_count = len(raw_items)
+                ipp = 1 if raw_count == 1 else 4
+                
                 # Store in cache for pagination
                 SEARCH_RESULTS[session_id] = {
                     "items": final_items,
                     "query": args.get("query"),
                     "page": 1,
-                    "total_pages": (len(final_items) + 3) // 4
+                    "items_per_page": ipp,
+                    "total_pages": (len(final_items) + (ipp - 1)) // ipp
                 }
                 
                 # Render Page 1
-                img_b64 = renderer.render_report(final_items[:4], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
+                img_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
                 event.meta["image_b64"] = img_b64
-                logger.info(f"[Dispatcher] Visual report rendered for {tool} with {len(final_items)} total record-pages.")
+                logger.info(f"[Dispatcher] Visual report rendered for {tool} (ipp={ipp}) with {len(final_items)} total record-pages.")
             
         elif tool == "set_reminder":
             result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))
@@ -720,8 +725,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         # minimize the text part to avoid duplication with the visual content.
         if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha")):
             # If it's a search result, the user already sees the data on the screen
-            reply_text = "Accessing Federation Database... Data report displayed below."
-            logger.info(f"[Dispatcher] Redundant text suppressed for {intent}")
+            reply_text = "FEDERATION DATABASE ACCESS GRANTED // VISUAL REPORT ATTACHED"
+            logger.info(f"[Dispatcher] Redundant text suppressed with formal notification for {intent}")
         
         logger.info(f"[Dispatcher] Final reply check (intent={intent}): {reply_text[:100]}...")
         sq = send_queue.SendQueue.get_instance()

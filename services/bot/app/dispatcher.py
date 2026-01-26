@@ -66,6 +66,46 @@ SESSION_MODES = {}
 # Global search results cache (for pagination)
 SEARCH_RESULTS = {} # {session_id: {"items": [], "query": "", "page": 1}}
 
+def _prefetch_next_pages(session_id: str, is_chinese: bool):
+    """
+    Background worker to pre-render the next 1-2 pages of an article or search result.
+    Optimizes for sequential 'next_page' requests.
+    """
+    session_data = SEARCH_RESULTS.get(session_id)
+    if not session_data or not session_data.get("items"): return
+    
+    # Initialize pre_render_cache if not present
+    if "pre_render_cache" not in session_data:
+        session_data["pre_render_cache"] = {} # {page_num: image_b64}
+        
+    current_page = session_data.get("page", 1)
+    items = session_data.get("items", [])
+    total_pages = session_data.get("total_pages", 0)
+    mode = session_data.get("mode", "search")
+    
+    # Only pre-warm the next 2 pages to save resources
+    for next_p in [current_page + 1, current_page + 2]:
+        if 1 <= next_p <= total_pages and next_p not in session_data["pre_render_cache"]:
+            try:
+                from .render_engine import get_renderer
+                renderer = get_renderer()
+                
+                if mode == "article":
+                    # For articles, each 'item' in session_data["items"] is a pre-split sub-page
+                    page_items = [items[next_p - 1]]
+                else:
+                    # For standard search results, use ipp logic
+                    ipp = session_data.get("items_per_page", 4)
+                    start_idx = (next_p - 1) * ipp
+                    page_items = items[start_idx : start_idx + ipp]
+                
+                if page_items:
+                    img_b64 = renderer.render_report(page_items, page=next_p, total_pages=total_pages)
+                    session_data["pre_render_cache"][next_p] = img_b64
+                    logger.debug(f"[Dispatcher] Prefetched {mode} page {next_p} for session {session_id}")
+            except Exception as e:
+                logger.warning(f"[Dispatcher] Pre-render failed for page {next_p}: {e}")
+
 def _encode_image(image_path: str) -> Optional[str]:
     """Helper to read local image and encode to base64."""
     if not image_path or not os.path.exists(image_path):
@@ -213,10 +253,55 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             if tool == "query_knowledge_base":
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese)
             elif tool == "search_memory_alpha":
-                result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese)
+                result = tools.search_memory_alpha(args.get("query"), session_id, i_chinese=is_chinese)
             else:
-                result = tools.access_memory_alpha_direct(args.get("query"), session_id, is_chinese=is_chinese)
+                chunk_index = args.get("chunk_index", 0)
+                result = tools.access_memory_alpha_direct(args.get("query"), session_id, is_chinese=is_chinese, chunk_index=chunk_index)
             
+            # Universal Pre-rendering/Pagination state setup
+            if result.get("ok") and tool != "access_memory_alpha_direct":
+                # For search results, dispatcher logic usually sets SEARCH_RESULTS elsewhere or we set it here
+                if "items" in result:
+                    items = result["items"]
+                    ipp = 4
+                    total_p = (len(items) + ipp - 1) // ipp
+                    SEARCH_RESULTS[session_id] = {
+                        "mode": "search",
+                        "query": args.get("query"),
+                        "items": items,
+                        "page": 1,
+                        "total_pages": total_p,
+                        "items_per_page": ipp,
+                        "pre_render_cache": {}
+                    }
+                    # TRIGGER INITIAL PRE-WARM FOR SEARCH
+                    _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                
+                # Store and chunk article content for paging
+                if result.get("ok"):
+                    from .render_engine import get_renderer
+                    renderer = get_renderer()
+                    article_item = result.get("items", [])[0]
+                    # Split the network chunk into visible sub-pages
+                    sub_pages = renderer.split_content_to_pages(article_item)
+                    
+                    SEARCH_RESULTS[session_id] = {
+                        "mode": "article",
+                        "query": args.get("query"),
+                        "items": sub_pages,
+                        "page": 1,
+                        "total_pages": len(sub_pages),
+                        "chunk_index": result.get("chunk_index", 0),
+                        "total_chunks": result.get("total_chunks", 1),
+                        "has_more": result.get("has_more", False),
+                        "pre_render_cache": {} # Initialize cache
+                    }
+                    # Update result items to the first sub-page for current synthesis/reply
+                    result["items"] = [sub_pages[0]]
+                    
+                    # TRIGGER INITIAL PRE-WARM
+                    _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]
                 import httpx
@@ -368,24 +453,97 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             if not session_data:
                 result = {"ok": False, "message": "无法完成：当前未开启查询进程，请先通过‘查询数据库’开启搜索。"}
             else:
-                items = session_data["items"]
-                current_page = session_data["page"]
-                total_pages = session_data["total_pages"]
-                
-                new_page = current_page + 1 if tool == "next_page" else current_page - 1
-                if 1 <= new_page <= total_pages:
-                    SEARCH_RESULTS[session_id]["page"] = new_page
-                    ipp = session_data.get("items_per_page", 4)
-                    start_idx = (new_page - 1) * ipp
-                    end_idx = start_idx + ipp
+                if session_data.get("mode") == "article":
+                    # DUAL-TIER ARTICLE PAGING: Sub-pages (local) vs Chunks (network)
+                    current_page = session_data["page"]
+                    total_pages = session_data["total_pages"]
                     
-                    from .render_engine import get_renderer
-                    renderer = get_renderer()
-                    img_b64 = renderer.render_report(items[start_idx:end_idx], page=new_page, total_pages=total_pages)
-                    event.meta["image_b64"] = img_b64
-                    result = {"ok": True, "message": f"FEDERATION DATABASE ACCESS GRANTED // PAGE {new_page} OF {total_pages}"}
+                    new_page = current_page + 1 if tool == "next_page" else current_page - 1
+                    
+                    # 1. LOCAL SUB-PAGING (Flipping through rendered paragraphs)
+                    if 1 <= new_page <= total_pages:
+                        session_data["page"] = new_page
+                        
+                        # CHECK PRE-RENDER CACHE FIRST
+                        cache = session_data.get("pre_render_cache", {})
+                        if new_page in cache:
+                            logger.info(f"[Dispatcher] Cache hit for article page {new_page}. Instant display.")
+                            img_b64 = cache[new_page]
+                        else:
+                            items = [session_data["items"][new_page - 1]]
+                            from .render_engine import get_renderer
+                            renderer = get_renderer()
+                            img_b64 = renderer.render_report(items, page=new_page, total_pages=total_pages)
+                        
+                        event.meta["image_b64"] = img_b64
+                        result = {"ok": True, "message": f"FEDERATION DATABASE // ARTICLE PAGE {new_page} OF {total_pages}"}
+                        
+                        # TRIGGER NEXT PRE-WARM
+                        _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                    
+                    # 2. NETWORK CHUNK-PAGING (Fetching next 2000-word block)
+                    elif tool == "next_page" and (session_data.get("has_more") or session_data.get("chunk_index", 0) < session_data.get("total_chunks", 1) - 1):
+                        new_chunk = session_data.get("chunk_index", 0) + 1
+                        logger.info(f"[Dispatcher] Article boundary reached. Fetching Segment {new_chunk}...")
+                        
+                        # Note: we use _run_async to call the tool since we are in a sync dispatcher wrapper usually
+                        result = tools.access_memory_alpha_direct(session_data["query"], session_id, is_chinese=is_chinese, chunk_index=new_chunk)
+                        if result.get("ok"):
+                            article_item = result.get("items", [])[0]
+                            from .render_engine import get_renderer
+                            renderer = get_renderer()
+                            sub_pages = renderer.split_content_to_pages(article_item)
+                            
+                            session_data.update({
+                                "items": sub_pages,
+                                "page": 1,
+                                "total_pages": len(sub_pages),
+                                "chunk_index": result.get("chunk_index", 0),
+                                "total_chunks": result.get("total_chunks", 1),
+                                "has_more": result.get("has_more", False),
+                                "pre_render_cache": {} # Clear cache on new chunk
+                            })
+                            
+                            img_b64 = renderer.render_report([sub_pages[0]], page=1, total_pages=len(sub_pages))
+                            event.meta["image_b64"] = img_b64
+                            result = {"ok": True, "message": f"FEDERATION DATABASE // LOADING NEXT SEGMENT (CHUNK {new_chunk + 1})"}
+                            
+                            # TRIGGER PRE-WARM FOR NEW CHUNK
+                            _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                        else:
+                            result = {"ok": False, "message": "无法调阅后续分片：子空间通信干扰。"}
+                    else:
+                        result = {"ok": False, "message": "INSUFFICIENT DATA"}
                 else:
-                    result = {"ok": False, "message": "INSUFFICIENT DATA"}
+                    # STANDARD SEARCH LIST PAGING
+                    items = session_data["items"]
+                    current_page = session_data["page"]
+                    total_pages = session_data["total_pages"]
+                    
+                    new_page = current_page + 1 if tool == "next_page" else current_page - 1
+                    if 1 <= new_page <= total_pages:
+                        session_data["page"] = new_page
+                        
+                        # CHECK PRE-RENDER CACHE
+                        cache = session_data.get("pre_render_cache", {})
+                        if new_page in cache:
+                            logger.info(f"[Dispatcher] Cache hit for search page {new_page}.")
+                            img_b64 = cache[new_page]
+                        else:
+                            ipp = session_data.get("items_per_page", 4)
+                            start_idx = (new_page - 1) * ipp
+                            end_idx = start_idx + ipp
+                            from .render_engine import get_renderer
+                            renderer = get_renderer()
+                            img_b64 = renderer.render_report(items[start_idx:end_idx], page=new_page, total_pages=total_pages)
+                        
+                        event.meta["image_b64"] = img_b64
+                        result = {"ok": True, "message": f"FEDERATION DATABASE ACCESS GRANTED // PAGE {new_page} OF {total_pages}"}
+                        
+                        # TRIGGER NEXT PRE-WARM
+                        _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                    else:
+                        result = {"ok": False, "message": "INSUFFICIENT DATA"}
 
         elif tool == "show_details":
             target_id = args.get("id", "").upper()

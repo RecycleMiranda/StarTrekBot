@@ -402,7 +402,7 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
         logger.error(f"KB Query failed: {e}")
         return {"ok": False, "message": f"Archive query error: {e}"}
 
-def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -> dict:
+def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, max_words: int = 500, continuation_hint: str = None) -> dict:
     """
     Uses Google Search (via Gemini Grounding) to query Memory Alpha.
     Fallback for when local KB is insufficient.
@@ -414,7 +414,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
     
     config = ConfigManager.get_instance()
     api_key = config.get("gemini_api_key", "")
-    logger.info(f"[Tools] search_memory_alpha called. Query: {query}")
+    logger.info(f"[Tools] search_memory_alpha called. Query: {query}, MaxWords: {max_words}, Hint: {continuation_hint}")
     
     if not api_key:
          logger.warning("[Tools] External search offline: API Key missing")
@@ -425,19 +425,23 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         
         # Upgraded Search Prompt: Deep Factification & Archetype Protocol
         lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
+        
+        hint_text = f"\nCONTINUATION HINT: {continuation_hint}. USE THIS TO SKIP ALREADY FOUND ITEMS AND FOCUS ON REMAINING DATA." if continuation_hint else ""
+        
         # Domain Restriction: Strictly Memory Alpha
         search_prompt = (
-            f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {query}.\n"
+            f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {query}.{hint_text}\n"
             "TASK: Locate specific technical metrics, counts, and variables.\n"
             "ARCHETYPE PROTOCOL: ONLY apply if '{query}' is a broad, un-quantified technology. "
             "If '{query}' is a specific entity (e.g., 'Starfleet Command', 'Tal Shiar'), FOCUS EXCLUSIVELY ON THAT ENTITY. "
             "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
             "INSTRUCTIONS:\n"
             "1. Scan for primary entity definitions and historical metrics.\n"
-            "2. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
-            "3. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
-            f"4. Return a high-density technical summary (under 180 words),{lang_ext}.\n"
-            "5. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
+            f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions except name and registry for each item to maximize the count within the output buffer. Capacity is expanded up to {max_words} words.\n"
+            "3. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
+            "4. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
+            f"5. Return a high-density technical summary (standard: under 500 words, lists: up to {max_words} words),{lang_ext}.\n"
+            "6. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
         )
         
         # Enable Google Search Tool 
@@ -490,10 +494,11 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         logger.error(f"Memory Alpha search failed: {e}")
         return {"ok": False, "message": f"Subspace communication error: {e}"}
 
-def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = False) -> dict:
+def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = False, chunk_index: int = 0) -> dict:
     """
     Directly accesses Memory Alpha, bypassing summary logic.
     Returns VERBATIM translated content or a list of ambiguous targets.
+    Supports CHUNKED fetching for long articles.
     """
     import os
     import re
@@ -538,14 +543,15 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             google_search=types.GoogleSearch()
         )
         
-        # Prompt for navigation/fetching
+        # Prompt for navigation/fetching with CHUNKING support
         nav_prompt = (
             f"Navigate to memory-alpha.fandom.com and locate the entry for '{query}'.\n"
-            "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects? (e.g. 'Enterprise' -> NX-01, 1701, 1701-D).\n"
+            "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects?\n"
             "STEP 2: Output Logic:\n"
-            "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of the top 5 distinct page titles.\n"
-            "- IF UNIQUE MATCH: Output 'STATUS: FOUND' followed by the FULL RAW TEXT of the article (Intro + Specifications + History). Do not summarize.\n"
-            "  Also output 'IMAGE: [URL]' for the main infobox image.\n"
+            "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of titles.\n"
+            "- IF UNIQUE MATCH: Output 'STATUS: FOUND' followed by 'TOTAL_CHUNKS: [num]' and 'HAS_MORE: [TRUE/FALSE]'.\n"
+            f"- CHUNK PROTOCOL: Current request is for CHUNK {chunk_index} (index starts at 0). Each chunk should be ~2000-2500 words of VERBATIM text (Intro + Specs + History).\n"
+            "- IMAGE: Output 'IMAGE: [URL]' for the main infobox image (only on Chunk 0).\n"
         )
         
         response = client.models.generate_content(
@@ -564,22 +570,28 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             lines = raw_output.split('\n')
             candidates = [line.strip("- *") for line in lines if "STATUS" not in line and line.strip()]
             return {
-                "ok": False, # False to trigger 'manual selection' flow in dispatcher if we implemented it, or just text msg
+                "ok": False,
                 "status": "ambiguous",
                 "candidates": candidates[:5],
                 "message": f"Ambiguous query. Please specify:\n" + "\n".join([f"- {c}" for c in candidates[:5]])
             }
             
         elif "STATUS: FOUND" in raw_output:
-            # Extract Image
+            # Extract Metadata
             img_url = None
             img_match = re.search(r'IMAGE: (https?://[^ \n]+)', raw_output)
             if img_match:
                 img_url = img_match.group(1).rstrip('.)')
-                raw_output = raw_output.replace(img_match.group(0), "")
-                
-            # Clean "STATUS: FOUND"
-            content_body = raw_output.replace("STATUS: FOUND", "").strip()
+            
+            has_more = "HAS_MORE: TRUE" in raw_output.upper()
+            total_chunks_match = re.search(r'TOTAL_CHUNKS: (\d+)', raw_output)
+            total_chunks = int(total_chunks_match.group(1)) if total_chunks_match else 1
+            
+            # Clean content body
+            content_body = raw_output
+            for marker in ["STATUS: FOUND", "IMAGE:", "HAS_MORE:", "TOTAL_CHUNKS:", "CHUNK PROTOCOL:"]:
+                content_body = re.sub(f'{marker}.*', '', content_body)
+            content_body = content_body.strip()
             
             # Translate Verbatim
             engine = NeuralEngine() 
@@ -592,17 +604,21 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             return {
                 "ok": True,
                 "status": "content",
+                "has_more": has_more,
+                "total_chunks": total_chunks,
+                "chunk_index": chunk_index,
                 "items": [
                     {
                         "id": "1A",
                         "type": "hybrid",
                         "content": translated_content,
-                        "title": f"ARCHIVE: {query.upper()}",
-                        "image_url": img_url
+                        "title": f"RECORD: {query.upper()} (PART {chunk_index+1}/{total_chunks})",
+                        "image_url": img_url if chunk_index == 0 else None,
+                        "source": "MEMORY ALPHA"
                     }
                 ],
-                "message": f"MEMORY ALPHA ARCHIVE LINK ESTABLISHED.\nSubject: {query}",
-                "source": "Memory Alpha Direct"
+                "message": f"FEDERATION DATABASE RECORD: {query.upper()} (CHUNK {chunk_index+1}/{total_chunks})",
+                "source": "MEMORY ALPHA"
             }
         else:
             return {"ok": False, "message": "Unable to lock onto a valid Memory Alpha frequency. (No clear data found)"}

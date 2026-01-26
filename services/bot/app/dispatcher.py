@@ -67,6 +67,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
     """Execute a tool dynamically based on name and args. Async version."""
     from . import tools
     result = None
+    tool_name = tool # Capture original name for logic inference
     
     # Tool name aliasing - map AI shortcuts to actual function names
     tool_aliases = {
@@ -126,7 +127,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "lock_computer": "set_absolute_override",
         "unlock_computer": "set_absolute_override",
         "red_alert": "set_alert_status",
+        "activate_red_alert": "set_alert_status",
         "yellow_alert": "set_alert_status",
+        "activate_yellow_alert": "set_alert_status",
         "cancel_alert": "set_alert_status",
         "raise_shields": "toggle_shields",
         "lower_shields": "toggle_shields",

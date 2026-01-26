@@ -299,12 +299,15 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
     
     config = ConfigManager.get_instance()
     api_key = config.get("gemini_api_key", "")
+    logger.info(f"[Tools] search_memory_alpha called. Query: {query}")
     
     if not api_key:
+         logger.warning("[Tools] External search offline: API Key missing")
          return {"ok": False, "message": "External search offline (API Key missing)."}
          
     try:
         client = genai.Client(api_key=api_key)
+        logger.info("[Tools] GenAI client initialized for search.")
         
         # We use a separate model call to perform the search and reasoning
         search_prompt = f"Search Memory Alpha (Star Trek Wiki) for: {query}. Summarize the technical specifications or details."

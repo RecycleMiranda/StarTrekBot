@@ -439,7 +439,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
             "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
             "INSTRUCTIONS:\n"
             "1. Scan for primary entity definitions and historical metrics.\n"
-            f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions except name and registry for each item to maximize the count within the output buffer. Capacity is expanded up to {max_words} words.\n"
+            f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions, dates, and minor details. Only output the Name and Registry (if available) to maximize the count within the output buffer. Capacity is expanded up to {max_words} words.\n"
             "   - NOMENCLATURE: Use '[Name] class' format (e.g., 'Galaxy class'). DO NOT use hyphens '-' between Name and class.\n"
             "   - LANGUAGE: English is the PRIMARY language. Format entries as: [English Name] ([Chinese Name]) (e.g., 'Constitution class (宪法级)').\n"
             "3. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"

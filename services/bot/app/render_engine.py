@@ -78,13 +78,57 @@ class LCARS_Renderer:
         # AGGRESSIVE NORMALIZATION: Merge fragmented lines into paragraphs
         content = self._normalize_text_flow(content)
         
+        # GLOBAL HEADER EXTRACTION (Set Once, Persist Everywhere)
+        content_lines = content.split('\n')
+        extracted_en = None
+        extracted_zh = None
+        consumed_count = 0
+        
+        while content_lines and consumed_count < 3:
+            first_line = content_lines[0].strip()
+            if not first_line:
+                content_lines.pop(0)
+                continue
+                
+            is_header_like = len(first_line) < 60 and (not first_line.endswith(".") or first_line.endswith(":"))
+            cleaned = first_line.lower().replace(" ", "")
+            is_known_pattern = any(x in cleaned for x in ["list", "captain", "class", "starship", "列表", "级别", "舰长", "summary"])
+            
+            if is_header_like or is_known_pattern:
+                promoted = first_line.replace(":", "").replace("：", "").strip()
+                is_chinese = bool(re.search(r'[\u4e00-\u9fff]', promoted))
+                
+                if is_chinese and not extracted_zh:
+                    if not extracted_zh: extracted_zh = promoted
+                    content_lines.pop(0)
+                    consumed_count += 1
+                elif not is_chinese and not extracted_en:
+                    extracted_en = promoted
+                    content_lines.pop(0)
+                    consumed_count += 1
+                else:
+                    break
+            else:
+                break
+        
+        # Re-assemble content for splitting
+        content = '\n'.join(content_lines)
         paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
         
-        # COLUMNAR DETECTOR (Universal)
+        # Finalize Title
+        base_title = item.get("title", "TECHNICAL DATA STREAM")
+        if extracted_en:
+            combined_title = extracted_en
+            if extracted_zh:
+                combined_title += f"\n{extracted_zh}"
+        else:
+            combined_title = base_title
+
+        # COLUMNAR DETECTOR (Universal) - RELAXED
         avg_len = (sum(len(p) for p in paragraphs) / len(paragraphs)) if paragraphs else 0
-        if len(paragraphs) > 15 and avg_len < 45:
+        if len(paragraphs) > 15 and avg_len < 25: # Was 45 -> 25 (Prefer wider)
             num_cols = 3
-        elif len(paragraphs) > 8 and avg_len < 60:
+        elif len(paragraphs) > 8 and avg_len < 40: # Was 60 -> 40 (Prefer wider)
             num_cols = 2
         else:
             num_cols = 1
@@ -105,7 +149,7 @@ class LCARS_Renderer:
             if get_page_h(test_paras, num_cols) > max_h:
                 if current_page_paras:
                     pages.append({
-                        "title": item.get("title", "TECHNICAL DATA"),
+                        "title": combined_title,
                         "content": "\n".join(current_page_paras),
                         "image_b64": item.get("image_b64") if len(pages) == 0 else None,
                         "source": item.get("source", "UNKNOWN")
@@ -116,7 +160,7 @@ class LCARS_Renderer:
 
         if current_page_paras:
             pages.append({
-                "title": item.get("title", "TECHNICAL DATA"),
+                "title": combined_title,
                 "content": "\n".join(current_page_paras),
                 "image_b64": item.get("image_b64") if len(pages) == 0 else None,
                 "source": item.get("source", "UNKNOWN")
@@ -171,65 +215,14 @@ class LCARS_Renderer:
         
         content = item.get("content", "").strip()
         
-        # PHYSICAL TITLE STRIPPER (Critical Safety Net) & SUBTITLE PROMOTION
-        # Removes LLM-hallucinated headers like "Starfleet Starship Classes"
-        content_lines = content.split('\n')
-        # Aggressive Header Consumption Loop (Max 3 lines)
-        # Consumes lines that look like titles (short, no periods) to populate the main header
-        consumed_count = 0
-        title_en_set = False
-        title_zh_set = False
-        
-        while content_lines and consumed_count < 3:
-            first_line = content_lines[0].strip()
-            if not first_line: # Skip empty
-                content_lines.pop(0)
-                continue
-                
-            # Header Detection Heuristic: Short length, no ending period (unless it's a colon)
-            is_header_like = len(first_line) < 60 and (not first_line.endswith(".") or first_line.endswith(":"))
-            
-            # Special case: If it's the very first line and matches known patterns
-            cleaned = first_line.lower().replace(" ", "")
-            is_known_pattern = any(x in cleaned for x in ["list", "captain", "class", "starship", "列表", "级别", "舰长", "summary"])
-            
-            if is_header_like or is_known_pattern:
-                # Determine Language
-                promoted = first_line.replace(":", "").replace("：", "").strip()
-                is_chinese = bool(re.search(r'[\u4e00-\u9fff]', promoted))
-                
-                consumed = False
-                
-                if is_chinese and not title_zh_set:
-                     # Chinese -> Subtitle (Set Once)
-                     if not title_zh or "联邦" in title_zh: 
-                         title_zh = promoted
-                     title_zh_set = True
-                     consumed = True
-                     
-                elif not is_chinese and not title_en_set:
-                     # English -> Main Title (Set Once)
-                     title_en = promoted
-                     title_en_set = True
-                     consumed = True
-                
-                if consumed:
-                    content_lines.pop(0)
-                    consumed_count += 1
-                else:
-                    # If we found a header-like line but we already have that slot filled, 
-                    # it's likely body content (e.g. valid list item). STOP.
-                    break 
-            else:
-                break # Stop at first non-header line
-                
-        content = '\n'.join(content_lines).strip()
+        content = item.get("content", "").strip()
+        # Header consumption is now handled globally in split_content_to_pages
         
         content = self._normalize_text_flow(content)
 
         # RE-CALCULATE FONTS after potential promotion
         f_title_en = self.get_font(title_en, 80)
-        f_title_zh = self.get_font(title_zh, 32)
+        f_title_zh = self.get_font(title_zh, 48)
         f_id_large = self.get_font("ID", 36)
 
         img_b64 = item.get("image_b64")
@@ -241,7 +234,7 @@ class LCARS_Renderer:
         
         # Sub-title (Chinese) with color differentiation - Tucked under English
         if title_zh:
-            draw.text((pos[0] + 85, pos[1] + 68), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
+            draw.text((pos[0] + 85, pos[1] + 85), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
         # SOURCE BADGE (Verification Layer)
         source = item.get("source", "UNKNOWN")
@@ -250,7 +243,7 @@ class LCARS_Renderer:
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
         # Lower horizontal line to create absolute distance
-        line_y = pos[1] + 140
+        line_y = pos[1] + 155
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         
         if img_b64 and content:
@@ -267,7 +260,7 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 160 # Jump below massive header
+            text_y = pos[1] + 175 # Jump below massive header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -291,7 +284,7 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y_start = pos[1] + 160 
+            text_y_start = pos[1] + 175 
             
             # DYNAMIC FONT SELECTION & COLUMN DETECTION
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]

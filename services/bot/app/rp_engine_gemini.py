@@ -8,9 +8,9 @@ from google import genai
 from google.genai import types
 
 # Config is now handled via ConfigManager and dynamic lookups
-TIMEOUT = int(os.getenv("GEMINI_RP_TIMEOUT_SECONDS", "10"))
-MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "160"))
-TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.3"))
+TIMEOUT = int(os.getenv("GEMINI_RP_TIMEOUT_SECONDS", "15"))
+MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "1024"))
+TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.2"))
 
 from .config_manager import ConfigManager
 from . import quota_manager
@@ -245,7 +245,7 @@ ENTITY ANCHORING PROTOCOL (CRITICAL):
 - **Subject Locking**: The report title and all content MUST center on the user's current query entity. 
 - **Drift Prevention**: If the 'ROUND' data contains information about a different entity (e.g., from a previous session turn like 'Galaxy-class' when the current query is 'Starfleet Command'), you MUST DISCARD the irrelevant data. 
 - **Context Isolation**: Chat history is for conversation flow; `CUMULATIVE DATA/ACTION` is for technical simulation. The NEW query entity always overrides previous entities.
-- **Verification**: Before finalizing, ask: 'Is this content about [Current Query]?' If not, retry tool call or report insufficient data.
+- **Verification**: Perform a mental verification: 'Is this content about [Current Query]?' If not, retry tool call or report insufficient data. **CRITICAL: DO NOT output this question or its result to the user.**\n" +
 
 BILINGUAL HEADER PROTOCOL (CRITICAL):
 - **Formatting**: ALWAYS start the technical report with a bilingual header on the FIRST LINE.
@@ -422,13 +422,30 @@ class NeuralEngine:
 
 def _parse_response(text: str) -> Dict:
     text = text.strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1:
-        text = text[start:end+1]
+    
+    # AGGRESSIVE REPAIR: Handle conversational preamble/postscript and common truncation
+    def repair_json(raw: str) -> str:
+        # Find first { and last }
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1:
+            if end != -1 and end > start:
+                return raw[start:end+1]
+            else:
+                # TRUNCATION REPAIR: Try to close open braces if JSON is cut off
+                fragment = raw[start:]
+                # Check for open quotes
+                if fragment.count('"') % 2 != 0: fragment += '"'
+                # Check for open braces
+                open_braces = fragment.count('{') - fragment.count('}')
+                fragment += '}' * max(0, open_braces)
+                return fragment
+        return raw
+
+    prepared_text = repair_json(text)
     
     try:
-        data = json.loads(text, strict=False)
+        data = json.loads(prepared_text, strict=False)
         reply = data.get("reply", "Computer: Unable to comply.")
         intent = data.get("intent", "ack")
         
@@ -486,7 +503,9 @@ def strip_conversational_filler(text: str) -> str:
         r"(I hope this information is helpful.*?\.?|希望这些信息对您有所帮助.*?。?)",
         r"(If you have more questions.*?\.?|如果您还有其他问题.*?。?)",
         r"(As requested, here is.*?(:|\n))",
-        r"(Please let me know if you need.*?\.?|如果您需要.*?请告知。?)"
+        r"(Please let me know if you need.*?\.?|如果您需要.*?请告知。?)",
+        r"(Is this content about.*?(\?|\n))",
+        r"(I have verified that the content is about.*?(\.|\n))"
     ]
     
     for p in erasure_patterns:

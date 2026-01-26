@@ -224,48 +224,49 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y = pos[1] + 65 
+            text_y_start = pos[1] + 65 
             
-            # DYNAMIC FONT SELECTION (Inflation logic)
-            # Find the best font size between 24 and 34 that fits the height
+            # DYNAMIC FONT SELECTION & COLUMN DETECTION
+            paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+            
+            # Smart Columnar Protocol: Detect if we should use columns (Dense List Detection)
+            # Conditions: > 8 paragraphs and average length < 60 chars
+            is_dense_list = len(paragraphs) > 8 and (sum(len(p) for p in paragraphs) / len(paragraphs)) < 60
+            num_cols = 2 if is_dense_list else 1
+            col_w = (w - 80) // num_cols
+            
+            # Dynamic Font Inflation logic (Simplified for cols)
             best_size = FONT_SIZE # 24
             best_lh = LINE_HEIGHT # 28
             
-            for size in range(34, 23, -2):
-                lh = int(size * 1.2)
+            # Test sizes for best fit
+            for size in range(32, 23, -2):
+                lh = int(size * 1.25)
                 f_test = self.get_font(content, size)
-                # Test wrapping and height
-                paragraphs = content.split('\n')
-                total_h = 0
-                for p in paragraphs:
-                    if not p:
-                        total_h += PARA_SPACING
-                        continue
-                    lines = self._wrap_text_clean(p, f_test, w - 60)
-                    total_h += (len(lines) * lh) + PARA_SPACING
                 
-                if total_h <= (h - 90):
+                # Estimate height with columns
+                lines_per_col = (len(paragraphs) + num_cols - 1) // num_cols
+                est_h = (lines_per_col * lh) + (lines_per_col * PARA_SPACING // 2)
+                
+                if est_h <= (h - 100):
                     best_size = size
                     best_lh = lh
                     break
             
             f_final = self.get_font(content, best_size)
-            paragraphs = content.split('\n')
-            for para in paragraphs:
-                para = para.strip()
-                if not para:
-                    text_y += PARA_SPACING
-                    continue
+            
+            # Render across columns
+            for i, para in enumerate(paragraphs):
+                col_idx = i % num_cols
+                row_idx = i // num_cols
                 
-                lines = self._wrap_text_clean(para, f_final, w - 60)
-                if text_y + (len(lines) * best_lh) > pos[1] + h - 10: break
+                curr_x = pos[0] + 30 + (col_idx * (col_w + 50))
+                curr_y = text_y_start + (row_idx * (best_lh + PARA_SPACING // 2))
                 
-                for line in lines:
-                    color = self._get_color_for_text(line)
-                    draw.text((pos[0] + 30, text_y), line, fill=color, font=f_final)
-                    text_y += best_lh
+                if curr_y + best_lh > pos[1] + h - 10: break
                 
-                text_y += PARA_SPACING
+                color = self._get_color_for_text(para)
+                draw.text((curr_x, curr_y), para, fill=color, font=f_final)
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

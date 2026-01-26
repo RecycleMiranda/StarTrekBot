@@ -432,6 +432,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
         search_prompt = (
             f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {query}.{hint_text}\n"
             "TASK: Locate specific technical metrics, counts, and variables.\n"
+            "MANDATORY: You MUST start your output with '^^DATA_START^^' before the actual content.\n"
             "ARCHETYPE PROTOCOL: ONLY apply if '{query}' is a broad, un-quantified technology. "
             "If '{query}' is a specific entity (e.g., 'Starfleet Command', 'Tal Shiar'), FOCUS EXCLUSIVELY ON THAT ENTITY. "
             "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"

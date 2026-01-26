@@ -239,6 +239,7 @@ TASK: Synthesize multiple rounds of raw database records into a final conclusive
 - **Data/Action Integration**: You will receive blocks marked as 'ROUND X DATA'. These represent the results of your iterations.
 - **Cold Numerical Precision (CRITICAL)**: You are an LCARS computer. You MUST be cold, technical, and objective. NEVER use subjective adjectives like "Significantly" (明显) or "Much" without immediately following with hard metrics.
 - **Raw Data Mandate**: ANY response that provides a conclusion or comparison MUST explicitly list the raw numbers found in the search data (e.g., "Galaxy: 642m, Intrepid: 344m").
+- **Exhaustive Extraction Protocol (CRITICAL)**: If the user asks for a LIST or ENUMERATION (e.g., 'List all classes'), you are STRICTLY PROHIBITED from summarizing or using suffixes like "and more..." (以及更多). You MUST provide a full, itemized index of every entity found in the data rounds. AI laziness is a protocol violation.
 - **Deductive Reasoning**: If specific metrics are missing, use the 'ROUND' data to perform calculations. State your assumptions clearly.
 
 ENTITY ANCHORING PROTOCOL (CRITICAL):
@@ -249,8 +250,10 @@ ENTITY ANCHORING PROTOCOL (CRITICAL):
 
 BILINGUAL HEADER PROTOCOL (CRITICAL):
 - **Formatting**: ALWAYS start the technical report with a bilingual header on the FIRST LINE.
-- **Header Structure**: `[Chinese Title]\n[English Title]` (Do NOT use ** or other markdown markers).
+- **Header Structure**: `[English Title]\n[Chinese Translation]` (English is PRIMARY. Chinese is auxiliary. Header must NOT use ** markers).
 - **No Prefixes**: Do not use "SEARCH REPORT:" or other prefixes in the content body.
+- **Nomenclature Standard (CRITICAL)**: Use '[Name] class' format (e.g., 'Galaxy class'). NEVER use hyphens '-' in ship class names.
+- **Language Priority (CRITICAL)**: Federation Standard (English) is the PRIMARY reporting language. All entries/titles must lead with English. Chinese translations MUST be placed in parentheses, e.g., 'Sovereign class (主权级)'.
 
 NO MARKDOWN FORMATTING (STRICT):
 - **Plain Text Only**: Do NOT use `**bold**`, `*italic*`, or `[links]` in the technical content. Use plain, capitalized text for emphasis if needed. The render engine handles typography.
@@ -510,6 +513,12 @@ def strip_conversational_filler(text: str) -> str:
     
     for p in erasure_patterns:
         text = re.sub(p, "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+
+    # LEVEL 2.5: Nomenclature Correction (Anti-Hyphen Surgical Strike)
+    # Converts 'Galaxy-class' -> 'Galaxy class'
+    text = re.sub(r'([a-zA-Z0-9]+)-class', r'\1 class', text, flags=re.IGNORECASE)
+    # Converts '(Name)-class' -> '(Name) class'
+    text = re.sub(r'\(([a-zA-Z0-9]+)\)-class', r'(\1) class', text, flags=re.IGNORECASE)
 
     # LEVEL 3: Fallback Regex Filters (Preamble detection)
     preamble_patterns = [

@@ -242,7 +242,7 @@ def get_ship_schematic(ship_name: str, clearance: int = 1) -> dict:
         ]
     }
 
-def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) -> dict:
+def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False, max_words: int = 500) -> dict:
     """
     Searches the extensive local MSD Knowledge Base (Mega-Scale).
     Scans the markdown files in the msd_knowledge_base directory.
@@ -365,7 +365,7 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
             # If top hit is still a technical manual snippet despite weighting
             if top_hit["size"] < 1500 or top_hit["jargon_score"] >= 3:
                 logger.info(f"[KB] Hit '{top_hit['file']}' is disqualified for broad query '{query}' (Jargon: {top_hit['jargon_score']}). Falling back.")
-                return search_memory_alpha(query, session_id, is_chinese)
+                return search_memory_alpha(query, session_id, is_chinese, max_words=max_words)
 
         # Final filtering
         top_hits = [h for h in hits if h["score"] >= 12][:3]
@@ -373,7 +373,7 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
         if not top_hits:
             logger.info(f"[KB] No high-confidence local hits for '{query}' (Top score: {hits[0]['score'] if hits else 0}). Auto-falling back to Memory Alpha.")
             # Auto-fallback to Memory Alpha (Polymath Logic)
-            return search_memory_alpha(query, session_id, is_chinese)
+            return search_memory_alpha(query, session_id, is_chinese, max_words=max_words)
             
         # Construct structured items for rendering
         results = []
@@ -439,6 +439,8 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
             "INSTRUCTIONS:\n"
             "1. Scan for primary entity definitions and historical metrics.\n"
             f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions except name and registry for each item to maximize the count within the output buffer. Capacity is expanded up to {max_words} words.\n"
+            "   - NOMENCLATURE: Use '[Name] class' format (e.g., 'Galaxy class'). DO NOT use hyphens '-' between Name and class.\n"
+            "   - LANGUAGE: English is the PRIMARY language. Format entries as: [English Name] ([Chinese Name]) (e.g., 'Constitution class (宪法级)').\n"
             "3. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
             "4. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
             f"5. Return a high-density technical summary (standard: under 500 words, lists: up to {max_words} words),{lang_ext}.\n"

@@ -78,44 +78,37 @@ class LCARS_Renderer:
         # AGGRESSIVE NORMALIZATION: Merge fragmented lines into paragraphs
         content = self._normalize_text_flow(content)
         
-        wrap_w = CONTENT_W - 60
+        # COLUMNAR DETECTOR (Universal)
+        is_dense_list = len(paragraphs) > 8 and (sum(len(p) for p in paragraphs) / len(paragraphs)) < 60
+        num_cols = 2 if is_dense_list else 1
         
         pages = []
-        current_page_content = []
-        current_h = 0
+        current_page_paras = []
         
-        paragraphs = content.split('\n')
+        # Capacity logic matches _draw_mega_slot
+        def get_page_h(paras, cols):
+            if not paras: return 0
+            rows = (len(paras) + cols - 1) // cols
+            return rows * (LINE_HEIGHT + PARA_SPACING // 2)
+
         for para in paragraphs:
-            para = para.strip()
-            if not para:
-                current_h += PARA_SPACING + 5 
-                continue
-            
-            # Metric calculation based on full paragraph
-            f_c = self.get_font(para, FONT_SIZE)
-            lines = self._wrap_text_clean(para, f_c, wrap_w)
-            needed_h = len(lines) * LINE_HEIGHT
-            
-            if current_h + needed_h > max_h:
-                # Only add a page if it has content to prevent blank pages
-                valid_content = "\n\n".join([c for c in current_page_content if c])
-                if valid_content.strip():
+            test_paras = current_page_paras + [para]
+            if get_page_h(test_paras, num_cols) > max_h:
+                if current_page_paras:
                     pages.append({
                         "title": item.get("title", "TECHNICAL DATA"),
-                        "content": valid_content,
+                        "content": "\n".join(current_page_paras),
                         "image_b64": item.get("image_b64") if len(pages) == 0 else None,
                         "source": item.get("source", "UNKNOWN")
                     })
-                current_page_content = [para]
-                current_h = needed_h + PARA_SPACING
+                current_page_paras = [para]
             else:
-                current_page_content.append(para)
-                current_h += needed_h + PARA_SPACING
+                current_page_paras.append(para)
 
-        if any(c.strip() for c in current_page_content):
+        if current_page_paras:
             pages.append({
                 "title": item.get("title", "TECHNICAL DATA"),
-                "content": "\n".join([c for c in current_page_content if c or c == ""]),
+                "content": "\n".join(current_page_paras),
                 "image_b64": item.get("image_b64") if len(pages) == 0 else None,
                 "source": item.get("source", "UNKNOWN")
             })
@@ -195,26 +188,20 @@ class LCARS_Renderer:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
             text_y = pos[1] + 65 # Tightened top margin
-            paragraphs = content.split('\n')
-            for para in paragraphs:
-                para = para.strip()
-                if not para:
-                    text_y += PARA_SPACING
-                    continue
-                
+            paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+            for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
                 f_line = self.get_font(para, FONT_SIZE)
                 lines = self._wrap_text_clean(para, f_line, text_w)
                 
                 if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
                 
+                color = self._get_color_for_text(para, index=i)
                 for line in lines:
-                    logger.debug(f"[Renderer] Drawing line (Hybrid) at {text_y}: '{line[:20]}...'")
-                    color = self._get_color_for_text(line)
                     draw.text((text_l, text_y), line, fill=color, font=f_line)
-                    text_y += LINE_HEIGHT # Tighter leading
+                    text_y += LINE_HEIGHT 
                 
-                text_y += PARA_SPACING # Paragraph spacing
+                text_y += PARA_SPACING 
         elif img_b64:
             self._draw_stretched_brackets(canvas, pos, w, h)
             try:
@@ -258,14 +245,14 @@ class LCARS_Renderer:
             # Render across columns
             for i, para in enumerate(paragraphs):
                 col_idx = i % num_cols
-                row_idx = i // num_cols
+                row_idx = i // num_cols # Zebra by row
                 
                 curr_x = pos[0] + 30 + (col_idx * (col_w + 50))
                 curr_y = text_y_start + (row_idx * (best_lh + PARA_SPACING // 2))
                 
                 if curr_y + best_lh > pos[1] + h - 10: break
                 
-                color = self._get_color_for_text(para)
+                color = self._get_color_for_text(para, index=row_idx)
                 draw.text((curr_x, curr_y), para, fill=color, font=f_final)
 
     def _split_sentences(self, text):
@@ -352,15 +339,16 @@ class LCARS_Renderer:
         result = result.replace("**", "").replace("*", "")
         return result
 
-    def _get_color_for_text(self, text: str) -> Tuple[int, int, int, int]:
-        """Returns LCARS color based on dominant language."""
+    def _get_color_for_text(self, text: str, index: int = 0) -> Tuple[int, int, int, int]:
+        """Returns LCARS color based on dominant language and row index for zebra-striping."""
+        is_alt = (index % 2 == 1)
         # Detect Chinese characters
         if re.search(r'[\u4e00-\u9fff]', text):
             # LCARS Cyan-Blue for Chinese
-            return (150, 180, 255, 255)
+            return (150, 180, 255, 255) if not is_alt else (100, 150, 255, 200)
         else:
             # Pure White for English/Technical Standard
-            return (245, 245, 255, 255)
+            return (245, 245, 255, 255) if not is_alt else (200, 200, 255, 200)
 
     def _empty_b64(self) -> str:
         img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0,0,0,0))

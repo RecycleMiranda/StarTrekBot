@@ -251,9 +251,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
             # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
-                result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese)
+                max_w = args.get("max_words", 500)
+                result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             elif tool == "search_memory_alpha":
-                result = tools.search_memory_alpha(args.get("query"), session_id, i_chinese=is_chinese)
+                # Ensure we use max_words (default 500 but adjustable by RP engine)
+                max_w = args.get("max_words", 500)
+                result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             else:
                 chunk_index = args.get("chunk_index", 0)
                 result = tools.access_memory_alpha_direct(args.get("query"), session_id, is_chinese=is_chinese, chunk_index=chunk_index)
@@ -263,17 +266,36 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 # For search results, dispatcher logic usually sets SEARCH_RESULTS elsewhere or we set it here
                 if "items" in result:
                     items = result["items"]
-                    ipp = 4
-                    total_p = (len(items) + ipp - 1) // ipp
-                    SEARCH_RESULTS[session_id] = {
-                        "mode": "search",
-                        "query": args.get("query"),
-                        "items": items,
-                        "page": 1,
-                        "total_pages": total_p,
-                        "items_per_page": ipp,
-                        "pre_render_cache": {}
-                    }
+                    
+                    # ENHANCED: Check if we have a single very long result (often a summarized list)
+                    # If so, treat it like an article and split it into sub-pages.
+                    if len(items) == 1 and len(items[0].get("content", "")) > 600:
+                        from .render_engine import get_renderer
+                        renderer = get_renderer()
+                        sub_pages = renderer.split_content_to_pages(items[0])
+                        SEARCH_RESULTS[session_id] = {
+                            "mode": "search",
+                            "query": args.get("query"),
+                            "items": sub_pages,
+                            "page": 1,
+                            "total_pages": len(sub_pages),
+                            "items_per_page": 1, # Direct mapping to items
+                            "pre_render_cache": {}
+                        }
+                        result["items"] = [sub_pages[0]]
+                        logger.info(f"[Dispatcher] Single long result detected. Split into {len(sub_pages)} sub-pages.")
+                    else:
+                        ipp = 4
+                        total_p = (len(items) + ipp - 1) // ipp
+                        SEARCH_RESULTS[session_id] = {
+                            "mode": "search",
+                            "query": args.get("query"),
+                            "items": items,
+                            "page": 1,
+                            "total_pages": total_p,
+                            "items_per_page": ipp,
+                            "pre_render_cache": {}
+                        }
                     # TRIGGER INITIAL PRE-WARM FOR SEARCH
                     _executor.submit(_prefetch_next_pages, session_id, is_chinese)
                 

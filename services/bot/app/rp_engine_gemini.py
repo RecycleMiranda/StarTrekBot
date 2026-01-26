@@ -265,6 +265,8 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
                 "3. NO METADATA. Remove wiki-specific meta like 'Edit', 'History', 'Talk'.\n"
                 "4. TECHNICAL ACCURACY. Ensure Trek terminology (Warp, Phaser, Class) is translated accurately.\n"
                 "5. NEGATIVE CONSTRAINTS: DO NOT add 'Here is the translation', DO NOT add 'Translation:', DO NOT add conversational filler.\n"
+                "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
+                "   Example: 'Sure, here is the translation... ^^DATA_START^^ Enterprise (NX-01) is a...'\n"
                 "TERMINOLOGY DIRECTIVES:\n"
                 "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
                 "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRCT IT to '进取号'.\n"
@@ -335,12 +337,20 @@ def _fallback(reason: str) -> Dict:
     }
 
 def strip_conversational_filler(text: str) -> str:
-    """Programmatically removes common conversational filler intros."""
+    """Programmatically removes common conversational filler intros using Delimiter or Regex."""
     import re
     if not text: return ""
     text = text.strip()
     
-    # Expanded technical-only filter patterns
+    # LEVEL 1: Absolute Delimiter Cut (The User's "Surgical Strike")
+    if "^^DATA_START^^" in text:
+        parts = text.split("^^DATA_START^^")
+        if len(parts) > 1:
+            clean_text = parts[1].strip()
+            logger.info("[NeuralEngine] Delimiter protocol engaged: Conversational filler surgically removed.")
+            return clean_text
+            
+    # LEVEL 2: Fallback Regex Filters (for models that might miss the tag)
     patterns = [
         r"^(Here's|Here is|Sure|Okay|OK|As requested|Based on the data),? (the|some|most)? (information|specs|details|data|technical brief|report)( you requested| about| for)?.*?(:|\n)",
         r"^I've (found|synthesized|analyzed) the technical details for.*?(:|\n)",

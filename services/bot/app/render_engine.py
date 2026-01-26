@@ -71,6 +71,9 @@ class LCARS_Renderer:
         # Programmatic prefix removal
         content = re.sub(r'\[(EN|ZH|Standard|Chinese)\]:?\s*', '', content, flags=re.IGNORECASE)
         
+        # AGGRESSIVE NORMALIZATION: Merge fragmented lines into paragraphs
+        content = self._normalize_text_flow(content)
+        
         wrap_w = CONTENT_W - 60
         
         pages = []
@@ -149,6 +152,8 @@ class LCARS_Renderer:
         draw = ImageDraw.Draw(canvas)
         title = (item.get("title") or "TECHNICAL DATA STREAM").upper()
         content = item.get("content", "").strip()
+        # AGGRESSIVE NORMALIZATION
+        content = self._normalize_text_flow(content)
         img_b64 = item.get("image_b64")
         
         draw.text((pos[0] + 15, pos[1] + 5), item_id, fill=(255, 170, 0, 255), font=f_id)
@@ -249,6 +254,48 @@ class LCARS_Renderer:
                 curr = char
         if curr: lines.append(curr)
         return lines
+
+    def _normalize_text_flow(self, text: str) -> str:
+        """
+        Aggressively merges fragmented lines into cohesive paragraphs.
+        Handles Chinese/English spacing rules.
+        """
+        if not text: return ""
+        
+        # Step 1: Normalize all newlines to \n
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # Step 2: Split by double newline (actual paragraphs)
+        raw_paragraphs = re.split(r'\n\s*\n', text)
+        
+        normalized_paragraphs = []
+        for raw_p in raw_paragraphs:
+            # Step 3: For each paragraph, merge single newlines
+            lines = [l.strip() for l in raw_p.split('\n') if l.strip()]
+            if not lines: continue
+            
+            # Detect language context of the paragraph
+            is_chinese_block = any('\u4e00' <= char <= '\u9fff' for char in "".join(lines))
+            
+            if is_chinese_block:
+                # Chinese: Join with nothing (or specific punctuation check if needed)
+                # But we must be careful not to merge purely English lines inside a mixed block wrongly.
+                # Simplest robust approach: If line ends in English letter and next starts with English, add space.
+                merged = lines[0]
+                for i in range(1, len(lines)):
+                    prev = lines[i-1]
+                    curr = lines[i]
+                    # Logic: If prev ends with latin and curr starts with latin, add space. Else nothing.
+                    if re.search(r'[a-zA-Z0-9]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
+                        merged += " " + curr
+                    else:
+                        merged += curr
+                normalized_paragraphs.append(merged)
+            else:
+                # English: Join with space
+                normalized_paragraphs.append(" ".join(lines))
+                
+        return "\n\n".join(normalized_paragraphs)
 
     def _empty_b64(self) -> str:
         img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0,0,0,0))

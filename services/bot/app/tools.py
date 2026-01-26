@@ -445,6 +445,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
             "4. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
             f"5. Return a high-density technical summary (standard: under 500 words, lists: up to {max_words} words),{lang_ext}.\n"
             "6. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
+            "7. NEGATIVE CONSTRAINT: Do NOT use conversational intros like 'Here is a list:'. Start directly with the first item.\n"
         )
         
         # Enable Google Search Tool 

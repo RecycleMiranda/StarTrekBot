@@ -169,32 +169,40 @@ class LCARS_Renderer:
         title_en = title_parts[0] if title_parts else "TECHNICAL DATA"
         title_zh = title_parts[1] if len(title_parts) > 1 else ""
         
-        f_title_en = self.get_font(title_en, 64)
-        f_title_zh = self.get_font(title_zh, 48)
-        f_id_large = self.get_font("ID", 36)
-        
         content = item.get("content", "").strip()
         
-        # PHYSICAL TITLE STRIPPER (Critical Safety Net)
+        # PHYSICAL TITLE STRIPPER (Critical Safety Net) & SUBTITLE PROMOTION
         # Removes LLM-hallucinated headers like "Starfleet Starship Classes"
         content_lines = content.split('\n')
         if content_lines:
-            first_line_clean = re.sub(r'[\*\s\W_]+', '', content_lines[0].lower())
+            first_line = content_lines[0].strip()
+            first_line_clean = re.sub(r'[\*\s\W_]+', '', first_line.lower())
             forbidden = ["starfleetstarshipclasses", "星际舰队星舰级别", "星舰级别列表", "foundinthedatabase", "以下是数据库中", "thefollowingisalist", "starfleetshipclasses"]
+            
             if any(fp in first_line_clean for fp in forbidden) and len(content_lines) > 1:
+                # PROMOTION: If we don't have a Chinese title yet, and this line looks like Chinese (or matches our target), use it!
+                if not title_zh:
+                     # Clean it up (remove colons etc)
+                     title_zh = first_line.replace(":", "").replace("：", "").strip()
                 content = '\n'.join(content_lines[1:]).strip()
         
         content = self._normalize_text_flow(content)
+
+        # RE-CALCULATE FONTS after potential promotion
+        f_title_en = self.get_font(title_en, 80)
+        f_title_zh = self.get_font(title_zh, 32)
+        f_id_large = self.get_font("ID", 36)
+
         img_b64 = item.get("image_b64")
         
         # Draw ID and Leading English Title (Left Aligned)
         draw.text((pos[0] + 15, pos[1] + 15), item_id, fill=(255, 170, 0, 255), font=f_id_large)
         # Shifted English title to left, massive size
-        draw.text((pos[0] + 80, pos[1] + 5), title_en, fill=(255, 180, 50, 255), font=f_title_en)
+        draw.text((pos[0] + 80, pos[1] + 0), title_en, fill=(255, 180, 50, 255), font=f_title_en)
         
-        # Sub-title (Chinese) with color differentiation
+        # Sub-title (Chinese) with color differentiation - Tucked under English
         if title_zh:
-            draw.text((pos[0] + 80, pos[1] + 75), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
+            draw.text((pos[0] + 85, pos[1] + 68), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
         # SOURCE BADGE (Verification Layer)
         source = item.get("source", "UNKNOWN")
@@ -203,7 +211,7 @@ class LCARS_Renderer:
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
         # Lower horizontal line to create absolute distance
-        line_y = pos[1] + 160
+        line_y = pos[1] + 165
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         
         if img_b64 and content:
@@ -220,7 +228,7 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 180 # Jump below massive header
+            text_y = pos[1] + 190 # Jump below massive header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -244,7 +252,7 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y_start = pos[1] + 180 
+            text_y_start = pos[1] + 190 
             
             # DYNAMIC FONT SELECTION & COLUMN DETECTION
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
@@ -262,11 +270,11 @@ class LCARS_Renderer:
             col_w = (w - 60 - (num_cols - 1) * col_inner_spacing) // num_cols
             
             # Dynamic Font Inflation logic (Enhanced for Massive Display)
-            best_size = 36 # Baseline increased again to 36pt
-            best_lh = int(36 * 1.25)
+            best_size = 28 # Baseline reduced for cleaner look
+            best_lh = int(28 * 1.25)
             
-            # Test sizes for best fit - down to 24pt for high density
-            for size in range(48, 23, -2):
+            # Test sizes for best fit - down to 20pt for high density
+            for size in range(36, 19, -2):
                 lh = int(size * 1.25)
                 f_test = self.get_font(content, size)
                 
@@ -304,13 +312,19 @@ class LCARS_Renderer:
                 if curr_y + item_full_h > pos[1] + h - 10: break
                 
                 color_en = self._get_color_for_text(en_text, index=row_idx)
+                
+                # FONT ENFORCEMENT: Explicitly get font for English text to ensure LCARS
+                # (Previous logic used f_final derived from whole content, which likely defaulted to Chinese font)
+                f_en = self.get_font(en_text, best_size)
+                
                 # Render Primary (English)
-                draw.text((curr_x, curr_y), en_text, fill=color_en, font=f_final)
+                draw.text((curr_x, curr_y), en_text, fill=color_en, font=f_en)
                 
                 # Render Subsidiary (Chinese) below English, left aligned
                 if zh_text:
                     color_zh = (150, 180, 255, 180) if (row_idx % 2 == 0) else (100, 150, 255, 150)
-                    draw.text((curr_x, curr_y + best_lh - 2), zh_text, fill=color_zh, font=f_sub)
+                    # Tighten spacing: distinct visual grouping
+                    draw.text((curr_x, curr_y + int(best_size * 1.1)), zh_text, fill=color_zh, font=f_sub)
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

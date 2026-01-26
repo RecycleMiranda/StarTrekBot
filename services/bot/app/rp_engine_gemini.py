@@ -536,7 +536,7 @@ def strip_conversational_filler(text: str) -> str:
         preamble_keywords = ["here's", "here is", "summary", "list", "details", "data", "report", "根据", "这是", "查询"]
         is_preamble = any(k in first_line.lower() for k in preamble_keywords)
         
-        if first_line.endswith(":") and len(first_line) < 100 and is_preamble:
+        if first_line.endswith(":") and len(first_line) < 60 and is_preamble:
             logger.info(f"[NeuralEngine] Blind Cut on colon-line: '{first_line}'")
             rest = strip_conversational_filler('\n'.join(lines[1:]))
             return rest if rest else text # Don't return empty if it stripped everything

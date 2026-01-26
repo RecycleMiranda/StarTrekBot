@@ -754,8 +754,9 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         # minimize the text part to avoid duplication with the visual content.
         if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha") or intent.startswith("tool_res:access_memory_alpha_direct")):
             # If it's a search result, the user already sees the data on the screen
-            reply_text = "FEDERATION DATABASE ACCESS GRANTED // VISUAL REPORT ATTACHED"
-            logger.info(f"[Dispatcher] Redundant text suppressed with formal notification for {intent}")
+            # Suppress text entirely - only send the image
+            reply_text = ""  # Empty string to suppress text message
+            logger.info(f"[Dispatcher] Text fully suppressed for visual report: {intent}")
         
         logger.info(f"[Dispatcher] Final reply check (intent={intent}): {reply_text[:100]}...")
         sq = send_queue.SendQueue.get_instance()

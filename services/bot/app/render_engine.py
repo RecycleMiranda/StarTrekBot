@@ -215,7 +215,7 @@ class LCARS_Renderer:
                 f_line = self.get_font(para, FONT_SIZE)
                 lines = self._wrap_text_clean(para, f_line, w - 60)
                 
-                if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: return
+                if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
                 
                 for line in lines:
                     draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_line)

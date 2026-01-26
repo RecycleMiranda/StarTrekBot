@@ -103,7 +103,8 @@ class LCARS_Renderer:
                     pages.append({
                         "title": item.get("title", "TECHNICAL DATA"),
                         "content": valid_content,
-                        "image_b64": item.get("image_b64") if len(pages) == 0 else None
+                        "image_b64": item.get("image_b64") if len(pages) == 0 else None,
+                        "source": item.get("source", "UNKNOWN")
                     })
                 current_page_content = [para]
                 current_h = needed_h + PARA_SPACING
@@ -115,7 +116,8 @@ class LCARS_Renderer:
             pages.append({
                 "title": item.get("title", "TECHNICAL DATA"),
                 "content": "\n".join([c for c in current_page_content if c or c == ""]),
-                "image_b64": item.get("image_b64") if len(pages) == 0 else None
+                "image_b64": item.get("image_b64") if len(pages) == 0 else None,
+                "source": item.get("source", "UNKNOWN")
             })
             
         return pages

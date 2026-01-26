@@ -1066,7 +1066,21 @@ async def handle_event(event: InternalEvent):
             user_profile = permissions.get_user_profile(event.user_id, nickname, title)
             
             # Generate AI reply using helper (async await)
-            await _execute_ai_logic(event, user_profile, session_id)
+            
+            # DETERMINISTIC NAVIGATION FAST-PATH
+            # Intercepts simple page turn commands to prevent LLM hallucination
+            import re
+            nav_text = event.text.strip().lower()
+            force_tool = None
+            
+            if re.match(r'^(next|next page|下一页|下页|继续|more)$', nav_text):
+                force_tool = "next_page"
+                logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
+            elif re.match(r'^(previous|prev|previous page|back|上一页|上页|返回)$', nav_text):
+                force_tool = "prev_page"
+                logger.info("[Dispatcher] Fast-Path triggered: Force Prev Page")
+                
+            await _execute_ai_logic(event, user_profile, session_id, force_tool=force_tool)
             return True
             
         else:

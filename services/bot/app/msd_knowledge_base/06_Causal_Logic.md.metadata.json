@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "MSD Knowledge Base - Vol 06: Simulation Core (Causal Logic).\nThis document is the \"Physics Engine\" that binds the Mega-Scale volumes together.\n- Defines 15 System States (Green/Blue/Yellow/Red/Grey).\n- Maps \"Effect Trees\" for every major failure (Coolant -> Breach, Shield -> SIF).\n- Includes the 'Bot Decision Matrix' for damage control.\n🖖",
+  "updatedAt": "2026-01-26T06:42:43.606428Z"
+}

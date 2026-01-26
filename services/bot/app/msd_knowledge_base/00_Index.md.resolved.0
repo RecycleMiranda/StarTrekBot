@@ -1,0 +1,62 @@
+# STARFLEET COMMAND - MARS STATION DEFENSE (MSD)
+## MASTER TECHNICAL KNOWLEDGE BASE (MTKB)
+**Classification: SECRET / EYES ONLY**
+**Language:** Federation Standard (English)
+**Current Stardate:** 99245.3
+
+---
+
+## 0.0 INTRODUCTION
+This directory contains the complete, unabridged technical specifications for **Station MSD** (Mars Station Defense). Unlike the summarized field manuals, this "Encyclopedia Edition" details every bolt, beam, and EPS manifold.
+
+**To the Computer (Bot):**
+When referencing system physics, you MUST query the specific module below. Do not hallucinate specifications. If a user asks "Why did the warp core breach?", you check `02_Power.md` -> Section 2.4 Failure Modes.
+
+---
+
+## 1.0 MODULE INDEX (File Structure)
+
+### [vol_01_structure](file:///Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base/01_Structure.md) - STRUCTURAL ENGINEERING
+*   **1.1 Geometry**: Physical dimensions (3000m diameter engineering disc).
+*   **1.2 SIF/IDF**: Structural Integrity Field physics & Inertial Damping.
+*   **1.3 Deck Plans**: Detailed 1-150 deck assignment.
+*   **1.4 Materials**: Duranium/Tritanium composite stress ratings.
+
+### [vol_02_power](file:///Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base/02_Power.md) - PROPULSION & ENERGETICS
+*   **2.1 M/ARA**: Matter/Antimatter Reaction Assembly (Class-12 Core).
+*   **2.2 Fusion**: Impulse/Auxiliary Fusion Generators.
+*   **2.3 EPS Grid**: Electro-Plasma System Tiers (1-3) & flow topology.
+*   **2.4 Fuel**: Deuterium/Antideuterium storage & injection.
+
+### [vol_03_tactical](file:///Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base/03_Tactical.md) - DEFENSE SYSTEMS
+*   **3.1 Phasers**: Type-26 Arrays & 1440 Twin-Banks physics.
+*   **3.2 Torpedoes**: Mk-IV Launchers, ballistics, & payload (Photon/Quantum).
+*   **3.3 Shields**: Deflector shield geometry, nutation, and harmonics.
+*   **3.4 Deflector**: Main Deflector Dish (Slipstream/Mirror Universe ops).
+
+### [vol_04_computer](file:///Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base/04_Computer.md) - OPS & CYBERNETICS
+*   **4.1 LCARS**: Operating System architecture & Priority Levels.
+*   **4.2 ODN**: Optical Data Network topology.
+*   **4.3 Sensors**: Lateral/Long-range sensor palettes.
+*   **4.4 Security**: Intruder Control & Anesthezine gas deployment.
+
+### [vol_05_auxiliary](file:///Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base/05_Auxiliary.md) - AUXILIARY CRAFT
+*   **5.1 Runabouts**: Yellow River Class technical specifications.
+*   **5.2 Shuttles**: Type-17 to Type-25 diagrams.
+*   **5.3 Transporters**: Matter-Energy conversion physics & safety.
+
+---
+
+## 2.0 SYSTEM STATUS DASHBOARD (Template)
+*The Bot should maintain these variables in its internal state:*
+
+| System | Normal Range | Alert Threshold | Critical Failure |
+| :--- | :--- | :--- | :--- |
+| **M/ARA Intermix** | 1:1 Ratio | 1:1.02 (Imbalance) | > 1:1.05 (Breach) |
+| **SIF Field** | 100% | < 75% | < 15% (Collapse) |
+| **Shields** | 100% | < 20% (Bleed-through) | 0% (Offline) |
+| **EPS Load** | < 95% | > 105% (Shunting) | > 125% (Explosion) |
+
+---
+> **AUTHORITY NOTE**:
+> This Knowledge Base is compiled from the Starfleet Corps of Engineers (SCE) archives and the handwritten design notes of the Station Commander. In case of conflict, this document overrides all previous summaries.

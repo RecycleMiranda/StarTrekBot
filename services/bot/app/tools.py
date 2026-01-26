@@ -223,14 +223,14 @@ def query_knowledge_base(query: str, session_id: str) -> dict:
     Scans the markdown files in the msd_knowledge_base directory.
     """
     import os
-    # Hardcoded path to the knowledge base (absolute path from agent state)
-    KB_DIR = "/Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base"
+    # Use relative path so it works inside Docker
+    KB_DIR = os.path.join(os.path.dirname(__file__), "msd_knowledge_base")
     
     hits = []
     
     try:
         if not os.path.exists(KB_DIR):
-             return {"ok": False, "message": "Knowledge Base directory not found.", "hits": []}
+             return {"ok": False, "message": f"Knowledge Base directory not found at {KB_DIR}.", "hits": []}
 
         # Priority scan: Index first
         files = sorted([f for f in os.listdir(KB_DIR) if f.endswith(".md")])

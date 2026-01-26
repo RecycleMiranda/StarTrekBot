@@ -130,8 +130,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "activate_red_alert": "set_alert_status",
         "yellow_alert": "set_alert_status",
         "activate_yellow_alert": "set_alert_status",
+        "change_alert_status": "set_alert_status",
+        "update_alert": "set_alert_status",
         "cancel_alert": "set_alert_status",
         "cancel_red_alert": "set_alert_status",
+        "deactivate_alert": "set_alert_status",
+        "stand_down": "set_alert_status",
         "raise_shields": "toggle_shields",
         "lower_shields": "toggle_shields",
         "shield_status": "get_shield_status",
@@ -292,8 +296,17 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.set_absolute_override(state, str(event.user_id), profile.get("clearance", 1))
             
         elif tool == "set_alert_status":
-            level = args.get("level") or ("RED" if "red" in tool_name else "YELLOW" if "yellow" in tool_name else "NORMAL")
-            result = tools.set_alert_status(level, profile.get("clearance", 1))
+            # Priority Level Inference
+            if any(k in tool_name.lower() for k in ["cancel", "normal", "解除", "abort"]):
+                level = "NORMAL"
+            elif "red" in tool_name.lower() or "红色" in tool_name.lower():
+                level = "RED"
+            elif "yellow" in tool_name.lower() or "黄色" in tool_name.lower():
+                level = "YELLOW"
+            else:
+                level = args.get("level") or args.get("new_alert_status") or "NORMAL"
+                
+            result = tools.set_alert_status(level.upper(), profile.get("clearance", 1))
             
         elif tool == "toggle_shields":
             active = args.get("active") if "active" in args else ("raise" in tool_name or "升起" in tool_name)

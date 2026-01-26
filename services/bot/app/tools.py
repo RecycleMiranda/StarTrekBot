@@ -429,7 +429,7 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
     config = ConfigManager.get_instance()
     api_key = config.get("gemini_api_key", "")
     
-        if not api_key:
+    if not api_key:
         return {"ok": False, "message": "Neural link offline (API Key missing)."}
 
     # --- EASTER EGG: Enterprise Registry Challenge ---

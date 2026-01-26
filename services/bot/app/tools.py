@@ -434,8 +434,10 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
             "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
             "INSTRUCTIONS:\n"
             "1. Scan for primary entity definitions and historical metrics.\n"
-            f"2. Return a high-density technical summary (under 180 words),{lang_ext}.\n"
-            "3. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
+            "2. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
+            "3. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
+            f"4. Return a high-density technical summary (under 180 words),{lang_ext}.\n"
+            "5. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
         )
         
         # Enable Google Search Tool 

@@ -197,28 +197,25 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         
         prompt = (
             "NO CONVERSATIONAL FILLER: Start the output IMMEDIATELY with the technical content.\n"
-            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a comprehensive report.\n"
+            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a exhaustive technical report.\n"
             f"{lang_instruction}\n"
             "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
             "NEGATIVE CONSTRAINTS: \n"
-            "- DO NOT start with 'Here is', 'I have found', 'Based on', or 'The following'.\n"
-            "- DO NOT use conversational fillers or politeness markers.\n"
-            "- DO NOT repeat the User Query.\n"
-            "- VIOLATION of these constraints will cause a system error.\n"
+            "- DO NOT add conversational fillers or politeness markers.\n"
+            "- DO NOT interleave individual sentences (EN line, then ZH line). This is inefficient.\n"
+            "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
             "TERMINOLOGY DIRECTIVES:\n"
             "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
-            "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRECT IT to '进取号'.\n"
-            "- This rule is ABSOLUTE for the ship name.\n"
-            "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
-            "BILINGUAL REQUIREMENT: Since the user is communicating in Chinese, produce a SYNCHRONIZED BILINGUAL report.\n"
-            "FORMAT: Present each technical point in English first, followed immediately by its professional Chinese translation. Provide ONLY the technical text, NO prefixes like [EN] or [ZH].\n"
-            "Example:\nCrew complement: 430\n船员编制：430\n"
-            "RELEVANCY CHECK: \n"
-            "- If the record is IRRELEVANT to the user query, output: 'Insufficient data in current archives for specific query. Proceeding with general data match.'\n"
-            "- If the record IS relevant, perform a deep synthesis to provide a detailed briefing.\n\n"
+            "- DO NOT use '企业号'.\n"
+            "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Strictly Ordered)\n"
+            "For each logical section or large paragraph in the source:\n"
+            "1. Output the ENTIRE English paragraph block.\n"
+            "2. Output the FULL Chinese translation block on the next line.\n"
+            "3. Use a double newline to separate this bilingual block from the next.\n"
+            "Provide ONLY technical text. Density is the primary operational requirement.\n\n"
             f"USER QUERY: {query}\n\n"
             f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Bilingual Synchronized Briefing - Start Immediately):"
+            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then Full-Paragraph Bilingual Briefing):"
         )
 
         response = client.models.generate_content(
@@ -271,26 +268,22 @@ class NeuralEngine:
                 "ROLE: You are a Universal Translator linked directly to the Federation Database.\n"
                 f"{lang_instruction}\n"
                 "INPUT: Raw text from a Memory Alpha database entry.\n"
-                "TASK: Transcribe and translate the content block-by-block. \n"
+                "TASK: Transcribe and translate the content in whole-paragraph blocks.\n"
                 "CONSTRAINTS:\n"
-                "1. DO NOT SUMMARIZE. Retain all technical details, dates, names, and lists.\n"
-                "2. RETAIN STRUCTURE. If the input has infoboxes or lists, keep them.\n"
-                "3. NO METADATA. Remove wiki-specific meta like 'Edit', 'History', 'Talk'.\n"
-                "4. TECHNICAL ACCURACY. Ensure Trek terminology (Warp, Phaser, Class) is translated accurately.\n"
-                "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
-                "   Example: 'Sure... ^^DATA_START^^ Enterprise (NX-01) is...'\n"
+                "1. DO NOT SUMMARIZE. Retain all technical details, dates, and names.\n"
+                "2. NO METADATA. Remove wiki meta like 'Edit', 'Talk'.\n"
+                "3. NEGATIVE CONSTRAINTS: DO NOT add conversational filler. DO NOT interleave sentence-by-sentence.\n"
+                "4. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
                 "TERMINOLOGY DIRECTIVES:\n"
                 "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
-                "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRECT IT to '进取号'.\n"
-                "- This rule is ABSOLUTE for the ship name.\n"
-                "FORMAT: BILINGUAL BLOCK PAIRS (Strictly Alternating)\n"
-                "For each logical paragraph or list item in the source:\n"
-                "1. Output the original English text.\n"
-                "2. Output the Chinese translation immediately on the next line.\n"
-                "3. Use a double newline to separate this block from the next.\n"
-                "BILINGUAL NOTE: Keep proper nouns (like ship registry numbers NCC-1701) in alphanumeric format.\n\n"
+                "- DO NOT use '企业号'.\n"
+                "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Full Blocks Only)\n"
+                "For each source paragraph:\n"
+                "1. Output the FULL original English paragraph block.\n"
+                "2. Output the FULL Chinese translation block on the next line.\n"
+                "3. Use a double newline between blocks.\n\n"
                 f"RAW INPUT:\n{raw_content[:8000]}\n\n"
-                "TRANSLATED OUTPUT (Start immediately with ^^DATA_START^^ then technical data):"
+                "TRANSLATED OUTPUT (Start immediately with ^^DATA_START^^ then Full-Paragraph Bilingual Blocks):"
             )
 
             response = client.models.generate_content(
@@ -359,13 +352,12 @@ def strip_conversational_filler(text: str) -> str:
     if not text: return ""
     text = text.strip()
     
-    # LEVEL 1: Absolute Delimiter Cut (The User's "Surgical Strike")
+    # LEVEL 1: BEACON PROTOCOL (Surgical Cut)
     if "^^DATA_START^^" in text:
-        parts = text.split("^^DATA_START^^")
-        if len(parts) > 1:
-            clean_text = parts[1].strip()
-            logger.info("[NeuralEngine] Delimiter protocol engaged: Conversational filler surgically removed.")
-            return clean_text
+        beacon = "^^DATA_START^^"
+        clean_text = text[text.find(beacon) + len(beacon):].strip()
+        logger.info("[NeuralEngine] Beacon Protocol engaged: Surgical cut at ^^DATA_START^^.")
+        return clean_text
             
     # LEVEL 2: Fallback Regex Filters (for models that might miss the tag)
     patterns = [

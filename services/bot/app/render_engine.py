@@ -20,8 +20,8 @@ CONTENT_B = 880
 CONTENT_H_TOTAL = CONTENT_B - CONTENT_T
 
 # Metric Constants
-LINE_HEIGHT = 26     # Aggressive compression for high density
-PARA_SPACING = 12    # Clear paragraph separation
+LINE_HEIGHT = 28     # Balanced for multi-font blocks
+PARA_SPACING = 6     # Tightened for bilingual density
 FONT_SIZE = 24
 
 class LCARS_Renderer:
@@ -68,8 +68,12 @@ class LCARS_Renderer:
         if not max_h: max_h = CONTENT_H_TOTAL - 120 
         
         content = item.get("content", "")
+        # Beacon Protocol (Surgical Strike)
+        if "^^DATA_START^^" in content:
+            content = content.split("^^DATA_START^^")[-1].strip()
+            
         # Programmatic prefix removal
-        content = re.sub(r'\[(EN|ZH|Standard|Chinese)\]:?\s*', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'\[(EN|ZH|Standard|Chinese|Source|Translation)\]:?\s*', '', content, flags=re.IGNORECASE)
         
         # AGGRESSIVE NORMALIZATION: Merge fragmented lines into paragraphs
         content = self._normalize_text_flow(content)
@@ -258,55 +262,51 @@ class LCARS_Renderer:
     def _normalize_text_flow(self, text: str) -> str:
         """
         Aggressively merges fragmented lines into cohesive paragraphs.
-        Handles Chinese/English spacing rules.
+        Enforces 'English Block -> Chinese Block' logic.
         """
         if not text: return ""
         
-        # Step 1: Normalize all newlines to \n
+        # Step 1: Normalize all newlines
         text = text.replace('\r\n', '\n').replace('\r', '\n')
         
-        # Step 2: Split by double newline (actual paragraphs)
-        raw_paragraphs = re.split(r'\n\s*\n', text)
+        # Step 2: Split by double newline (logical blocks/sections)
+        raw_blocks = re.split(r'\n\s*\n', text)
         
-        normalized_paragraphs = []
-        for raw_p in raw_paragraphs:
-            # Step 3: For each paragraph, merge single newlines
-            lines = [l.strip() for l in raw_p.split('\n') if l.strip()]
+        normalized_blocks = []
+        for block in raw_blocks:
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
             if not lines: continue
             
-            # Detect language context of the paragraph
-            is_chinese_block = any('\u4e00' <= char <= '\u9fff' for char in "".join(lines))
+            merged_lines = []
+            curr_accumulator = lines[0]
             
-            if is_chinese_block:
-                # Chinese: Join with nothing (or specific punctuation check if needed)
-                # But we must be careful not to merge purely English lines inside a mixed block wrongly.
-                # Simplest robust approach: If line ends in English letter and next starts with English, add space.
-                merged = lines[0]
-                for i in range(1, len(lines)):
-                    prev = lines[i-1]
-                    curr = lines[i]
-                    
-                    # Language Boundary Detection (Bilingual Block Protocol)
-                    # If prev is English and curr is Chinese (or vice versa), FORCE A BREAK.
-                    prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]]$', prev))
-                    curr_is_cn = bool(re.search(r'^[\u4e00-\u9fff]', curr))
-                    # Check reverse (Chinese line -> English line)
-                    prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？]$', prev))
-                    curr_is_en = bool(re.search(r'^[a-zA-Z0-9]', curr))
-                    
-                    if (prev_is_en and curr_is_cn) or (prev_is_cn and curr_is_en):
-                        # Force a soft paragraph break for bilingual separation
-                        merged += "\n" + curr
-                    elif re.search(r'[a-zA-Z0-9]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
-                        merged += " " + curr
-                    else:
-                        merged += curr
-                normalized_paragraphs.append(merged)
-            else:
-                # English: Join with space
-                normalized_paragraphs.append(" ".join(lines))
+            for i in range(1, len(lines)):
+                prev = lines[i-1]
+                curr = lines[i]
                 
-        return "\n\n".join(normalized_paragraphs)
+                # Language Transition Detection
+                # English regex improved to include more punctuation and delimiters
+                prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]\"\']$', prev))
+                curr_is_cn = bool(re.search(r'^[\u4e00-\u9fff\（\【]', curr))
+                
+                prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？\）\】]$', prev))
+                curr_is_en = bool(re.search(r'^[a-zA-Z0-9]', curr))
+                
+                if (prev_is_en and curr_is_cn) or (prev_is_cn and curr_is_en):
+                    # BILINGUAL SPLIT: Save current accumulator and start new one
+                    merged_lines.append(curr_accumulator)
+                    curr_accumulator = curr
+                else:
+                    # MERGE: Handle spacing
+                    if re.search(r'[a-zA-Z0-9\.,!?]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
+                        curr_accumulator += " " + curr
+                    else:
+                        curr_accumulator += curr
+            
+            merged_lines.append(curr_accumulator)
+            normalized_blocks.append("\n".join(merged_lines))
+                
+        return "\n\n".join(normalized_blocks)
 
     def _empty_b64(self) -> str:
         img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0,0,0,0))

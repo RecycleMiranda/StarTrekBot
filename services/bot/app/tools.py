@@ -458,7 +458,8 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
             contents=search_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                temperature=0.1 
+                temperature=0.1,
+                max_output_tokens=8192
             )
         )
         
@@ -563,7 +564,8 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             contents=nav_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                temperature=0.1 
+                temperature=0.1,
+                max_output_tokens=8192
             )
         )
         

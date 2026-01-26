@@ -9,7 +9,7 @@ from google.genai import types
 
 # Config is now handled via ConfigManager and dynamic lookups
 TIMEOUT = int(os.getenv("GEMINI_RP_TIMEOUT_SECONDS", "15"))
-MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "1024"))
+MAX_TOKENS = int(os.getenv("GEMINI_RP_MAX_OUTPUT_TOKENS", "8192"))
 TEMPERATURE = float(os.getenv("GEMINI_RP_TEMPERATURE", "0.2"))
 
 from .config_manager import ConfigManager
@@ -341,7 +341,7 @@ COMPUTER OUTPUT (Start with ^^DATA_START^^):
             model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=2000,
+                max_output_tokens=8192,
                 temperature=0.3
             )
         )
@@ -409,7 +409,7 @@ class NeuralEngine:
                 model=model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=3000,
+                    max_output_tokens=8192,
                     temperature=0.1
                 )
             )

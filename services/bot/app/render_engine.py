@@ -180,10 +180,16 @@ class LCARS_Renderer:
             forbidden = ["starfleetstarshipclasses", "星际舰队星舰级别", "星舰级别列表", "foundinthedatabase", "以下是数据库中", "thefollowingisalist", "starfleetshipclasses"]
             
             if any(fp in first_line_clean for fp in forbidden) and len(content_lines) > 1:
-                # PROMOTION: If we don't have a Chinese title yet, and this line looks like Chinese (or matches our target), use it!
-                if not title_zh:
-                     # Clean it up (remove colons etc)
-                     title_zh = first_line.replace(":", "").replace("：", "").strip()
+                # PROMOTION: Intelligent swapping based on language
+                promoted = first_line.replace(":", "").replace("：", "").strip()
+                
+                if re.search(r'[\u4e00-\u9fff]', promoted):
+                     # Chinese -> Subtitle (if empty)
+                     if not title_zh: title_zh = promoted
+                else:
+                     # English -> Main Title (Override generic)
+                     title_en = promoted
+                     
                 content = '\n'.join(content_lines[1:]).strip()
         
         content = self._normalize_text_flow(content)
@@ -211,7 +217,7 @@ class LCARS_Renderer:
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
         # Lower horizontal line to create absolute distance
-        line_y = pos[1] + 165
+        line_y = pos[1] + 140
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         
         if img_b64 and content:
@@ -228,7 +234,7 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 190 # Jump below massive header
+            text_y = pos[1] + 160 # Jump below massive header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -252,7 +258,7 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y_start = pos[1] + 190 
+            text_y_start = pos[1] + 160 
             
             # DYNAMIC FONT SELECTION & COLUMN DETECTION
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]

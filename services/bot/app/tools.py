@@ -300,6 +300,20 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
             if jargon_count >= 3:
                 score -= 5 # Substantial penalty for "maintenance manual" content
 
+            # 4. Technical Spec & Jargon Scan (Full-Text)
+            # If a document is dominated by maintenance/hardware detail but lacks general overview,
+            # we penalize it for broad queries.
+            manual_jargon = ["pylon", "connector", "umbilical", "purlin", "pumping", "exhaust", "ventilation", "hatch", "circuit", "coupling", "bolting"]
+            jargon_count = sum(1 for j in manual_jargon if j in content_lower)
+            
+            # Overview Boost
+            overview_keywords = ["overview", "summary", "history", "introduction", "background", "概括", "历史", "概览"]
+            overview_score = sum(2 for o in overview_keywords if o in content_lower)
+            score += overview_score
+
+            if jargon_count >= 5: # Heavy manual content
+                score -= 8 
+
             if score >= 12: # Increased Substance Threshold
                 # Extract relevant snippet
                 idx = content_lower.find(keywords[0]) if keywords else -1
@@ -311,23 +325,22 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                     "score": score,
                     "size": len(content),
                     "snippet": snippet,
-                    "full_path": path 
+                    "full_path": path,
+                    "jargon_score": jargon_count
                 })
         
         # Sort by score, then by size (prefer larger documents for broad queries)
         hits.sort(key=lambda x: (x.get("score", 0), x.get("size", 0)), reverse=True)
         
-        # QUALITY FILTER: If query is short (e.g. ship name only) but hit is:
-        # 1. Tiny or specific manual snippet
-        # 2. Contains mostly maintenance jargon
-        is_broad_query = len(query.split()) <= 3
+        # QUALITY FILTER: Detect broad queries (including Chinese compounds)
+        # Broad query: ship name only or class name (e.g. "银河级", "Galaxy class")
+        is_broad_query = len(query.split()) <= 3 or any(kw in query for kw in ["级", "Class", "Starship"])
+        
         if is_broad_query and hits:
             top_hit = hits[0]
-            # Check for "Manual/Maintenance" contamination
-            jargon_score = sum(1 for j in ["pylon", "connector", "umbilical", "purlin"] if j in top_hit["snippet"].lower())
-            
-            if top_hit["size"] < 1000 or jargon_score >= 2:
-                logger.info(f"[KB] Hit '{top_hit['file']}' is too specific/technical (jargon={jargon_score}) for broad query '{query}'. Falling back.")
+            # If top hit is still a technical manual snippet despite weighting
+            if top_hit["size"] < 1500 or top_hit["jargon_score"] >= 3:
+                logger.info(f"[KB] Hit '{top_hit['file']}' is disqualified for broad query '{query}' (Jargon: {top_hit['jargon_score']}). Falling back.")
                 return search_memory_alpha(query, session_id, is_chinese)
 
         # Final filtering

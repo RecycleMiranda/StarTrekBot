@@ -681,6 +681,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                             is_chinese
                         )
                         reply_text = future.result(timeout=20)
+                        # Carry over source from initial tool_result
+                        current_source = tool_result.get("source", "FEDERATION ARCHIVE")
                     
                     # SYNTHESIS-DRIVEN RECOVERY: If model signals insufficient data, fallback to Memory Alpha
                     if "INSUFFICIENT_DATA" in reply_text and tool == "query_knowledge_base":
@@ -698,6 +700,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                             reply_text = future.result(timeout=20)
                             # Update tool_result to reflect new items/images for downstream rendering
                             tool_result = recovery_result
+                            current_source = recovery_result.get("source", "MEMORY ALPHA")
                     
                     # UNIFIED RENDERING: Use synthesized/translated text for the visual report
                     from .render_engine import get_renderer
@@ -708,7 +711,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
                         "content": reply_text,
                         "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None,
-                        "source": tool_result.get("source", "UNKNOWN")
+                        "source": current_source
                     }
                     
                     # Split synthesized content across pages if necessary

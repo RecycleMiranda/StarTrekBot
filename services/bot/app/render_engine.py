@@ -177,6 +177,9 @@ class LCARS_Renderer:
         # Aggressive Header Consumption Loop (Max 3 lines)
         # Consumes lines that look like titles (short, no periods) to populate the main header
         consumed_count = 0
+        title_en_set = False
+        title_zh_set = False
+        
         while content_lines and consumed_count < 3:
             first_line = content_lines[0].strip()
             if not first_line: # Skip empty
@@ -193,18 +196,30 @@ class LCARS_Renderer:
             if is_header_like or is_known_pattern:
                 # Determine Language
                 promoted = first_line.replace(":", "").replace("：", "").strip()
-                if re.search(r'[\u4e00-\u9fff]', promoted):
-                     # Chinese -> Subtitle
-                     # Only start consuming if not already manually set, OR if we are overriding a generic default
+                is_chinese = bool(re.search(r'[\u4e00-\u9fff]', promoted))
+                
+                consumed = False
+                
+                if is_chinese and not title_zh_set:
+                     # Chinese -> Subtitle (Set Once)
                      if not title_zh or "联邦" in title_zh: 
                          title_zh = promoted
-                else:
-                     # English -> Main Title
-                     # Always override "TECHNICAL DATA STREAM" if we find a specific English header
+                     title_zh_set = True
+                     consumed = True
+                     
+                elif not is_chinese and not title_en_set:
+                     # English -> Main Title (Set Once)
                      title_en = promoted
+                     title_en_set = True
+                     consumed = True
                 
-                content_lines.pop(0)
-                consumed_count += 1
+                if consumed:
+                    content_lines.pop(0)
+                    consumed_count += 1
+                else:
+                    # If we found a header-like line but we already have that slot filled, 
+                    # it's likely body content (e.g. valid list item). STOP.
+                    break 
             else:
                 break # Stop at first non-header line
                 

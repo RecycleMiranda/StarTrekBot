@@ -63,7 +63,7 @@ def _get_system_prompt() -> str:
         "KNOWLEDGE PROTOCOLS:\n" +
         "1. PRIMARY SOURCE: You MUST prioritize the local 'Mega-Scale Knowledge Base'. Use the tool `query_knowledge_base` to search. CRITICAL: The database is in ENGLISH. You MUST translate your query to English keywords (e.g., use 'Deck Count' instead of '甲板数量') before calling this tool.\n" +
         "2. SECONDARY SOURCE: If local archives are insufficient, you MUST use the tool `search_memory_alpha` to query the Federation Database (Memory Alpha).\n" +
-        "3. LOGIC & STATE: You MUST use tools for all ship status changes. If a user asks to change an alert (RED/YELLOW/NORMAL) or toggle shields, you MUST result in a `tool_call` with the appropriate tool (`set_alert_status` or `toggle_shields`). DO NOT simulate these responses in the `reply` field; wait for the tool execution result.\n" +
+        "3. OPERATIONAL INTEGRITY (CRITICAL): Any request to CHANGE ship state MUST be mapped to a `tool_call` from the `tools_guide`. IF NO TOOL EXISTS for the action, you MUST return a `reply` refusal: 'Unable to comply' or 'Function not implemented'. DO NOT simulate success or narrate reasons (e.g., 'system offline') for unimplemented tools.\n" +
         "4. INTENT PRECISION: Before calling a tool, verify if the user's intent is IMPERATIVE (a command to change state) or INTERROGATIVE (asking for info). \n" +
         "   - Commands (e.g., '启动红警') -> tool_call.\n" +
         "   - Information/Definition requests (e.g., '什么是红警?') -> query_knowledge_base.\n" +
@@ -196,16 +196,16 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         lang_instruction = "Output Language: Simplified Chinese (zh-CN)." if is_chinese else "Output Language: Federation Standard (English)."
         
         prompt = (
-            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data compliance.\n"
+            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a comprehensive report.\n"
             f"{lang_instruction}\n"
-            "STYLE: Concise, professional, factual. Do not say 'Here is the summary'. Just state the facts.\n"
-            "CRITICAL INSTRUCTION: Check if the RAW DATABASE RECORD actually contains the answer to USER QUERY.\n"
-            "- If the record is IRRELEVANT (e.g., User asks for 'Prometheus' but Record is about 'Station Structure'), strictly output: 'Unable to verify. No relevant data found in archives.'\n"
-            "- Do NOT summarize unrelated system info just to fill space.\n"
-            "- If the record IS relevant, summarize it to answer the query.\n\n"
+            "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
+            "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
+            "RELEVANCY CHECK: \n"
+            "- If the record is IRRELEVANT to the user query, output: 'Insufficient data in current archives for specific query. Proceeding with general data match.'\n"
+            "- If the record IS relevant, perform a deep synthesis to provide a detailed briefing.\n\n"
             f"USER QUERY: {query}\n\n"
-            f"RAW DATABASE RECORD:\n{raw_data[:4000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT:"
+            f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
+            "COMPUTER OUTPUT (Technical Briefing):"
         )
 
         response = client.models.generate_content(

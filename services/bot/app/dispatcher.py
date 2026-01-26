@@ -637,7 +637,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         reply_raw = result.get("reply", "")
         intent = result.get("intent")
         
-        image_b64 = None
+        image_b64 = event.meta.get("image_b64")
         if intent == "report" and isinstance(reply_raw, dict):
             # Render image
             img_io = visual_core.render_report(reply_raw)
@@ -672,6 +672,11 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 if "image_io" in tool_result:
                     img_io = tool_result["image_io"]
                     image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+                
+                # FINAL SYNC: Pick up any image_b64 set in event.meta during tool execution 
+                # (e.g. by set_alert_status or search rendering)
+                if event.meta.get("image_b64"):
+                    image_b64 = event.meta.get("image_b64")
             else:
                 reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
             

@@ -61,7 +61,7 @@ def _get_system_prompt() -> str:
         "SECURITY: " + pm.get_prompt("rp_engine", "security_protocols") + "\n" +
         "DECISION LOGIC: " + pm.get_prompt("rp_engine", "decision_logic") + "\n\n" +
         "KNOWLEDGE PROTOCOLS:\n" +
-        "1. PRIMARY SOURCE: You MUST prioritize the local 'Mega-Scale Knowledge Base'. Use the tool `query_knowledge_base` to search for specific technical details (e.g., 'Deck 42 layout', 'Phaser nadion physics').\n" +
+        "1. PRIMARY SOURCE: You MUST prioritize the local 'Mega-Scale Knowledge Base'. Use the tool `query_knowledge_base` to search. CRITICAL: The database is in ENGLISH. You MUST translate your query to English keywords (e.g., use 'Deck Count' instead of '甲板数量') before calling this tool.\n" +
         "2. SECONDARY SOURCE: If local archives are insufficient, you MUST use the tool `search_memory_alpha` to query the Federation Database (Memory Alpha).\n" +
         "3. Simulate the Computer interface. Do not just answer. Action the lookup first.\n\n" +
         "CURRENT SHIP STATUS:\n" +

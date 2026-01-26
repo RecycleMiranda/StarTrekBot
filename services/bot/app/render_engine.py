@@ -157,15 +157,23 @@ class LCARS_Renderer:
 
     def _draw_mega_slot(self, canvas, item, pos, w, h, item_id, f_t, f_id):
         draw = ImageDraw.Draw(canvas)
-        title = (item.get("title") or "TECHNICAL DATA STREAM").upper()
+        # DYNAMIC FONT FOR TITLE (Prevents square boxes for CJK)
+        title_text = (item.get("title") or "TECHNICAL DATA STREAM").upper()
+        f_title_dynamic = self.get_font(title_text, 38)
         content = item.get("content", "").strip()
         # AGGRESSIVE NORMALIZATION
         content = self._normalize_text_flow(content)
         img_b64 = item.get("image_b64")
         
         draw.text((pos[0] + 15, pos[1] + 5), item_id, fill=(255, 170, 0, 255), font=f_id)
-        draw.text((pos[0] + 120, pos[1] + 5), title, fill=(200, 200, 255, 255), font=f_id)
+        draw.text((pos[0] + 120, pos[1] + 5), title_text, fill=(200, 200, 255, 255), font=f_title_dynamic)
         
+        # SOURCE BADGE (Verification Layer)
+        source = item.get("source", "UNKNOWN")
+        badge_text = f"// VERIFIED SOURCE: {source}"
+        badge_w = draw.textlength(badge_text, font=f_id)
+        draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
+
         line_y = pos[1] + 55
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         

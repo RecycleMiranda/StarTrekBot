@@ -333,15 +333,17 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                 "id": item_id,
                 "type": "text",
                 "title": f"ARCHIVE: {hit['file']}",
-                "content": hit['snippet']
+                "content": hit['snippet'],
+                "source": "LOCAL ARCHIVE"
             })
-            digest += f"\n--- [{item_id}: {hit['file']}] ---\n{hit['snippet']}\n"
+            digest += f"\n--- [{item_id}: {hit['file']}] (Source: LOCAL ARCHIVE) ---\n{hit['snippet']}\n"
             
         return {
             "ok": True,
             "items": results,
             "message": digest,
-            "count": len(hits)
+            "count": len(hits),
+            "source": "LOCAL ARCHIVE"
         }
 
     except Exception as e:
@@ -411,7 +413,8 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
                     "type": "hybrid",
                     "content": text_content,
                     "title": f"RECORD: {query.upper()}",
-                    "image_url": img_url
+                    "image_url": img_url,
+                    "source": "MEMORY ALPHA"
                 }
             ],
             "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",

@@ -195,33 +195,36 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         
         lang_instruction = "Output Language: Simplified Chinese (zh-CN)." if is_chinese else "Output Language: Federation Standard (English)."
         
-        prompt = (
-            "NO CONVERSATIONAL FILLER: Start the output IMMEDIATELY with the technical content.\n"
-            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a exhaustive technical report.\n"
-            f"{lang_instruction}\n"
-            "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
-            "NEGATIVE CONSTRAINTS: \n"
-            "- DO NOT add conversational fillers or politeness markers.\n"
-            "- DO NOT interleave individual sentences (EN line, then ZH line). This is inefficient.\n"
-            "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
-            "TERMINOLOGY DIRECTIVES:\n"
-            "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
-            "- DO NOT use '企业号'.\n"
-            "NEGATIVE CONSTRAINTS (CRITICAL):\n"
-            "- IF DATA OR IMAGES ARE MISSING, DO NOT APOLOGIZE. DO NOT EXPLAIN.\n"
-            "- IF THE PROVIDED RAW DATA IS TOO SHORT, TOO SPECIFIC (e.g. only airlocks), OR LACKS A GENERAL OVERVIEW, YOU MUST START YOUR ENTIRE RESPONSE WITH THE TOKEN 'INSUFFICIENT_DATA' AND NOTHING ELSE.\n"
-            "- DO NOT output 'Due to limitations...' or '由于访问外部资源...'.\n"
-            "- SILENTLY omit any missing fields unless the whole report is insufficient.\n"
-            "FORMAT: BILINGUAL PARAGRAPH BLOCKS\n"
-            "Each logical point MUST be presented as follows:\n"
-            "1. A complete English paragraph summarizing all technical data for that point.\n"
-            "2. A complete Chinese translation of the ABOVE paragraph immediately on the next line.\n"
-            "3. NO sentence-by-sentence interleaving.\n"
-            "4. Use double newlines only between these bilingual blocks.\n\n"
-            f"USER QUERY: {query}\n\n"
-            f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then High-Density Technical Briefing):"
-        )
+        prompt = f"""
+TECHNICAL DATA SYNTHESIS PROTOCOL
+Role: LCARS Main Computer
+Status: Online
+
+TASK: Synthesize the following raw database records into a cohesive technical brief.
+{lang_instruction}
+
+FORMATTING RULES:
+1. **Whole-Paragraph Bilingual Blocks**: Write a complete English paragraph for each logical point. Immediately follow it with a new paragraph containing the full Chinese translation.
+2. **NO Interleaving**: Do NOT interleave English and Chinese sentences within the same block.
+3. **Professional Tone**: Use high-density technical language. NO conversational filler, preambles, or post-scripts.
+4. **Source Attribution**: If multiple sources are present (e.g., LOCAL ARCHIVE and MEMORY ALPHA), acknowledge them within the narrative (e.g., "Archive records indicate... synchronized with external database entries...").
+
+MANDATORY DATA DELIMITER:
+You MUST output the token '^^DATA_START^^' immediately before the technical briefing begins.
+
+NEGATIVE CONSTRAINTS:
+- 'Enterprise' MUST be translated as '进取号'. NEVER '企业号'.
+- IF DATA OR IMAGES ARE MISSING, DO NOT APOLOGIZE. DO NOT EXPLAIN.
+- IF THE PROVIDED RAW DATA IS TOO SHORT OR LACKS A GENERAL OVERVIEW (e.g. only irrelevant snippets), YOU MUST START YOUR ENTIRE RESPONSE WITH THE TOKEN 'INSUFFICIENT_DATA' AND NOTHING ELSE.
+- DO NOT output 'Due to limitations...' or 'Since I cannot access...'.
+
+USER QUERY: {query}
+
+RAW DATABASE RECORDS:
+{raw_data[:5000]}
+
+COMPUTER OUTPUT (Start with ^^DATA_START^^):
+"""
 
         response = client.models.generate_content(
             model=model_name,

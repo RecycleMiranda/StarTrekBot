@@ -72,8 +72,7 @@ def _get_system_prompt() -> str:
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?}\n\n" +
         "FINAL MANDATE:\n" +
-        "You MUST strictly apply the 'STYLE/LANGUAGE RULES' from the DYNAMIC PROTOCOLS section to the 'reply' value. " +
-        "If a suffix like '123' is requested, it MUST be attached to EVERY reply string regardless of language.\n\n" +
+        "You MUST strictly apply the 'STYLE/LANGUAGE RULES' from the DYNAMIC PROTOCOLS section to the 'reply' value.\n\n" +
         "TECHNICAL LEXICON:\n" + get_lexicon_prompt()
     )
     return content

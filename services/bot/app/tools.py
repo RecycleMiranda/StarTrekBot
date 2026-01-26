@@ -217,7 +217,125 @@ def get_ship_schematic(ship_name: str, clearance: int = 1) -> dict:
         ]
     }
 
-def get_historical_archive(topic: str) -> dict:
+def query_knowledge_base(query: str, session_id: str) -> dict:
+    """
+    Searches the extensive local MSD Knowledge Base (Mega-Scale).
+    Scans the markdown files in the msd_knowledge_base directory.
+    """
+    import os
+    # Hardcoded path to the knowledge base (absolute path from agent state)
+    KB_DIR = "/Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7/msd_knowledge_base"
+    
+    hits = []
+    
+    try:
+        if not os.path.exists(KB_DIR):
+             return {"ok": False, "message": "Knowledge Base directory not found.", "hits": []}
+
+        # Priority scan: Index first
+        files = sorted([f for f in os.listdir(KB_DIR) if f.endswith(".md")])
+        
+        # Simple keyword matching (enhanced logic could go here)
+        query_lower = query.lower()
+        keywords = query_lower.split()
+        
+        for filename in files:
+            path = os.path.join(KB_DIR, filename)
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            score = 0
+            if query_lower in content.lower():
+                score += 5
+            
+            for k in keywords:
+                if k in content.lower():
+                    score += 1
+            
+            if score > 0:
+                # Extract relevant snippet (rudimentary)
+                idx = content.lower().find(keywords[0]) if keywords else -1
+                start = max(0, idx - 200)
+                end = min(len(content), idx + 500)
+                snippet = content[start:end].replace("\n", " ") + "..."
+                hits.append({
+                    "file": filename,
+                    "score": score,
+                    "snippet": snippet,
+                    "full_path": path 
+                })
+        
+        # Sort by score
+        hits.sort(key=lambda x: x["score"], reverse=True)
+        top_hits = hits[:3]
+        
+        if not top_hits:
+            return {"ok": False, "message": "No matching records found in local archives.", "count": 0}
+            
+        # Construct a digest
+        digest = f"FOUND {len(hits)} RECORDS IN ARCHIVE:\n"
+        for hit in top_hits:
+            digest += f"\n--- [FILE: {hit['file']}] ---\n{hit['snippet']}\n"
+            
+        return {
+            "ok": True,
+            "message": digest,
+            "count": len(hits),
+            "top_file": top_hits[0]["file"]
+        }
+
+    except Exception as e:
+        logger.error(f"KB Query failed: {e}")
+        return {"ok": False, "message": f"Archive query error: {e}"}
+
+def search_memory_alpha(query: str, session_id: str) -> dict:
+    """
+    Uses Google Search (via Gemini Grounding) to query Memory Alpha.
+    Fallback for when local KB is insufficient.
+    """
+    from .config_manager import ConfigManager
+    from google import genai
+    from google.genai import types
+    
+    config = ConfigManager.get_instance()
+    api_key = config.get("gemini_api_key", "")
+    
+    if not api_key:
+         return {"ok": False, "message": "External search offline (API Key missing)."}
+         
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        # We use a separate model call to perform the search and reasoning
+        search_prompt = f"Search Memory Alpha (Star Trek Wiki) for: {query}. Summarize the technical specifications or details."
+        
+        # Enable Google Search Tool
+        google_search_tool = types.Tool(
+            google_search=types.GoogleSearch()
+        )
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", 
+            contents=search_prompt,
+            config=types.GenerateContentConfig(
+                tools=[google_search_tool],
+                response_mime_type="text/plain", 
+                temperature=0.3
+            )
+        )
+        
+        if response.text:
+             return {
+                 "ok": True,
+                 "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{response.text}",
+                 "source": "Memory Alpha / Google Search"
+             }
+        else:
+            return {"ok": False, "message": "External database returned no data."}
+
+    except Exception as e:
+        logger.error(f"Memory Alpha search failed: {e}")
+        return {"ok": False, "message": f"Subspace communication error: {e}"}
     """
     Retrieves library computer historical records.
     """

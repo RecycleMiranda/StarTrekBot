@@ -78,6 +78,8 @@ class LCARS_Renderer:
         # AGGRESSIVE NORMALIZATION: Merge fragmented lines into paragraphs
         content = self._normalize_text_flow(content)
         
+        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+        
         # COLUMNAR DETECTOR (Universal)
         is_dense_list = len(paragraphs) > 8 and (sum(len(p) for p in paragraphs) / len(paragraphs)) < 60
         num_cols = 2 if is_dense_list else 1

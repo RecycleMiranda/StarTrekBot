@@ -411,6 +411,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         client = genai.Client(api_key=api_key)
         
         # Request structured summary and specific image search query
+        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
         # Domain Restriction: Strictly Memory Alpha
         search_prompt = f"Using ONLY site:memory-alpha.fandom.com, find the technical entry for {query}. Return: 1. A dense technical summary (under 120 words),{lang_ext}. 2. The DIRECT URL of the primary illustrative image from static.wikia.nocookie.net. Do NOT include formatting, just the raw URL."
         

@@ -296,15 +296,19 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.set_absolute_override(state, str(event.user_id), profile.get("clearance", 1))
             
         elif tool == "set_alert_status":
-            # Priority Level Inference
-            if any(k in tool_name.lower() for k in ["cancel", "normal", "解除", "abort"]):
-                level = "NORMAL"
-            elif "red" in tool_name.lower() or "红色" in tool_name.lower():
-                level = "RED"
-            elif "yellow" in tool_name.lower() or "黄色" in tool_name.lower():
-                level = "YELLOW"
-            else:
-                level = args.get("level") or args.get("new_alert_status") or "NORMAL"
+            # Priority Level Inference using BEFORE-ALIAS name
+            level = args.get("level") or args.get("new_alert_status")
+            
+            if not level:
+                tool_lower = original_tool.lower()
+                if any(k in tool_lower for k in ["cancel", "normal", "解除", "stand_down", "deactivate", "abort"]):
+                    level = "NORMAL"
+                elif "red" in tool_lower or "红色" in tool_lower:
+                    level = "RED"
+                elif "yellow" in tool_lower or "黄色" in tool_lower:
+                    level = "YELLOW"
+                else:
+                    level = "NORMAL"
                 
             result = tools.set_alert_status(level.upper(), profile.get("clearance", 1))
             
@@ -332,9 +336,11 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             from .ship_systems import get_ship_systems
             ss = get_ship_systems()
             if not ss.is_subsystem_online("weapons"):
-                result = {"ok": False, "message": "无法完成：武器系统下线。"}
+                result = {"ok": False, "message": "无法完成，武器系统下线。"}
             else:
-                result = {"ok": True, "message": action}
+                is_fire = any(k in tool_name.lower() for k in ["fire", "开火", "射击"])
+                msg = "确认，正在开火。" if is_fire else "目标已锁定。"
+                result = {"ok": True, "message": msg}
             
         elif tool == "get_subsystem_status":
             name = args.get("name") or args.get("subsystem")

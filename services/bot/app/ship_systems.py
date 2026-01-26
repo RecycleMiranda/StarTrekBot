@@ -66,26 +66,32 @@ class ShipSystems:
 
     def set_alert(self, level: str) -> str:
         level = level.upper()
+        old_level = self.alert_status
         
-        # Check current state first
-        if level == "RED":
-            if self.alert_status == AlertStatus.RED:
-                return "⚠️ 警报状态未变更：当前已处于红色警报状态。"
+        # Mapping to normalized strings
+        target = "NORMAL"
+        if level in ["RED", "红色"]: target = "RED"
+        if level in ["YELLOW", "黄色"]: target = "YELLOW"
+        
+        # 1. State: Already in target
+        if old_level.value == target:
+            if target == "RED": return "⚠️ 警报状态未变更：当前已处于红色警报状态。"
+            if target == "YELLOW": return "⚠️ 警报状态未变更：当前已处于黄色警报状态。"
+            return "ℹ️ 舰船当前已处于正常巡航模式。"
+
+        # 2. Transition Logic
+        if target == "RED":
             self.alert_status = AlertStatus.RED
             self.shields_active = True
-            return "✅ 全体注意，红 色 警 报！护盾已自启动。"
+            return "✅ 全体注意，红色警报！"
             
-        elif level == "YELLOW":
-            if self.alert_status == AlertStatus.YELLOW:
-                return "⚠️ 警报状态未变更：当前已处于黄色警报状态。"
+        elif target == "YELLOW":
             self.alert_status = AlertStatus.YELLOW
-            return "⚠️ 全体注意，黄 色 警 报！"
+            return "⚠️ 全体注意，黄色警报！"
             
-        else: # NORMAL / CANCEL
-            if self.alert_status == AlertStatus.NORMAL:
-                return "ℹ️ 舰船当前已处于正常巡航模式。"
+        else: # NORMAL
             self.alert_status = AlertStatus.NORMAL
-            return "✅ 警报解除，恢复正常运行状态。"
+            return "噔噔噔"
 
     def toggle_shields(self, active: bool) -> str:
         if active and not self.is_subsystem_operational("shields"):
@@ -102,11 +108,24 @@ class ShipSystems:
         if name in self.subsystems:
             self.subsystems[name] = state
             status_text = {
-                SubsystemState.ONLINE: "上线",
-                SubsystemState.OFFLINE: "下线",
+                SubsystemState.ONLINE: "已上线",
+                SubsystemState.OFFLINE: "已下线",
                 SubsystemState.DAMAGED: "受损"
             }.get(state, "状态不明")
-            return f"✅ {name.upper()} 系统已{status_text}。"
+            
+            # Map common internal names to Chinese for the response
+            display_names = {
+                "weapons": "武器系统",
+                "shields": "护盾系统",
+                "phasers": "相位炮",
+                "torpedoes": "鱼雷系统",
+                "comms": "通讯系统",
+                "transporters": "传送器",
+                "replicators": "复制机",
+                "holodecks": "全息甲板"
+            }
+            display_name = display_names.get(name.lower(), name.upper())
+            return f"{display_name}{status_text}"
         return f"❌ 找不到子系统: {name}"
 
     def is_subsystem_online(self, name: str) -> bool:

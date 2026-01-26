@@ -135,6 +135,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "open_fire": "weapon_lock_fire",
         "locate_user": "locate_user",
         "replicate": "replicate",
+        "report_replicator_status": "get_subsystem_status",
+        "subsystem_status": "get_subsystem_status",
     }
 
 
@@ -179,6 +181,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.personal_log(args.get("content", ""), str(event.user_id))
         elif tool == "search_memory":
             result = tools.search_memory(args.get("query"), session_id)
+            
+        elif tool == "query_knowledge_base":
+            result = tools.query_knowledge_base(args.get("query") or args.get("topic"), session_id)
+            
+        elif tool == "search_memory_alpha":
+            result = tools.search_memory_alpha(args.get("query") or args.get("topic"), session_id)
             
         elif tool == "set_reminder":
             result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))
@@ -305,8 +313,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             if not ss.is_subsystem_online("weapons"):
                 result = {"ok": False, "message": "无法完成：武器系统下线。"}
             else:
-                action = "锁定成功" if "lock" in tool_name else "滴噔滴"
                 result = {"ok": True, "message": action}
+            
+        elif tool == "get_subsystem_status":
+            name = args.get("name") or args.get("subsystem")
+            if not name and "replicator" in tool_name:
+                name = "replicator"
+            result = tools.get_subsystem_status(name or "unknown")
         elif tool == "get_repair_module_outline":
             result = tools.get_repair_module_outline(
                 args.get("module") or args.get("name", ""),

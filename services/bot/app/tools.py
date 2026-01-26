@@ -22,6 +22,23 @@ def get_status() -> dict:
         "subsystems": {k: v.value for k, v in ss.subsystems.items()}
     }
 
+def get_subsystem_status(name: str) -> dict:
+    """
+    Returns the status of a specific subsystem.
+    """
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    name = name.lower()
+    if name in ss.subsystems:
+        state = ss.subsystems[name].value
+        return {
+            "ok": True,
+            "name": name,
+            "state": state,
+            "message": f"子系统 {name} 当前状态：{state}。"
+        }
+    return {"ok": False, "message": f"找不到子系统：{name}。"}
+
 def get_time() -> dict:
     """
     Returns current system time.

@@ -322,13 +322,13 @@ class LCARS_Renderer:
                 prev = lines[i-1]
                 curr = lines[i]
                 
-                # Language Transition Detection
+                # Language Transition Detection (Markdown Aware)
                 # English regex improved to include more punctuation and delimiters
-                prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]\"\']$', prev))
-                curr_is_cn = bool(re.search(r'^[\u4e00-\u9fff\（\【]', curr))
+                prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]\"\*\' ]$', prev))
+                curr_is_cn = bool(re.search(r'^[\*\s]*[\u4e00-\u9fff\（\【]', curr))
                 
-                prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？\）\】]$', prev))
-                curr_is_en = bool(re.search(r'^[a-zA-Z0-9]', curr))
+                prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？\）\】\*]$', prev))
+                curr_is_en = bool(re.search(r'^[\*\s]*[a-zA-Z0-9]', curr))
                 
                 if (prev_is_en and curr_is_cn) or (prev_is_cn and curr_is_en):
                     # BILINGUAL SPLIT: Save current accumulator and start new one
@@ -336,7 +336,7 @@ class LCARS_Renderer:
                     curr_accumulator = curr
                 else:
                     # MERGE: Handle spacing
-                    if re.search(r'[a-zA-Z0-9\.,!?]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
+                    if re.search(r'[a-zA-Z0-9\.,!?\*]$', prev) and re.search(r'^[\*\s]*[a-zA-Z0-9]', curr):
                         curr_accumulator += " " + curr
                     else:
                         curr_accumulator += curr

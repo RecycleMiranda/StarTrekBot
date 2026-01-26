@@ -697,7 +697,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             from .render_engine import get_renderer
             renderer = get_renderer()
             report_item = {
-                "title": f"SEARCH REPORT: {event.text[:35].upper()}",
+                "title": "", # Suppress top bar title per user request
                 "content": synth_reply,
                 "image_b64": (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None) or event.meta.get("image_b64"),
                 "source": current_source

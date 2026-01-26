@@ -285,8 +285,19 @@ class LCARS_Renderer:
                 for i in range(1, len(lines)):
                     prev = lines[i-1]
                     curr = lines[i]
-                    # Logic: If prev ends with latin and curr starts with latin, add space. Else nothing.
-                    if re.search(r'[a-zA-Z0-9]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
+                    
+                    # Language Boundary Detection (Bilingual Block Protocol)
+                    # If prev is English and curr is Chinese (or vice versa), FORCE A BREAK.
+                    prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]]$', prev))
+                    curr_is_cn = bool(re.search(r'^[\u4e00-\u9fff]', curr))
+                    # Check reverse (Chinese line -> English line)
+                    prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？]$', prev))
+                    curr_is_en = bool(re.search(r'^[a-zA-Z0-9]', curr))
+                    
+                    if (prev_is_en and curr_is_cn) or (prev_is_cn and curr_is_en):
+                        # Force a soft paragraph break for bilingual separation
+                        merged += "\n" + curr
+                    elif re.search(r'[a-zA-Z0-9]$', prev) and re.search(r'^[a-zA-Z0-9]', curr):
                         merged += " " + curr
                     else:
                         merged += curr

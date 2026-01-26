@@ -258,7 +258,7 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
                 "ROLE: You are a Universal Translator linked directly to the Federation Database.\n"
                 f"{lang_instruction}\n"
                 "INPUT: Raw text from a Memory Alpha database entry.\n"
-                "TASK: translate the content VERBATIM into the target language. \n"
+                "TASK: Transcribe and translate the content block-by-block. \n"
                 "CONSTRAINTS:\n"
                 "1. DO NOT SUMMARIZE. Retain all technical details, dates, names, and lists.\n"
                 "2. RETAIN STRUCTURE. If the input has infoboxes or lists, keep them.\n"
@@ -266,12 +266,16 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
                 "4. TECHNICAL ACCURACY. Ensure Trek terminology (Warp, Phaser, Class) is translated accurately.\n"
                 "5. NEGATIVE CONSTRAINTS: DO NOT add 'Here is the translation', DO NOT add 'Translation:', DO NOT add conversational filler.\n"
                 "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
-                "   Example: 'Sure, here is the translation... ^^DATA_START^^ Enterprise (NX-01) is a...'\n"
+                "   Example: 'Sure... ^^DATA_START^^ Enterprise (NX-01) is...'\n"
                 "TERMINOLOGY DIRECTIVES:\n"
                 "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
                 "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRCT IT to '进取号'.\n"
                 "- This rule is ABSOLUTE for the ship name.\n"
-                "FORMAT: Present the output as a clean technical record suitable for LCARS display. \n"
+                "FORMAT: BILINGUAL BLOCK PAIRS (Strictly Alternating)\n"
+                "For each logical paragraph or list item in the source:\n"
+                "1. Output the original English text.\n"
+                "2. Output the Chinese translation immediately on the next line.\n"
+                "3. Use a double newline to separate this block from the next.\n"
                 "BILINGUAL NOTE: Even if translating to Chinese, keep specific proper nouns (like ship registry numbers NCC-1701) in alphanumeric format if standard.\n\n"
                 f"RAW INPUT:\n{raw_content[:8000]}\n\n" # Increased context window for direct access
                 "TRANSLATED OUTPUT (Start Immediately):"
@@ -359,7 +363,12 @@ def strip_conversational_filler(text: str) -> str:
         r"^根据您(提供|查询)的数据.*?：",
         r"^(好的|没问题|这是为您查询到的).*?：",
         r"^下面是.*?的技术参数：",
-        r"^Accessing (Federation|Starfleet) Database.*?:"
+        r"^Accessing (Federation|Starfleet) Database.*?:",
+        # LEVEL 3: BLIND CUT AGGRESSORS (Catch-all for stubborn models)
+        r"^Here is the .*?(:|\n)",
+        r"^Below is the .*?(:|\n)",
+        r"^(Sure|Certainly|Understood|Affirmative).*?(\.|:|\n)",
+        r"^.*?(here is|following is).*?(:)$" # Risky but necessary for "The following is..."
     ]
     
     lines = text.split('\n')
@@ -367,6 +376,12 @@ def strip_conversational_filler(text: str) -> str:
     
     # Check if first line matches any filler pattern
     first_line = lines[0].strip()
+    
+    # Special Case: If first line ends in colon and is short, kill it.
+    if first_line.endswith(":") and len(first_line) < 100:
+        logger.info(f"[NeuralEngine] Blind Cut engaged on colon-ended line: '{first_line}'")
+        return '\n'.join(lines[1:]).strip()
+        
     for p in patterns:
         if re.match(p, first_line, re.IGNORECASE):
             logger.info(f"[NeuralEngine] Programmatically stripped AI filler: '{first_line}'")

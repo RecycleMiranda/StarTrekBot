@@ -481,7 +481,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
                 }
             ],
             "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",
-            "source": "Memory Alpha / Google Search"
+            "source": "MEMORY ALPHA"
         }
 
     except Exception as e:

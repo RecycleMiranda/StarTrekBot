@@ -385,7 +385,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                     event.meta["image_b64"] = img_b64
                     result = {"ok": True, "message": f"FEDERATION DATABASE ACCESS GRANTED // PAGE {new_page} OF {total_pages}"}
                 else:
-                    result = {"ok": False, "message": f"无法完成：已到达{'末尾' if tool == 'next_page' else '首页'}。"}
+                    result = {"ok": False, "message": "INSUFFICIENT DATA"}
 
         elif tool == "show_details":
             target_id = args.get("id", "").upper()
@@ -663,6 +663,15 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
                 msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
                 cumulative_data.append(f"ROUND {iteration} ACTION ({tool}):\nResult: {msg}")
+                
+                # UI NAVIGATION SHORT-CIRCUIT: Prevent redundant synthesis for simple UI tools
+                if tool in ["next_page", "prev_page", "show_details"]:
+                    logger.info(f"[Dispatcher] UI Navigation tool '{tool}' completed. Breaking early.")
+                    reply_text = tool_result.get("message", "")
+                    image_b64 = event.meta.get("image_b64")
+                    cumulative_data = [] # Clear to prevent synthesis phase
+                    break
+                    
                 continue # RECURSE to AI for potential follow-up actions
             else:
                 reply_text = f"Unable to comply. CORE ERROR: [{tool_result.get('message', 'System error.')}]"

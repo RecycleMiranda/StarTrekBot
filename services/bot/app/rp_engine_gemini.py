@@ -245,8 +245,11 @@ ENTITY ANCHORING PROTOCOL (CRITICAL):
 
 BILINGUAL HEADER PROTOCOL (CRITICAL):
 - **Formatting**: ALWAYS start the technical report with a bilingual header on the FIRST LINE.
-- **Header Structure**: `**[Chinese Title]**\n**[English Title]**` (Use a single newline between the two parts, but follow with a DOUBLE NEWLINE before the body).
+- **Header Structure**: `[Chinese Title]\n[English Title]` (Do NOT use ** or other markdown markers).
 - **No Prefixes**: Do not use "SEARCH REPORT:" or other prefixes in the content body.
+
+NO MARKDOWN FORMATTING (STRICT):
+- **Plain Text Only**: Do NOT use `**bold**`, `*italic*`, or `[links]` in the technical content. Use plain, capitalized text for emphasis if needed. The render engine handles typography.
 
 DUAL-FORMAT DISPLAY PROTOCOL (CRITICAL):
 1. **TEXT-ONLY (FACTOID) MODE**:

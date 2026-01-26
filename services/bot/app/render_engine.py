@@ -210,7 +210,8 @@ class LCARS_Renderer:
                 
                 for line in lines:
                     logger.debug(f"[Renderer] Drawing line (Hybrid) at {text_y}: '{line[:20]}...'")
-                    draw.text((text_l, text_y), line, fill=(200, 200, 255, 255), font=f_line)
+                    color = self._get_color_for_text(line)
+                    draw.text((text_l, text_y), line, fill=color, font=f_line)
                     text_y += LINE_HEIGHT # Tighter leading
                 
                 text_y += PARA_SPACING # Paragraph spacing
@@ -260,7 +261,8 @@ class LCARS_Renderer:
                 if text_y + (len(lines) * best_lh) > pos[1] + h - 10: break
                 
                 for line in lines:
-                    draw.text((pos[0] + 30, text_y), line, fill=(200, 200, 255, 255), font=f_final)
+                    color = self._get_color_for_text(line)
+                    draw.text((pos[0] + 30, text_y), line, fill=color, font=f_final)
                     text_y += best_lh
                 
                 text_y += PARA_SPACING
@@ -343,8 +345,21 @@ class LCARS_Renderer:
             
             merged_lines.append(curr_accumulator)
             normalized_blocks.append("\n".join(merged_lines))
-                
-        return "\n\n".join(normalized_blocks)
+        
+        # Step 3: Strip remaining Markdown markers (Aggressive Cleanup)
+        result = "\n\n".join(normalized_blocks)
+        result = result.replace("**", "").replace("*", "")
+        return result
+
+    def _get_color_for_text(self, text: str) -> Tuple[int, int, int, int]:
+        """Returns LCARS color based on dominant language."""
+        # Detect Chinese characters
+        if re.search(r'[\u4e00-\u9fff]', text):
+            # LCARS Cyan-Blue for Chinese
+            return (150, 180, 255, 255)
+        else:
+            # Pure White for English/Technical Standard
+            return (245, 245, 255, 255)
 
     def _empty_b64(self) -> str:
         img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0,0,0,0))

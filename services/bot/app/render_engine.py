@@ -26,20 +26,36 @@ CONTENT_R = 1550
 CONTENT_B = 850
 
 class LCARS_Renderer:
-    def __init__(self, root_path: str):
-        self.root = root_path
-        self.bg_path = os.path.join(self.root, "联邦数据库.png")
-        self.frame_full = os.path.join(self.root, "展示框1.png")
-        self.frame_left = os.path.join(self.root, "展示框1左.png")
-        self.frame_right = os.path.join(self.root, "展示框1右.png")
+    def __init__(self, root_path: str = None):
+        # Resolve assets directory relative to this file
+        # /app/services/bot/app/render_engine.py -> /app/services/bot/app/static/assets/database/
+        if not root_path:
+            base_dir = os.path.dirname(__file__)
+            self.assets_dir = os.path.join(base_dir, "static", "assets", "database")
+        else:
+            self.assets_dir = os.path.join(root_path, "services", "bot", "app", "static", "assets", "database")
+            
+        self.bg_path = os.path.join(self.assets_dir, "联邦数据库.png")
+        self.frame_full = os.path.join(self.assets_dir, "展示框1.png")
+        self.frame_left = os.path.join(self.assets_dir, "展示框1左.png")
+        self.frame_right = os.path.join(self.assets_dir, "展示框1右.png")
         
         # Font configuration
-        self.font_path = "/System/Library/Fonts/Supplemental/Arial.ttf" # Default Mac path
-        if not os.path.exists(self.font_path):
-            self.font_path = None # PIL will fallback to default
+        # For Linux/Docker compatibility, we check common font paths
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf"
+        ]
+        self.font_path = next((f for f in font_candidates if os.path.exists(f)), None)
 
     def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1) -> str:
         """Renders items and returns b64 PNG."""
+        if not os.path.exists(self.bg_path):
+            error_msg = f"[Renderer] Background not found: {self.bg_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+
         with Image.open(self.bg_path).convert("RGBA") as canvas:
             canvas = canvas.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
             draw = ImageDraw.Draw(canvas)
@@ -154,15 +170,6 @@ _renderer = None
 def get_renderer():
     global _renderer
     if not _renderer:
-        _renderer = LCARS_Renderer("/Users/wanghaozhe/Documents/GitHub/StarTrekBot")
-    return _renderer
-
-# Instance provider
-_renderer = None
-def get_renderer():
-    global _renderer
-    if not _renderer:
-        # Assuming we are in /app/services/bot/app/ or similar
-        # Root path is where the .png files were moved
-        _renderer = LCARS_Renderer("/Users/wanghaozhe/Documents/GitHub/StarTrekBot")
+        # Default constructor uses relative paths suitable for Docker environment
+        _renderer = LCARS_Renderer()
     return _renderer

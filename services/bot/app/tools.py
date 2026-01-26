@@ -731,11 +731,13 @@ def query_technical_database(query: str) -> dict:
     Searches clean text manuals and the unified glossary.
     """
     import os
+    # Resolve the data directory (root of the project)
+    # This file is at /app/services/bot/app/tools.py
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
     
-    base_path = "/Users/wanghaozhe/Documents/GitHub/StarTrekBot"
     files_to_search = [
-        os.path.join(base_path, "tng_manual_clean.txt"),
-        os.path.join(base_path, "ds9_manual_clean.txt"),
+        os.path.join(project_root, "tng_manual_clean.txt"),
+        os.path.join(project_root, "ds9_manual_clean.txt"),
         os.path.join("/Users/wanghaozhe/.gemini/antigravity/brain/043b8282-3619-44f4-9467-95077493a8b7", "Star_Trek_Technical_Glossary.md")
     ]
     

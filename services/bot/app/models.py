@@ -8,5 +8,6 @@ class InternalEvent(BaseModel):
     group_id: Optional[str] = None
     message_id: Optional[str] = None
     text: Optional[str] = None
+    meta: dict = {}            # 扩展元数据，用于传递图片、状态等
     raw: dict                  # 原始平台事件完整保留
     ts: Optional[int] = None

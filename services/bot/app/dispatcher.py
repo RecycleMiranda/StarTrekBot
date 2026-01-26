@@ -536,7 +536,22 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
             
             if tool_result.get("ok"):
-                reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                # Intercept for Polymath Synthesis (KB/Memory Alpha)
+                if tool in ["query_knowledge_base", "search_memory_alpha"]:
+                    logger.info(f"[Dispatcher] Synthesizing raw data for {tool}...")
+                    raw_data = tool_result.get("message", "")
+                    
+                    # Run synthesis in thread pool
+                    future = _executor.submit(
+                        rp_engine_gemini.synthesize_search_result,
+                        result.get("original_query", ""),
+                        raw_data,
+                        is_chinese
+                    )
+                    reply_text = future.result(timeout=20)
+                else:
+                    reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
+                
                 # Check for image content from tool (e.g. Personnel File)
                 if "image_io" in tool_result:
                     img_io = tool_result["image_io"]

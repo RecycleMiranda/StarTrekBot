@@ -175,6 +175,47 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         logger.exception("Escalation failed")
         return _fallback(str(e))
 
+def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False) -> str:
+    """
+    Synthesizes raw tool output (KB/Memory Alpha) into a persona-compliant LCARS response.
+    """
+    config = get_config()
+    api_key = config.get("gemini_api_key", "")
+    model_name = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+    
+    if not api_key:
+        return "Data retrieved. (Synthesis offline)"
+
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        lang_instruction = "Output Language: Simplified Chinese (zh-CN)." if is_chinese else "Output Language: Federation Standard (English)."
+        
+        prompt = (
+            "ROLE: You are the LCARS Main Computer. Synthesize the following raw data compliance.\n"
+            f"{lang_instruction}\n"
+            "STYLE: Concise, professional, factual. Do not say 'Here is the summary'. Just state the facts.\n"
+            "TASK: Summarize the retrieved data to answer the user's query.\n\n"
+            f"USER QUERY: {query}\n\n"
+            f"RAW DATABASE RECORD:\n{raw_data[:4000]} (Truncated)\n\n"
+            "COMPUTER OUTPUT:"
+        )
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=500,
+                temperature=0.3
+            )
+        )
+        
+        return response.text.strip() if response.text else "Data analysis complete. (Empty synthesis)"
+
+    except Exception as e:
+        logger.error(f"Synthesis failed: {e}")
+        return f"Data retrieved. Synthesis error: {e}. Raw data: {raw_data[:200]}..."
+
 def _parse_response(text: str) -> Dict:
     text = text.strip()
     start = text.find("{")

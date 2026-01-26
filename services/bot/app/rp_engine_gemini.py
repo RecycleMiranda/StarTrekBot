@@ -235,6 +235,12 @@ IMMEDIATE CORRECTION PROTOCOL (NEW):
 - You MUST immediately perform a re-synthesis or re-calculation and provide the updated CORRECT answer in the same response.
 - Treat corrections as highest-priority logical overrides.
 
+REASONED REFUSAL PROTOCOL (CRITICAL):
+- You are PROHIBITED from repeating "Unable to provide" (无法提供) in isolation.
+- If data or a simulation result is truly unavailable (e.g. missing ship dimensions), you MUST provide a technical reason.
+- Example: "Analysis inconclusive. Variable 'Hangar Door Area' is not in local database. Unable to determine pressure discharge magnitude."
+- If asked "Why?", you must provide a detailed breakdown of the missing parameters or logical conflicts.
+
 PHYSICS RIGOR (NEW):
 - You MUST strictly distinguish between **Thrust (Force, Newtons / N)** and **Velocity Change (Delta-V, m/s)**.
 - If asked for "Thrust", provide result in Newtons. 
@@ -388,12 +394,14 @@ def _parse_response(text: str) -> Dict:
         }
     except Exception as e:
         logger.error(f"Parse error: {e}")
-        return _fallback("parse_error")
+        return _fallback(f"JSON Parse Error: {str(e)}")
 
 def _fallback(reason: str) -> Dict:
+    # Transform mechanical codes into LCARS-style debug messages
+    debug_msg = f"CORE ERROR: [{reason}]"
     return {
         "ok": False,
-        "reply": "Computer: Unable to comply. (Core Exception)",
+        "reply": f"Computer: Unable to comply. {debug_msg}",
         "intent": "refuse",
         "reason": reason
     }

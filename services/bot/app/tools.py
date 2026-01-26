@@ -242,7 +242,7 @@ def get_ship_schematic(ship_name: str, clearance: int = 1) -> dict:
         ]
     }
 
-def query_knowledge_base(query: str, session_id: str) -> dict:
+def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) -> dict:
     """
     Searches the extensive local MSD Knowledge Base (Mega-Scale).
     Scans the markdown files in the msd_knowledge_base directory.
@@ -298,7 +298,7 @@ def query_knowledge_base(query: str, session_id: str) -> dict:
         if not top_hits:
             logger.info(f"[KB] No local hits for '{query}'. Auto-falling back to Memory Alpha.")
             # Auto-fallback to Memory Alpha (Polymath Logic)
-            return search_memory_alpha(query, session_id)
+            return search_memory_alpha(query, session_id, is_chinese)
             
         # Construct structured items for rendering
         results = []
@@ -325,7 +325,7 @@ def query_knowledge_base(query: str, session_id: str) -> dict:
         logger.error(f"KB Query failed: {e}")
         return {"ok": False, "message": f"Archive query error: {e}"}
 
-def search_memory_alpha(query: str, session_id: str) -> dict:
+def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -> dict:
     """
     Uses Google Search (via Gemini Grounding) to query Memory Alpha.
     Fallback for when local KB is insufficient.
@@ -346,7 +346,8 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
         client = genai.Client(api_key=api_key)
         
         # Request structured summary and specific image search query
-        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 100 words). 2. The DIRECT URL of the primary illustrative image of the topic (usually from static.wikia.nocookie.net). Do not include formatting, just the raw URL for the image if found."
+        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved [EN] and [ZH] pairs)" if is_chinese else ""
+        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 120 words),{lang_ext}. 2. The DIRECT URL of the primary illustrative image of the topic (usually from static.wikia.nocookie.net). Do not include formatting, just the raw URL for the image if found."
         
         # Enable Google Search Tool 
         google_search_tool = types.Tool(
@@ -358,7 +359,7 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
             contents=search_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                temperature=0.1 # Lower temperature for better URL extraction
+                temperature=0.1 
             )
         )
         

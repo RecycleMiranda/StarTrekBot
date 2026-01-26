@@ -210,7 +210,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             
         elif tool == "query_knowledge_base" or tool == "search_memory_alpha":
             # Multi-result handling with Visual LCARS
-            result = tools.query_knowledge_base(args.get("query"), session_id) if tool == "query_knowledge_base" else tools.search_memory_alpha(args.get("query"), session_id)
+            result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese) if tool == "query_knowledge_base" else tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese)
             
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]

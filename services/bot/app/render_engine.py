@@ -169,11 +169,21 @@ class LCARS_Renderer:
         title_en = title_parts[0] if title_parts else "TECHNICAL DATA"
         title_zh = title_parts[1] if len(title_parts) > 1 else ""
         
-        f_title_en = self.get_font(title_en, 56)
-        f_title_zh = self.get_font(title_zh, 42)
-        f_id_large = self.get_font("ID", 32)
+        f_title_en = self.get_font(title_en, 64)
+        f_title_zh = self.get_font(title_zh, 48)
+        f_id_large = self.get_font("ID", 36)
         
         content = item.get("content", "").strip()
+        
+        # PHYSICAL TITLE STRIPPER (Critical Safety Net)
+        # Removes LLM-hallucinated headers like "Starfleet Starship Classes"
+        content_lines = content.split('\n')
+        if content_lines:
+            first_line_clean = re.sub(r'[\*\s\W_]+', '', content_lines[0].lower())
+            forbidden = ["starfleetstarshipclasses", "星际舰队星舰级别", "星舰级别列表", "foundinthedatabase", "以下是数据库中", "thefollowingisalist", "starfleetshipclasses"]
+            if any(fp in first_line_clean for fp in forbidden) and len(content_lines) > 1:
+                content = '\n'.join(content_lines[1:]).strip()
+        
         content = self._normalize_text_flow(content)
         img_b64 = item.get("image_b64")
         
@@ -193,7 +203,7 @@ class LCARS_Renderer:
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
         # Lower horizontal line to create absolute distance
-        line_y = pos[1] + 150
+        line_y = pos[1] + 160
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         
         if img_b64 and content:
@@ -210,7 +220,7 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 165 # Jump below massive header
+            text_y = pos[1] + 180 # Jump below massive header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -234,7 +244,7 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y_start = pos[1] + 165 
+            text_y_start = pos[1] + 180 
             
             # DYNAMIC FONT SELECTION & COLUMN DETECTION
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
@@ -251,13 +261,13 @@ class LCARS_Renderer:
             col_inner_spacing = 30 if num_cols == 3 else 50
             col_w = (w - 60 - (num_cols - 1) * col_inner_spacing) // num_cols
             
-            # Dynamic Font Inflation logic (Enhanced for Large Display)
-            best_size = 28 # Baseline increased
-            best_lh = int(28 * 1.2)
+            # Dynamic Font Inflation logic (Enhanced for Massive Display)
+            best_size = 36 # Baseline increased again to 36pt
+            best_lh = int(36 * 1.25)
             
-            # Test sizes for best fit - down to 22pt for high density
-            for size in range(36, 21, -2):
-                lh = int(size * 1.2)
+            # Test sizes for best fit - down to 24pt for high density
+            for size in range(48, 23, -2):
+                lh = int(size * 1.25)
                 f_test = self.get_font(content, size)
                 
                 # Estimate height with columns (Double-line height for EN+ZH)

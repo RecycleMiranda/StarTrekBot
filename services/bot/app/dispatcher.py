@@ -252,13 +252,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
                 query_text = args.get("query", "").lower()
-                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类"])
+                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"])
                 max_w = args.get("max_words", 8000 if is_listing else 500)
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for KB: {max_w} words")
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             elif tool == "search_memory_alpha":
                 query_text = args.get("query", "").lower()
-                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类"])
+                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"])
                 max_w = args.get("max_words", 8000 if is_listing else 500)
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for MA: {max_w} words")
                 result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
@@ -540,7 +540,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         else:
                             result = {"ok": False, "message": "无法调阅后续分片：子空间通信干扰。"}
                     else:
-                        result = {"ok": False, "message": "INSUFFICIENT DATA"}
+                        result = {"ok": False, "message": "NO FURTHER RECORDS FOUND."}
                 else:
                     # STANDARD SEARCH LIST PAGING
                     items = session_data["items"]
@@ -570,7 +570,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         # TRIGGER NEXT PRE-WARM
                         _executor.submit(_prefetch_next_pages, session_id, is_chinese)
                     else:
-                        result = {"ok": False, "message": "INSUFFICIENT DATA"}
+                        result = {"ok": False, "message": "NO FURTHER RECORDS FOUND."}
 
         elif tool == "show_details":
             target_id = args.get("id", "").upper()

@@ -174,23 +174,41 @@ class LCARS_Renderer:
         # PHYSICAL TITLE STRIPPER (Critical Safety Net) & SUBTITLE PROMOTION
         # Removes LLM-hallucinated headers like "Starfleet Starship Classes"
         content_lines = content.split('\n')
-        if content_lines:
+        # Aggressive Header Consumption Loop (Max 3 lines)
+        # Consumes lines that look like titles (short, no periods) to populate the main header
+        consumed_count = 0
+        while content_lines and consumed_count < 3:
             first_line = content_lines[0].strip()
-            first_line_clean = re.sub(r'[\*\s\W_]+', '', first_line.lower())
-            forbidden = ["starfleetstarshipclasses", "星际舰队星舰级别", "星舰级别列表", "foundinthedatabase", "以下是数据库中", "thefollowingisalist", "starfleetshipclasses"]
-            
-            if any(fp in first_line_clean for fp in forbidden) and len(content_lines) > 1:
-                # PROMOTION: Intelligent swapping based on language
-                promoted = first_line.replace(":", "").replace("：", "").strip()
+            if not first_line: # Skip empty
+                content_lines.pop(0)
+                continue
                 
+            # Header Detection Heuristic: Short length, no ending period (unless it's a colon)
+            is_header_like = len(first_line) < 60 and (not first_line.endswith(".") or first_line.endswith(":"))
+            
+            # Special case: If it's the very first line and matches known patterns
+            cleaned = first_line.lower().replace(" ", "")
+            is_known_pattern = any(x in cleaned for x in ["list", "captain", "class", "starship", "列表", "级别", "舰长", "summary"])
+            
+            if is_header_like or is_known_pattern:
+                # Determine Language
+                promoted = first_line.replace(":", "").replace("：", "").strip()
                 if re.search(r'[\u4e00-\u9fff]', promoted):
-                     # Chinese -> Subtitle (if empty)
-                     if not title_zh: title_zh = promoted
+                     # Chinese -> Subtitle
+                     # Only start consuming if not already manually set, OR if we are overriding a generic default
+                     if not title_zh or "联邦" in title_zh: 
+                         title_zh = promoted
                 else:
-                     # English -> Main Title (Override generic)
+                     # English -> Main Title
+                     # Always override "TECHNICAL DATA STREAM" if we find a specific English header
                      title_en = promoted
-                     
-                content = '\n'.join(content_lines[1:]).strip()
+                
+                content_lines.pop(0)
+                consumed_count += 1
+            else:
+                break # Stop at first non-header line
+                
+        content = '\n'.join(content_lines).strip()
         
         content = self._normalize_text_flow(content)
 

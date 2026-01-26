@@ -237,6 +237,18 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         logger.error(f"Synthesis failed: {e}")
         return f"Data retrieved. Synthesis error: {e}. Raw data: {raw_data[:200]}..."
 
+# ============================================================================
+# NeuralEngine CLASS (Required by tools.py for Direct Memory Alpha Access)
+# ============================================================================
+class NeuralEngine:
+    """
+    Neural translation engine for direct Memory Alpha content processing.
+    Provides verbatim translation and bilingual formatting.
+    """
+    
+    def __init__(self):
+        self.config = ConfigManager.get_instance()
+    
     def translate_memory_alpha_content(self, raw_content: str, is_chinese: bool = False) -> str:
         """
         DIRECT PIPELINE: Translates Memory Alpha content VERBATIM without summarization.
@@ -246,6 +258,7 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         model_name = self.config.get("gemini_model", "gemini-2.0-flash")
         
         if not api_key:
+            logger.warning("[NeuralEngine] No API key, returning raw content.")
             return raw_content
 
         try:
@@ -264,37 +277,36 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
                 "2. RETAIN STRUCTURE. If the input has infoboxes or lists, keep them.\n"
                 "3. NO METADATA. Remove wiki-specific meta like 'Edit', 'History', 'Talk'.\n"
                 "4. TECHNICAL ACCURACY. Ensure Trek terminology (Warp, Phaser, Class) is translated accurately.\n"
-                "5. NEGATIVE CONSTRAINTS: DO NOT add 'Here is the translation', DO NOT add 'Translation:', DO NOT add conversational filler.\n"
-                "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
-                "   Example: 'Sure... ^^DATA_START^^ Enterprise (NX-01) is...'\n"
+                "5. NEGATIVE CONSTRAINTS: DO NOT add 'Here is the translation', DO NOT add 'Translation:', DO NOT add conversational filler. START IMMEDIATELY WITH THE TECHNICAL DATA.\n"
                 "TERMINOLOGY DIRECTIVES:\n"
                 "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
-                "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRCT IT to '进取号'.\n"
+                "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRECT IT to '进取号'.\n"
                 "- This rule is ABSOLUTE for the ship name.\n"
                 "FORMAT: BILINGUAL BLOCK PAIRS (Strictly Alternating)\n"
                 "For each logical paragraph or list item in the source:\n"
                 "1. Output the original English text.\n"
                 "2. Output the Chinese translation immediately on the next line.\n"
                 "3. Use a double newline to separate this block from the next.\n"
-                "BILINGUAL NOTE: Even if translating to Chinese, keep specific proper nouns (like ship registry numbers NCC-1701) in alphanumeric format if standard.\n\n"
-                f"RAW INPUT:\n{raw_content[:8000]}\n\n" # Increased context window for direct access
-                "TRANSLATED OUTPUT (Start Immediately):"
+                "BILINGUAL NOTE: Keep proper nouns (like ship registry numbers NCC-1701) in alphanumeric format.\n\n"
+                f"RAW INPUT:\n{raw_content[:8000]}\n\n"
+                "TRANSLATED OUTPUT (Start Immediately with Technical Data):"
             )
 
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=3000, # Expanded for full articles
-                    temperature=0.1 # Low temp for translation accuracy
+                    max_output_tokens=3000,
+                    temperature=0.1
                 )
             )
             
             reply = response.text if response.text else "Subspace interference. Translation failed."
+            logger.info(f"[NeuralEngine] Raw translation received, length: {len(reply)}")
             return strip_conversational_filler(reply)
 
         except Exception as e:
-            logger.error(f"Translation failed: {e}")
+            logger.error(f"[NeuralEngine] Translation failed: {e}")
             return f"Translation error: {e}. Raw content preserved."
 
 def _parse_response(text: str) -> Dict:

@@ -403,14 +403,15 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 new_page = current_page + 1 if tool == "next_page" else current_page - 1
                 if 1 <= new_page <= total_pages:
                     SEARCH_RESULTS[session_id]["page"] = new_page
-                    start_idx = (new_page - 1) * 4
-                    end_idx = start_idx + 4
+                    ipp = session_data.get("items_per_page", 4)
+                    start_idx = (new_page - 1) * ipp
+                    end_idx = start_idx + ipp
                     
                     from .render_engine import get_renderer
                     renderer = get_renderer()
                     img_b64 = renderer.render_report(items[start_idx:end_idx], page=new_page, total_pages=total_pages)
                     event.meta["image_b64"] = img_b64
-                    result = {"ok": True, "message": f"正在调取第 {new_page} 页，共 {total_pages} 页。"}
+                    result = {"ok": True, "message": f"FEDERATION DATABASE ACCESS GRANTED // PAGE {new_page} OF {total_pages}"}
                 else:
                     result = {"ok": False, "message": f"无法完成：已到达{'末尾' if tool == 'next_page' else '首页'}。"}
 

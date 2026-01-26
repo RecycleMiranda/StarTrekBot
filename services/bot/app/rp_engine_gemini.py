@@ -202,8 +202,8 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
             "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
             "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
             "BILINGUAL REQUIREMENT: Since the user is communicating in Chinese, produce a SYNCHRONIZED BILINGUAL report.\n"
-            "FORMAT: Present each technical point in English first, followed immediately by its professional Chinese translation.\n"
-            "Example:\n[EN] Crew complement: 430\n[ZH] 船员编制：430\n"
+            "FORMAT: Present each technical point in English first, followed immediately by its professional Chinese translation. Provide ONLY the technical text, NO prefixes like [EN] or [ZH].\n"
+            "Example:\nCrew complement: 430\n船员编制：430\n"
             "RELEVANCY CHECK: \n"
             "- If the record is IRRELEVANT to the user query, output: 'Insufficient data in current archives for specific query. Proceeding with general data match.'\n"
             "- If the record IS relevant, perform a deep synthesis to provide a detailed briefing.\n\n"
@@ -222,7 +222,7 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         )
         
         reply = response.text if response.text else "Subspace interference. Synthesis failed."
-        return _strip_filler(reply)
+        return strip_conversational_filler(reply)
 
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
@@ -271,13 +271,18 @@ def _fallback(reason: str) -> Dict:
         "reason": reason
     }
 
-def _strip_filler(text: str) -> str:
+def strip_conversational_filler(text: str) -> str:
     """Programmatically removes common conversational filler intros."""
     import re
-    # List of common conversational intros to strip
+    if not text: return ""
+    text = text.strip()
+    
+    # Expanded technical-only filter patterns
     patterns = [
-        r"^(Here's|Here is|Sure|Okay|OK|As requested|Based on the data),? (the|some|most)? (information|specs|details|data|technical brief|report)( you requested| about| for)?.*?:",
-        r"^I've (found|synthesized|analyzed) the technical details for.*?:",
+        r"^(Here's|Here is|Sure|Okay|OK|As requested|Based on the data),? (the|some|most)? (information|specs|details|data|technical brief|report)( you requested| about| for)?.*?(:|\n)",
+        r"^I've (found|synthesized|analyzed) the technical details for.*?(:|\n)",
+        r"^I've (found|located) the information.*?(:|\n)",
+        r"^Based on (Memory Alpha|Federation Archive|the database) records.*?(:|\n)",
         r"^根据您(提供|查询)的数据.*?：",
         r"^(好的|没问题|这是为您查询到的).*?：",
         r"^下面是.*?的技术参数：",
@@ -294,4 +299,4 @@ def _strip_filler(text: str) -> str:
             logger.info(f"[NeuralEngine] Programmatically stripped AI filler: '{first_line}'")
             return '\n'.join(lines[1:]).strip()
     
-    return text.strip()
+    return text

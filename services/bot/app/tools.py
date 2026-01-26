@@ -333,6 +333,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
     from .config_manager import ConfigManager
     from google import genai
     from google.genai import types
+    from .rp_engine_gemini import strip_conversational_filler
     
     config = ConfigManager.get_instance()
     api_key = config.get("gemini_api_key", "")
@@ -346,7 +347,7 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         client = genai.Client(api_key=api_key)
         
         # Request structured summary and specific image search query
-        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved [EN] and [ZH] pairs)" if is_chinese else ""
+        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
         search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 120 words),{lang_ext}. 2. The DIRECT URL of the primary illustrative image of the topic (usually from static.wikia.nocookie.net). Do not include formatting, just the raw URL for the image if found."
         
         # Enable Google Search Tool 
@@ -374,6 +375,9 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
             img_url = match.group(0).rstrip('.)')
             # Clean technical response of the URL if it was included in the text
             text_content = text_content.replace(img_url, "").strip()
+        
+        # Strip conversational filler at the harvest source
+        text_content = strip_conversational_filler(text_content)
         
         # Return structured list for the render engine
         return {

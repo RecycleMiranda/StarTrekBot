@@ -198,14 +198,16 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         prompt = (
             "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a comprehensive report.\n"
             f"{lang_instruction}\n"
+            f"{lang_instruction}\n"
             "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
             "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
+            "NO CONVERSATIONAL FILLER: Do NOT include phrases like 'Here is the information', 'As per your request', or any introductory/concluding remarks. Start the output IMMEDIATELY with the technical content.\n"
             "RELEVANCY CHECK: \n"
             "- If the record is IRRELEVANT to the user query, output: 'Insufficient data in current archives for specific query. Proceeding with general data match.'\n"
             "- If the record IS relevant, perform a deep synthesis to provide a detailed briefing.\n\n"
             f"USER QUERY: {query}\n\n"
             f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Technical Briefing):"
+            "COMPUTER OUTPUT (Technical Briefing - Start Immediately):"
         )
 
         response = client.models.generate_content(

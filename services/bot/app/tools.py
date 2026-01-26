@@ -346,7 +346,7 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
         client = genai.Client(api_key=api_key)
         
         # Request structured summary and specific image search query
-        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 100 words). 2. A specific keyword to find the main illustrative image for this topic on the web."
+        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 100 words). 2. The DIRECT URL of the primary illustrative image of the topic (usually from static.wikia.nocookie.net). Do not include formatting, just the raw URL for the image if found."
         
         # Enable Google Search Tool 
         google_search_tool = types.Tool(
@@ -358,21 +358,21 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
             contents=search_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                temperature=0.3
+                temperature=0.1 # Lower temperature for better URL extraction
             )
         )
         
         text_content = response.text if response.text else "Subspace interference detected. No textual records found."
         
-        # Extract image candidates from search metadata if available
-        images = []
-        # Check grounding metadata for potential image links from sources
-        if response.candidates and response.candidates[0].grounding_metadata:
-             metadata = response.candidates[0].grounding_metadata
-             if metadata.search_entry_point:
-                  # Note: The API doesn't always return raw image URLs directly, 
-                  # but we can try to extract thumbnails or main URLs from grounding chunks.
-                  pass
+        # Image Extraction Logic
+        import re
+        img_url = None
+        # Look for Wikia/Fandom static image URLs in the response text
+        match = re.search(r'https?://static\.wikia\.nocookie\.net/memoryalpha/images/[^ \n]+', text_content)
+        if match:
+            img_url = match.group(0).rstrip('.)')
+            # Clean technical response of the URL if it was included in the text
+            text_content = text_content.replace(img_url, "").strip()
         
         # Return structured list for the render engine
         return {
@@ -380,12 +380,11 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
             "items": [
                 {
                     "id": "1A",
-                    "type": "text",
+                    "type": "hybrid",
                     "content": text_content,
-                    "title": f"RECORD: {query.upper()}"
-                },
-                # Placeholder for dynamic images
-                # { "id": "1B", "type": "image", "url": "...", "caption": "Visual Record" }
+                    "title": f"RECORD: {query.upper()}",
+                    "image_url": img_url
+                }
             ],
             "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",
             "source": "Memory Alpha / Google Search"

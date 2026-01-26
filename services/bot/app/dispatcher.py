@@ -213,21 +213,48 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.query_knowledge_base(args.get("query"), session_id) if tool == "query_knowledge_base" else tools.search_memory_alpha(args.get("query"), session_id)
             
             if result.get("ok") and "items" in result:
-                items = result["items"]
+                raw_items = result["items"]
+                
+                # Render Split Logic: Check for long entries
+                from .render_engine import get_renderer
+                renderer = get_renderer()
+                
+                final_items = []
+                import httpx
+                
+                for item in raw_items:
+                    # Pre-fetch Image if URL is present
+                    if item.get("image_url") and not item.get("image_b64"):
+                        try:
+                            logger.info(f"[Dispatcher] Pre-fetching image: {item['image_url']}")
+                            with httpx.Client(timeout=10.0) as client:
+                                r = client.get(item["image_url"])
+                                if r.status_code == 200:
+                                    item["image_b64"] = base64.b64encode(r.content).decode("utf-8")
+                                    logger.info("[Dispatcher] Image pre-fetched successfully.")
+                        except Exception as e:
+                            logger.warning(f"[Dispatcher] Image pre-fetch failed: {e}")
+
+                    # If an item is very long, split it into multiple virtual entries
+                    split_pages = renderer.split_content_to_pages(item)
+                    for i, page_item in enumerate(split_pages):
+                        # Tag sub-pages
+                        if len(split_pages) > 1:
+                            page_item["title"] = f"{page_item['title']} (RECORD {i+1})"
+                        final_items.append(page_item)
+
                 # Store in cache for pagination
                 SEARCH_RESULTS[session_id] = {
-                    "items": items,
+                    "items": final_items,
                     "query": args.get("query"),
                     "page": 1,
-                    "total_pages": (len(items) + 3) // 4
+                    "total_pages": (len(final_items) + 3) // 4
                 }
                 
                 # Render Page 1
-                from .render_engine import get_renderer
-                renderer = get_renderer()
-                img_b64 = renderer.render_report(items[:4], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
+                img_b64 = renderer.render_report(final_items[:4], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
                 event.meta["image_b64"] = img_b64
-                logger.info(f"[Dispatcher] Visual report rendered for {tool}")
+                logger.info(f"[Dispatcher] Visual report rendered for {tool} with {len(final_items)} total record-pages.")
             
         elif tool == "set_reminder":
             result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))

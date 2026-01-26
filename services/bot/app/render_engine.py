@@ -197,7 +197,8 @@ class LCARS_Renderer:
                 if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
                 
                 for line in lines:
-                    draw.text((text_l, text_y), line, fill=(255, 255, 255, 255), font=f_line)
+                    logger.debug(f"[Renderer] Drawing line (Hybrid) at {text_y}: '{line[:20]}...'")
+                    draw.text((text_l, text_y), line, fill=(200, 200, 255, 255), font=f_line)
                     text_y += LINE_HEIGHT # Tighter leading
                 
                 text_y += PARA_SPACING # Paragraph spacing
@@ -225,7 +226,8 @@ class LCARS_Renderer:
                 if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
                 
                 for line in lines:
-                    draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_line)
+                    logger.debug(f"[Renderer] Drawing line (Text) at {text_y}: '{line[:20]}...'")
+                    draw.text((pos[0] + 30, text_y), line, fill=(200, 200, 255, 255), font=f_line)
                     text_y += LINE_HEIGHT # Tighter leading
                 
                 text_y += PARA_SPACING # Paragraph spacing

@@ -682,6 +682,23 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         )
                         reply_text = future.result(timeout=20)
                     
+                    # SYNTHESIS-DRIVEN RECOVERY: If model signals insufficient data, fallback to Memory Alpha
+                    if "INSUFFICIENT_DATA" in reply_text and tool == "query_knowledge_base":
+                        logger.info(f"[Dispatcher] Neural synthesis signaled INSUFFICIENT_DATA for local hit. Falling back to Memory Alpha search for '{args.get('query')}'...")
+                        recovery_result = await _execute_tool("search_memory_alpha", {"query": args.get("query")}, event, user_profile, session_id, is_chinese=is_chinese)
+                        if recovery_result.get("ok"):
+                            raw_data = recovery_result.get("message", "")
+                            # Re-synthesize with better external data
+                            future = _executor.submit(
+                                rp_engine_gemini.synthesize_search_result,
+                                result.get("original_query", ""),
+                                raw_data,
+                                is_chinese
+                            )
+                            reply_text = future.result(timeout=20)
+                            # Update tool_result to reflect new items/images for downstream rendering
+                            tool_result = recovery_result
+                    
                     # UNIFIED RENDERING: Use synthesized/translated text for the visual report
                     from .render_engine import get_renderer
                     renderer = get_renderer()

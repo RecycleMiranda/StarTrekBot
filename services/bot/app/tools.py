@@ -292,23 +292,31 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                 if tk in content_lower:
                     score += 1
 
-            if score >= 8: # Substance Threshold
+            if score >= 12: # Increased Substance Threshold
                 # Extract relevant snippet
                 idx = content_lower.find(keywords[0]) if keywords else -1
                 start = max(0, idx - 200)
-                end = min(len(content), idx + 500)
+                end = min(len(content), idx + 800) # Larger snippet for synthesis
                 snippet = content[start:end].replace("\n", " ") + "..."
                 hits.append({
                     "file": filename,
                     "score": score,
+                    "size": len(content),
                     "snippet": snippet,
                     "full_path": path 
                 })
         
-        # Sort by score
-        hits.sort(key=lambda x: x["score"], reverse=True)
-        # Final filtering: Ensure top hits are actually substantial
-        top_hits = [h for h in hits if h["score"] >= 10][:3]
+        # Sort by score, then by size (prefer larger documents for broad queries)
+        hits.sort(key=lambda x: (x["score"], x["size"]), reverse=True)
+        
+        # QUALITY FILTER: If query is short (e.g. ship name only) but hit is tiny or specific,
+        # it's likely a technical spec snippet, not a general overview.
+        if len(query.split()) <= 3 and hits and hits[0]["size"] < 1000:
+             logger.info(f"[KB] Hit '{hits[0]['file']}' is too small ({hits[0]['size']} bytes) for a broad query '{query}'. Falling back.")
+             return search_memory_alpha(query, session_id, is_chinese)
+
+        # Final filtering
+        top_hits = [h for h in hits if h["score"] >= 12][:3]
         
         if not top_hits:
             logger.info(f"[KB] No high-confidence local hits for '{query}' (Top score: {hits[0]['score'] if hits else 0}). Auto-falling back to Memory Alpha.")

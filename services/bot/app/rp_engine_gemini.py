@@ -204,19 +204,23 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
             "- DO NOT add conversational fillers or politeness markers.\n"
             "- DO NOT interleave individual sentences (EN line, then ZH line). This is inefficient.\n"
             "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
-            "   Failure to include this token will cause a buffer overflow.\n"
             "TERMINOLOGY DIRECTIVES:\n"
             "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
             "- DO NOT use '企业号'.\n"
-            "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Strictly Ordered)\n"
+            "NEGATIVE CONSTRAINTS (CRITICAL):\n"
+            "- IF DATA OR IMAGES ARE MISSING, DO NOT APOLOGIZE. DO NOT EXPLAIN.\n"
+            "- IF THE PROVIDED RAW DATA IS TOO SHORT, TOO SPECIFIC (e.g. only airlocks), OR LACKS A GENERAL OVERVIEW, YOU MUST START YOUR ENTIRE RESPONSE WITH THE TOKEN 'INSUFFICIENT_DATA' AND NOTHING ELSE.\n"
+            "- DO NOT output 'Due to limitations...' or '由于访问外部资源...'.\n"
+            "- SILENTLY omit any missing fields unless the whole report is insufficient.\n"
+            "FORMAT: BILINGUAL PARAGRAPH BLOCKS\n"
             "Each logical point MUST be presented as follows:\n"
             "1. A complete English paragraph summarizing all technical data for that point.\n"
             "2. A complete Chinese translation of the ABOVE paragraph immediately on the next line.\n"
-            "3. NO sentence-by-sentence interleaving. Densify the language blocks.\n"
+            "3. NO sentence-by-sentence interleaving.\n"
             "4. Use double newlines only between these bilingual blocks.\n\n"
             f"USER QUERY: {query}\n\n"
             f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then High-Density Bilingual Briefing):"
+            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then High-Density Technical Briefing):"
         )
 
         response = client.models.generate_content(
@@ -348,54 +352,53 @@ def _fallback(reason: str) -> Dict:
     }
 
 def strip_conversational_filler(text: str) -> str:
-    """Programmatically removes common conversational filler intros using Delimiter or Regex."""
-    import re
+    """
+    Surgically removes preambles, apologies, and conversational noise using Beacon Protocol and aggressive regex.
+    """
     if not text: return ""
     text = text.strip()
     
-    # LEVEL 1: BEACON PROTOCOL (Surgical Cut)
+    # LEVEL 1: BEACON PROTOCOL (Surgical Strike)
     if "^^DATA_START^^" in text:
         beacon = "^^DATA_START^^"
-        clean_text = text[text.find(beacon) + len(beacon):].strip()
-        logger.info("[NeuralEngine] Beacon Protocol engaged: Surgical cut at ^^DATA_START^^.")
-        return clean_text
-            
-    # LEVEL 2: Fallback Regex Filters (for models that might miss the tag)
-    patterns = [
+        text = text[text.find(beacon) + len(beacon):].strip()
+        logger.info("[NeuralEngine] Beacon Protocol engaged: Forward cut complete.")
+
+    # LEVEL 2: Conversational Erasure (Search Apologies & Metatalk)
+    # This targets the specific "Due to limitations..." noise found in the image
+    erasure_patterns = [
+        r"(Due to limitations in accessing external resources.*?\.?|由于访问外部资源的限制.*?。?)",
+        r"(However, relevant images can be found on Memory Alpha.*?\.?|但是，通过搜索.*?可以.*?找到相关图像。?)",
+        r"(I hope this information is helpful.*?\.?|希望这些信息对您有所帮助.*?。?)",
+        r"(If you have more questions.*?\.?|如果您还有其他问题.*?。?)",
+        r"(As requested, here is.*?(:|\n))",
+        r"(Please let me know if you need.*?\.?|如果您需要.*?请告知。?)"
+    ]
+    
+    for p in erasure_patterns:
+        text = re.sub(p, "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+
+    # LEVEL 3: Fallback Regex Filters (Preamble detection)
+    preamble_patterns = [
         r"^(Here's|Here is|Sure|Okay|OK|As requested|Based on the data),? (the|some|most)? (information|specs|details|data|technical brief|report)( you requested| about| for)?.*?(:|\n)",
         r"^I've (found|synthesized|analyzed) the technical details for.*?(:|\n)",
-        r"^I've (found|located) the information.*?(:|\n)",
-        r"^Based on (Memory Alpha|Federation Archive|the database) records.*?(:|\n)",
         r"^根据您(提供|查询)的数据.*?：",
         r"^(好的|没问题|这是为您查询到的).*?：",
-        r"^下面是.*?的技术参数：",
         r"^Accessing (Federation|Starfleet) Database.*?:",
-        # LEVEL 3: BLIND CUT AGGRESSORS (Catch-all for stubborn models)
-        r"^Here is the .*?(:|\n)",
-        r"^Below is the .*?(:|\n)",
-        r"^(Sure|Certainly|Understood|Affirmative).*?(\.|:|\n)",
-        r"^.*?(here is|following is).*?(:)$", # Risky but necessary for "The following is..."
-        r"^.*?(Technical Summary|Synchronized Bilingual Format).*?(:)$" # Specific to the user's current failure
+        r"^(Sure|Certainly|Understood|Affirmative).*?(\.|:|\n)"
     ]
     
     lines = text.split('\n')
-    if not lines: return text
+    if lines:
+        first_line = lines[0].strip()
+        # Special Case: Short colon-ended lines
+        if first_line.endswith(":") and len(first_line) < 120:
+            logger.info(f"[NeuralEngine] Blind Cut on colon-line: '{first_line}'")
+            return strip_conversational_filler('\n'.join(lines[1:]))
+            
+        for p in preamble_patterns:
+            if re.match(p, first_line, re.IGNORECASE):
+                logger.info(f"[NeuralEngine] Preamble stripped: '{first_line}'")
+                return strip_conversational_filler('\n'.join(lines[1:]))
     
-    # Check if first line matches any filler pattern
-    first_line = lines[0].strip()
-    
-    # Special Case: If first line ends in colon and is short, kill it.
-    if first_line.endswith(":") and len(first_line) < 120:
-        logger.info(f"[NeuralEngine] Blind Cut engaged on colon-ended line: '{first_line}'")
-        text = '\n'.join(lines[1:]).strip()
-        # RECURSIVE CHECK: Some models output 2 lines of filler
-        return strip_conversational_filler(text)
-        
-    for p in patterns:
-        if re.match(p, first_line, re.IGNORECASE):
-            logger.info(f"[NeuralEngine] Programmatically stripped AI filler: '{first_line}'")
-            text = '\n'.join(lines[1:]).strip()
-            # RECURSIVE CHECK
-            return strip_conversational_filler(text)
-    
-    return text
+    return text.strip()

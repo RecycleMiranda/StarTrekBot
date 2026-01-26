@@ -673,12 +673,14 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         content_to_translate = items[0].get("content", raw_data) if items else raw_data
                         reply_text = engine.translate_memory_alpha_content(content_to_translate, is_chinese)
                     else:
-                        # Synthesis mode
+                        # Synthesis mode with History Context
+                        history = router.get_session_context(session_id)
                         future = _executor.submit(
                             rp_engine_gemini.synthesize_search_result,
                             result.get("original_query", ""),
                             raw_data,
-                            is_chinese
+                            is_chinese,
+                            context=history
                         )
                         reply_text = future.result(timeout=20)
                         # Carry over source from initial tool_result
@@ -690,46 +692,61 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         recovery_result = await _execute_tool("search_memory_alpha", {"query": args.get("query")}, event, user_profile, session_id, is_chinese=is_chinese)
                         if recovery_result.get("ok"):
                             raw_data = recovery_result.get("message", "")
-                            # Re-synthesize with better external data
+                            history = router.get_session_context(session_id)
+                            # Re-synthesize with better external data and history
                             future = _executor.submit(
                                 rp_engine_gemini.synthesize_search_result,
                                 result.get("original_query", ""),
                                 raw_data,
-                                is_chinese
+                                is_chinese,
+                                context=history
                             )
                             reply_text = future.result(timeout=20)
                             # Update tool_result to reflect new items/images for downstream rendering
                             tool_result = recovery_result
                             current_source = recovery_result.get("source", "MEMORY ALPHA")
                     
-                    # UNIFIED RENDERING: Use synthesized/translated text for the visual report
-                    from .render_engine import get_renderer
-                    renderer = get_renderer()
+                    # UNIFIED RENDERING: Determine Scale (Simple vs. Comprehensive)
+                    # If it's a short text without the report beacon (or just short enough), send directly
+                    is_comprehensive = "\n\n" in reply_text and len(reply_text) > 200
                     
-                    # Construct a virtual item for the synthesized report
-                    report_item = {
-                        "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
-                        "content": reply_text,
-                        "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None,
-                        "source": current_source
-                    }
-                    
-                    # Split synthesized content across pages if necessary
-                    final_items = renderer.split_content_to_pages(report_item)
-                    ipp = 1 # High-density synthesized reports are 1-per-page
-                    
-                    # Store in cache for pagination
-                    SEARCH_RESULTS[session_id] = {
-                        "items": final_items,
-                        "query": args.get("query"),
-                        "page": 1,
-                        "items_per_page": ipp,
-                        "total_pages": (len(final_items) + (ipp - 1)) // ipp
-                    }
-                    
-                    # Final Render
-                    image_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
-                    logger.info(f"[Dispatcher] Unified Visual Report rendered (Pages: {len(final_items)})")
+                    if not is_comprehensive and "^^DATA_START^^" not in reply_text:
+                         logger.info(f"[Dispatcher] Scale Detection: FACTOID mode. Skipping Visual Report.")
+                         # Clean up any leftover code tokens if they leaked
+                         reply_text = reply_text.replace("^^DATA_START^^", "").strip()
+                         # Just use tool result image if it exists
+                    else:
+                        from .render_engine import get_renderer
+                        renderer = get_renderer()
+                        
+                        # Final Sanitization: Ensure internal tokens never render
+                        if "INSUFFICIENT_DATA" in reply_text:
+                            reply_text = "CLASSIFIED DATA UNREACHABLE: DATABASE ERROR OR LACK OF RELEVANT ARCHIVES.\n\n分类数据无法访问：数据库错误或缺乏相关档案。"
+                        
+                        # Construct a virtual item for the synthesized report
+                        report_item = {
+                            "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
+                            "content": reply_text,
+                            "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None,
+                            "source": current_source
+                        }
+                        
+                        # Split synthesized content across pages if necessary
+                        final_items = renderer.split_content_to_pages(report_item)
+                        ipp = 1 # High-density synthesized reports are 1-per-page
+                        
+                        # Store in cache for pagination
+                        SEARCH_RESULTS[session_id] = {
+                            "items": final_items,
+                            "query": args.get("query"),
+                            "page": 1,
+                            "items_per_page": ipp,
+                            "total_pages": (len(final_items) + (ipp - 1)) // ipp
+                        }
+                        
+                        # Final Render
+                        image_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
+                        logger.info(f"[Dispatcher] Unified Visual Report rendered (Pages: {len(final_items)})")
                 else:
                     reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
                 

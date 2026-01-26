@@ -179,7 +179,7 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         logger.exception("Escalation failed")
         return _fallback(str(e))
 
-def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False) -> str:
+def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False, context: Optional[List[Dict]] = None) -> str:
     """
     Synthesizes raw tool output (KB/Memory Alpha) into a persona-compliant LCARS response.
     """
@@ -193,6 +193,16 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
     try:
         client = genai.Client(api_key=api_key)
         
+        # History Context for synthesis precision
+        history_snippet = ""
+        if context:
+            history_blocks = context[-4:] 
+            history_snippet = "CONVERSATION HISTORY (FOR CONTEXT):\n"
+            for msg in history_blocks:
+                role = "USER" if msg.get("role") == "user" else "COMPUTER"
+                text = msg.get("content", "")
+                history_snippet += f"[{role}]: {text[:500]}\n"
+
         lang_instruction = "Output Language: Simplified Chinese (zh-CN)." if is_chinese else "Output Language: Federation Standard (English)."
         
         prompt = f"""
@@ -200,28 +210,32 @@ TECHNICAL DATA SYNTHESIS PROTOCOL
 Role: LCARS Main Computer
 Status: Online
 
-TASK: Synthesize the following raw database records into a cohesive technical brief.
+{history_snippet}
+
+TASK: Synthesize raw database records into a response.
 {lang_instruction}
 
-FORMATTING RULES:
-1. **Whole-Paragraph Bilingual Blocks**: Write a complete English paragraph for each logical point. Immediately follow it with a new paragraph containing the full Chinese translation.
-2. **NO Interleaving**: Do NOT interleave English and Chinese sentences within the same block.
-3. **Professional Tone**: Use high-density technical language. NO conversational filler, preambles, or post-scripts.
-4. **Source Attribution**: If multiple sources are present (e.g., LOCAL ARCHIVE and MEMORY ALPHA), acknowledge them within the narrative (e.g., "Archive records indicate... synchronized with external database entries...").
+RESPONSE SCALE PROTOCOL:
+1. **Factoid/Simple Query**: If the user asks for a specific detail (e.g., "how many decks?"), provide a CONCISE 1-sentence response. SKIP bilingual blocks.
+2. **Follow-up/Clarification**: If the user asks to "explain more" or "detailed explanation", you MUST provide NEW details not present in the COMPUTER's previous answer.
+3. **Comprehensive Report**: Only for broad topics (e.g., "Silver-class overview"), use the **Whole-Paragraph Bilingual Blocks** format.
+
+- **Bilingual Blocks** (For Reports ONLY): English paragraph followed by Chinese paragraph. No interleaving.
+- **Enterprise Translation**: Translate "Enterprise" as "进取号" ONLY in Chinese sections. NEVER modify or translate "Enterprise" in English text.
+- **Source Attribution**: Acknowledge LOCAL ARCHIVE vs MEMORY ALPHA.
 
 MANDATORY DATA DELIMITER:
-You MUST output the token '^^DATA_START^^' immediately before the technical briefing begins.
+You MUST output the token '^^DATA_START^^' immediately before the response begins.
 
 NEGATIVE CONSTRAINTS:
-- 'Enterprise' MUST be translated as '进取号'. NEVER '企业号'.
-- IF DATA OR IMAGES ARE MISSING, DO NOT APOLOGIZE. DO NOT EXPLAIN.
-- IF THE PROVIDED RAW DATA IS TOO SHORT OR LACKS A GENERAL OVERVIEW (e.g. only irrelevant snippets), YOU MUST START YOUR ENTIRE RESPONSE WITH THE TOKEN 'INSUFFICIENT_DATA' AND NOTHING ELSE.
-- DO NOT output 'Due to limitations...' or 'Since I cannot access...'.
+- DO NOT repeat info already provided in the CONVERSATION HISTORY.
+- IF DATA IS IRRELEVANT (mentions subject in passing), output 'INSUFFICIENT_DATA'.
+- NO conversational filler.
 
 USER QUERY: {query}
 
 RAW DATABASE RECORDS:
-{raw_data[:5000]}
+{raw_data[:6000]}
 
 COMPUTER OUTPUT (Start with ^^DATA_START^^):
 """
@@ -283,7 +297,7 @@ class NeuralEngine:
                 "3. NEGATIVE CONSTRAINTS: DO NOT add conversational filler. DO NOT interleave sentence-by-sentence.\n"
                 "4. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
                 "TERMINOLOGY DIRECTIVES:\n"
-                "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
+                "- 'Enterprise' MUST be translated as '进取号' ONLY in relevant Chinese translation blocks. NEVER modify or translate 'Enterprise' in original English text.\n"
                 "- DO NOT use '企业号'.\n"
                 "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Full Blocks Only)\n"
                 "For each source paragraph:\n"

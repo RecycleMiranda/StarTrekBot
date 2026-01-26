@@ -292,27 +292,38 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                 if tk in content_lower:
                     score += 1
 
-            # 4. Technical Spec Penalty (Manual/Maintenance Jargon)
-            # If a snippet is dominated by maintenance/hardware detail but lacks general overview,
-            # we penalize it for broad queries.
-            manual_jargon = ["pylon", "connector", "umbilical", "purlin", "pumping", "exhaust", "ventilation", "hatch", "circuit"]
-            jargon_count = sum(1 for j in manual_jargon if j in content_lower)
-            if jargon_count >= 3:
-                score -= 5 # Substantial penalty for "maintenance manual" content
-
             # 4. Technical Spec & Jargon Scan (Full-Text)
             # If a document is dominated by maintenance/hardware detail but lacks general overview,
             # we penalize it for broad queries.
-            manual_jargon = ["pylon", "connector", "umbilical", "purlin", "pumping", "exhaust", "ventilation", "hatch", "circuit", "coupling", "bolting"]
+            manual_jargon = [
+                "pylon", "connector", "umbilical", "purlin", "pumping", "exhaust", "ventilation", 
+                "hatch", "circuit", "coupling", "bolting", "phaser bank", "shield frequency", 
+                "emitter", "graviton", "polarity", "1440 banks"
+            ]
             jargon_count = sum(1 for j in manual_jargon if j in content_lower)
             
             # Overview Boost
             overview_keywords = ["overview", "summary", "history", "introduction", "background", "概括", "历史", "概览"]
-            overview_score = sum(2 for o in overview_keywords if o in content_lower)
+            overview_score = sum(3 for o in overview_keywords if o in content_lower)
             score += overview_score
 
+            # 5. CONTEXT MISMATCH PENALTY (Ship Class vs. Station Manual)
+            # If the user asks for a ship class, but the document is an engineering manual for a station.
+            ship_classes = ["galaxy", "intrepid", "excelsior", "sovereign", "constellation", "nebula"]
+            is_class_query = any(sc in query_lower for sc in ship_classes) or "级" in query_lower
+            is_station_doc = any(sd in content_lower for sd in ["station msd", "mars station", "msd station"])
+            
+            if is_class_query and is_station_doc:
+                # Count specifically HOW MANY times the specific ship class is mentioned
+                target_class = next((sc for sc in ship_classes if sc in query_lower), "galaxy")
+                mentions = content_lower.count(target_class)
+                # If mentioned < 3 times in a station doc, it's a "mention", not a "description".
+                if mentions < 3:
+                    score -= 20 # Disqualifying penalty
+                    logger.info(f"[KB] Penalty: '{filename}' mentions '{target_class}' only {mentions} times in a Station Doc.")
+
             if jargon_count >= 5: # Heavy manual content
-                score -= 8 
+                score -= 10 
 
             if score >= 12: # Increased Substance Threshold
                 # Extract relevant snippet
@@ -400,8 +411,8 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         client = genai.Client(api_key=api_key)
         
         # Request structured summary and specific image search query
-        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
-        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 120 words),{lang_ext}. 2. The DIRECT URL of the primary illustrative image of the topic (usually from static.wikia.nocookie.net). Do not include formatting, just the raw URL for the image if found."
+        # Domain Restriction: Strictly Memory Alpha
+        search_prompt = f"Using ONLY site:memory-alpha.fandom.com, find the technical entry for {query}. Return: 1. A dense technical summary (under 120 words),{lang_ext}. 2. The DIRECT URL of the primary illustrative image from static.wikia.nocookie.net. Do NOT include formatting, just the raw URL."
         
         # Enable Google Search Tool 
         google_search_tool = types.Tool(

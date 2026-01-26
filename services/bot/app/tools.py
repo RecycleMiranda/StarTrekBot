@@ -390,6 +390,12 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
             "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",
             "source": "Memory Alpha / Google Search"
         }
+
+    except Exception as e:
+        logger.error(f"Memory Alpha search failed: {e}")
+        return {"ok": False, "message": f"Subspace communication error: {e}"}
+
+def get_historical_records(topic: str) -> dict:
     """
     Retrieves library computer historical records.
     """

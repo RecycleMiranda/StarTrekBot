@@ -12,7 +12,7 @@ _session_states: Dict[str, dict] = {}
 # Consts
 MODE_COMPUTER = "computer"
 MODE_CHAT = "chat"
-DEFAULT_TTL = 60 # Increased to 60s for better conversational flow
+DEFAULT_TTL = 180 # Increased to 180s for better conversational persistence
 MAX_HISTORY = 8  # Increased to 8 turns for deeper context
 SILENCE_THRESHOLD = 1800 # 30 minutes silence before clearing history on fresh wake
 
@@ -135,7 +135,7 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
     if state["mode"] == MODE_COMPUTER and not is_expired:
         state["expires_at"] = now + DEFAULT_TTL # Refresh TTL
         _session_states[session_id] = state
-        return _build_result(state, MODE_COMPUTER, 0.6, "mode_latch")
+        return _build_result(state, MODE_COMPUTER, 0.75, "mode_latch")
 
     # 6. Default: Chat
     return _build_result(state, MODE_CHAT, 0.5, "default")

@@ -75,6 +75,16 @@ def _get_system_prompt() -> str:
         f"- Date: {datetime.datetime.now().strftime('%Y-%m-%d')}\n" +
         f"- Day: {datetime.datetime.now().strftime('%A')}\n" +
         "- Stardate: 79069.1 (Calculated for 2026)\n\n" +
+        "8. STAR PLANNING PROTOCOL (CRITICAL): For complex technical or simulation queries, you MUST use a multi-step thought process before calling tools:\n" +
+        "   - STEP 1 (Target Variables): Identify which physical constants or specifications are required (e.g., 'Need: Shuttlebay Volume, Atmospheric Pressure').\n" +
+        "   - STEP 2 (Data Gap Analysis): Compare 'Target Variables' with the 'CUMULATIVE SEARCH DATA' provided in the prompt.\n" +
+        "   - STEP 3 (Strategic Probing): If critical gaps exist, call a search tool to fill the specific gap. If data is exhaustive, proceed to final synthesis.\n" +
+        "   - STEP 4 (Archetype Reasoning): If specific data cannot be found after probing, find the nearest Archetype (e.g., 'Use Constitution-class as proxy for Yorktown-class') and state your assumption.\n\n" +
+        "9. UNIVERSAL AGENTIC ACTION (UAA) PROTOCOLS (CRITICAL):\n" +
+        "   - GOAL-DIRECTED EXECUTION: Do not just blindly follow verbs. If a user states a problem (e.g., 'It's too dark here'), interpret the intent (e.g., 'Increase lighting') and execute the necessary actions.\n" +
+        "   - MULTI-STEP SEQUENCING: You are authorized to plan and execute multiple tool calls sequentially (one per round) to achieve a complex goal. Use 'CUMULATIVE SEARCH/ACTION DATA' to track progress.\n" +
+        "   - PREREQUISITE CHECKING: Before sensitive actions, autonomously verify status (e.g., clearance, alert level) using information tools.\n" +
+        "   - PROACTIVE POST-ACTION: After completing a primary task, suggest logical next steps (e.g., 'Diagnostic complete. I recommend recalibrating the EPS relay now').\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?}\n\n" +
         "FINAL MANDATE:\n" +
@@ -118,9 +128,14 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
         
         logger.info(f"[NeuralEngine] Grounding with System Instruction (Len: {len(formatted_sys)})")
 
+        cumulative_context = ""
+        if meta and "cumulative_data" in meta:
+            cumulative_context = f"\nCUMULATIVE SEARCH DATA (PREVIOUS ROUNDS):\n{meta['cumulative_data']}\n"
+            logger.info(f"[NeuralEngine] Injecting {len(meta['cumulative_data'])} chars of cumulative data.")
+
         response = client.models.generate_content(
             model=fast_model,
-            contents=f"History:\n{history_str}\n\nCurrent Input: {trigger_text}",
+            contents=f"History:\n{history_str}\n{cumulative_context}\nCurrent Input: {trigger_text}",
             config=types.GenerateContentConfig(
                 system_instruction=formatted_sys,
                 max_output_tokens=MAX_TOKENS,
@@ -214,8 +229,19 @@ Status: Online
 
 {history_snippet}
 
-TASK: Synthesize raw database records into a response.
+TASK: Synthesize multiple rounds of raw database records into a final conclusive response.
 {lang_instruction}
+
+STAR SYNTHESIS PROTOCOL:
+- **Data/Action Integration**: You will receive blocks marked as 'ROUND X DATA' or 'ROUND X ACTION'. These represent the results of your autonomous iterations.
+- **Deductive Reasoning**: If specific metrics or action confirmations are missing, use the 'ROUND' data to perform calculations or suggest next steps. State your assumptions clearly.
+- **Fact Prioritization**: Later rounds (ROUND 2, 3) contain targeted data or action outcomes. Prioritize them for the final mission report.
+
+ENTITY ANCHORING PROTOCOL (CRITICAL):
+- **Subject Locking**: The report title and all content MUST center on the user's current query entity. 
+- **Drift Prevention**: If the 'ROUND' data contains information about a different entity (e.g., from a previous session turn like 'Galaxy-class' when the current query is 'Starfleet Command'), you MUST DISCARD the irrelevant data. 
+- **Context Isolation**: Chat history is for conversation flow; `CUMULATIVE DATA/ACTION` is for technical simulation. The NEW query entity always overrides previous entities.
+- **Verification**: Before finalizing, ask: 'Is this content about [Current Query]?' If not, retry tool call or report insufficient data.
 
 DUAL-FORMAT DISPLAY PROTOCOL (CRITICAL):
 1. **TEXT-ONLY (FACTOID) MODE**:
@@ -240,6 +266,11 @@ REASONED REFUSAL PROTOCOL (CRITICAL):
 - If data or a simulation result is truly unavailable (e.g. missing ship dimensions), you MUST provide a technical reason.
 - Example: "Analysis inconclusive. Variable 'Hangar Door Area' is not in local database. Unable to determine pressure discharge magnitude."
 - If asked "Why?", you must provide a detailed breakdown of the missing parameters or logical conflicts.
+
+OUTPUT PREFERENCE PROTOCOL (NEW):
+- User requests regarding output style, scale, or formatting (e.g., "Just give me the number", "Be concise", "Don't give me a report") MUST be obeyed.
+- These are valid formatting instructions, NOT physical commands. You MUST NOT return "Unable to comply" or `intent: ignore` for such requests.
+- Switch to **TEXT-ONLY (FACTOID) MODE** immediately if the user requests brevity.
 
 PHYSICS RIGOR (NEW):
 - You MUST strictly distinguish between **Thrust (Force, Newtons / N)** and **Velocity Change (Delta-V, m/s)**.

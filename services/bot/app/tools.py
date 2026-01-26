@@ -306,6 +306,19 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
             overview_keywords = ["overview", "summary", "history", "introduction", "background", "概括", "历史", "概览"]
             overview_score = sum(3 for o in overview_keywords if o in content_lower)
             score += overview_score
+            
+            # 6. SUBJECT ANCHORING (NEW): 
+            # Check if the query itself is a significant subject in the snippet area.
+            # If the keywords are only mentioned in a header but the body is about something else.
+            primary_subject_match = content_lower.count(query_lower)
+            if primary_subject_match >= 1:
+                score += 5
+            
+            # Penalize if the snippet area (first 500 chars) contains a different dominant ship class
+            known_classes = ["galaxy", "intrepid", "sovereign", "defiant", "constitution", "excelsior"]
+            dominant_class = next((sc for sc in known_classes if sc in content_lower[:500]), None)
+            if dominant_class and dominant_class not in query_lower:
+                score -= 8 # Neutralize purely coincidental alignment with a different ship manual
 
             # 5. CONTEXT MISMATCH PENALTY (Ship Class vs. Station Manual)
             # If the user asks for a ship class, but the document is an engineering manual for a station.
@@ -416,9 +429,11 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
         search_prompt = (
             f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {query}.\n"
             "TASK: Locate specific technical metrics, counts, and variables.\n"
-            "ARCHETYPE PROTOCOL: If '{query}' is a general technology (e.g. 'Standard Sensors'), explicitly look for data associated with major archetypes like 'Galaxy-class' or 'Enterprise-D' and treat it as the representative data for that era.\n"
+            "ARCHETYPE PROTOCOL: ONLY apply if '{query}' is a broad, un-quantified technology. "
+            "If '{query}' is a specific entity (e.g., 'Starfleet Command', 'Tal Shiar'), FOCUS EXCLUSIVELY ON THAT ENTITY. "
+            "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
             "INSTRUCTIONS:\n"
-            "1. Scan the full content for granular data (numbers of substances, specific frequencies, specs).\n"
+            "1. Scan for primary entity definitions and historical metrics.\n"
             f"2. Return a high-density technical summary (under 180 words),{lang_ext}.\n"
             "3. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
         )

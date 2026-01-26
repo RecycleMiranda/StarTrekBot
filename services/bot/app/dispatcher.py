@@ -609,211 +609,138 @@ def is_group_enabled(group_id: str | None) -> bool:
 
 async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None):
     """
-    Helper to execute AI generation and processing logic.
-    Supports forcing a specific tool for diagnostic mode.
+    Agentic execution engine for StarTrekBot (STAR Architecture).
+    Coordinates multi-step reasoning, tool execution, and final synthesis.
     """
     profile_str = permissions.format_profile_for_ai(user_profile)
+    logger.info(f"[Dispatcher] Starting Agentic Loop for session {session_id}")
     
-    if force_tool:
-        # Synthetic result for forced tool execution
-        result = {
-            "ok": True,
-            "intent": "tool_call",
-            "tool": force_tool,
-            "args": force_args or {},
-            "is_chinese": True, # Assume Chinese for diagnostic mode
-            "original_query": event.text,
-            "needs_escalation": False
-        }
-    else:
-        # Normal AI generation in thread pool (generate_computer_reply is sync)
-        future = _executor.submit(
-            rp_engine_gemini.generate_computer_reply,
-            event.text, 
-            router.get_session_context(session_id),
-            {
-                "user_profile": profile_str
+    iteration = 0
+    max_iterations = 3
+    cumulative_data = [] # Buffer for search results
+    last_tool_result = None
+    reply_text = ""
+    image_b64 = None
+    intent = "reply"
+    result = {"ok": False}
+    
+    while iteration < max_iterations:
+        iteration += 1
+        logger.info(f"[Dispatcher] STAR Iteration {iteration}/{max_iterations}")
+
+        if force_tool and iteration == 1:
+            result = {
+                "ok": True, "intent": "tool_call", "tool": force_tool, "args": force_args or {},
+                "is_chinese": True, "original_query": event.text, "needs_escalation": False
             }
-        )
-        result = future.result(timeout=15)
-    
-    logger.info(f"[Dispatcher] AI result: {result}")
-    
-    # Check if we have a valid result (tool_call has empty reply, which is ok)
-    if result and (result.get("reply") or result.get("intent") == "tool_call"):
-        reply_raw = result.get("reply", "")
+        else:
+            extra_meta = {"user_profile": profile_str}
+            if cumulative_data:
+                extra_meta["cumulative_data"] = "\n---\n".join(cumulative_data)
+
+            # Normal AI generation in thread pool
+            future = _executor.submit(
+                rp_engine_gemini.generate_computer_reply,
+                event.text, router.get_session_context(session_id), extra_meta
+            )
+            result = future.result(timeout=15)
+        
+        logger.info(f"[Dispatcher] AI iteration {iteration} result: {result}")
+        if not result or not result.get("ok"): break
+
         intent = result.get("intent")
         
-        image_b64 = event.meta.get("image_b64")
-        if intent == "report" and isinstance(reply_raw, dict):
-            # Render image
-            img_io = visual_core.render_report(reply_raw)
-            image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
-            reply_text = f"Generating visual report... (Intent: {intent})"
-        elif intent == "tool_call":
+        if intent == "tool_call":
             tool = result.get("tool")
             args = result.get("args") or {}
             is_chinese = result.get("is_chinese", False)
-            logger.info(f"[Dispatcher] Executing tool: {tool}({args}) [Lang: {'ZH' if is_chinese else 'EN'}]")
-            # Await the tool execution (it might be async)
+            
+            logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args})")
             tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
+            last_tool_result = tool_result
             
             if tool_result.get("ok"):
-                # Intercept for Polymath Synthesis & Unified Rendering
-                if tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
-                    logger.info(f"[Dispatcher] Processing data for {tool}...")
-                    raw_data = tool_result.get("message", "")
-                    
-                    # Direct Access uses direct translation, others use synthesis
-                    if tool == "access_memory_alpha_direct":
-                        # We use the NeuralEngine class for direct verbatim translation
-                        engine = rp_engine_gemini.NeuralEngine()
-                        # Extract content from tool items if available
-                        items = tool_result.get("items", [])
-                        content_to_translate = items[0].get("content", raw_data) if items else raw_data
-                        reply_text = engine.translate_memory_alpha_content(content_to_translate, is_chinese)
-                    else:
-                        # Synthesis mode with History Context
-                        history = router.get_session_context(session_id)
-                        future = _executor.submit(
-                            rp_engine_gemini.synthesize_search_result,
-                            result.get("original_query", ""),
-                            raw_data,
-                            is_chinese,
-                            context=history
-                        )
-                        reply_text = future.result(timeout=20)
-                        # Carry over source from initial tool_result
-                        current_source = tool_result.get("source", "FEDERATION ARCHIVE")
-                    
-                    # SYNTHESIS-DRIVEN RECOVERY: If model signals insufficient data, fallback to Memory Alpha
-                    if "INSUFFICIENT_DATA" in reply_text and tool == "query_knowledge_base":
-                        logger.info(f"[Dispatcher] Neural synthesis signaled INSUFFICIENT_DATA for local hit. Falling back to Memory Alpha search for '{args.get('query')}'...")
-                        recovery_result = await _execute_tool("search_memory_alpha", {"query": args.get("query")}, event, user_profile, session_id, is_chinese=is_chinese)
-                        if recovery_result.get("ok"):
-                            raw_data = recovery_result.get("message", "")
-                            history = router.get_session_context(session_id)
-                            # Re-synthesize with better external data and history
-                            future = _executor.submit(
-                                rp_engine_gemini.synthesize_search_result,
-                                result.get("original_query", ""),
-                                raw_data,
-                                is_chinese,
-                                context=history
-                            )
-                            reply_text = future.result(timeout=20)
-                            # Update tool_result to reflect new items/images for downstream rendering
-                            tool_result = recovery_result
-                            current_source = recovery_result.get("source", "MEMORY ALPHA")
-                    
-                    # Final Sanitization: Ensure internal tokens never render
-                    if "INSUFFICIENT_DATA" in reply_text:
-                        reply_text = "CLASSIFIED DATA UNREACHABLE: INSUFFICIENT DATA.\n\n分级数据无法访问：数据不足。"
-                    
-                    # UNIFIED RENDERING: Determine Scale (Simple vs. Comprehensive)
-                    # If it's a short text without the report beacon (or just short enough), send directly
-                    is_comprehensive = "\n\n" in reply_text and len(reply_text) > 200
-                    
-                    if not is_comprehensive and "^^DATA_START^^" not in reply_text:
-                         logger.info(f"[Dispatcher] Scale Detection: FACTOID mode. Skipping Visual Report.")
-                         # Clean up any leftover code tokens if they leaked
-                         reply_text = reply_text.replace("^^DATA_START^^", "").strip()
-                    else:
-                        from .render_engine import get_renderer
-                        renderer = get_renderer()
-                        
-                        # (Sanitization already handled above)
-                        
-                        # Construct a virtual item for the synthesized report
-                        report_item = {
-                            "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
-                            "content": reply_text,
-                            "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None,
-                            "source": current_source
-                        }
-                        
-                        # Split synthesized content across pages if necessary
-                        final_items = renderer.split_content_to_pages(report_item)
-                        ipp = 1 # High-density synthesized reports are 1-per-page
-                        
-                        # Store in cache for pagination
-                        SEARCH_RESULTS[session_id] = {
-                            "items": final_items,
-                            "query": args.get("query"),
-                            "page": 1,
-                            "items_per_page": ipp,
-                            "total_pages": (len(final_items) + (ipp - 1)) // ipp
-                        }
-                        
-                        # Final Render
-                        image_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
-                        logger.info(f"[Dispatcher] Unified Visual Report rendered (Pages: {len(final_items)})")
-                else:
-                    reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
-                
-                # Check for image content from tool (e.g. Personnel File)
-                if "image_io" in tool_result:
-                    img_io = tool_result["image_io"]
-                    image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
-                
-                # FINAL SYNC: Pick up any image_b64 set in event.meta during tool execution 
-                # (e.g. by set_alert_status or search rendering)
-                if event.meta.get("image_b64"):
-                    image_b64 = event.meta.get("image_b64")
+                # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
+                msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
+                cumulative_data.append(f"ROUND {iteration} ACTION ({tool}):\nResult: {msg}")
+                continue # RECURSE to AI for potential follow-up actions
             else:
-                if tool_result.get("status") == "ambiguous":
-                    reply_text = tool_result.get("message")
-                else:
-                    reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
-            
-            intent = f"tool_res:{tool}"
+                reply_text = f"Unable to comply. CORE ERROR: [{tool_result.get('message', 'System error.')}]"
+                break
         else:
-            # Format report if it's a dict for text fallback
-            reply_text = report_builder.format_report_to_text(reply_raw)
+            # Report or Reply - Finalize the loop
+            reply_text = result.get("reply", "")
+            if intent == "report" and isinstance(reply_text, dict):
+                img_io = visual_core.render_report(reply_text)
+                image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
+                reply_text = f"Generating visual report... (Intent: {intent})"
+            break
+    
+    # --- PHASE 2: SYNTHESIS & RENDERING ---
+    if cumulative_data:
+        logger.info(f"[Dispatcher] Final Synthesis with {len(cumulative_data)} rounds of data...")
+        all_raw = "\n\n".join(cumulative_data)
+        is_chinese = result.get("is_chinese", any('\u4e00' <= char <= '\u9fff' for char in event.text))
         
-        logger.info(f"[Dispatcher] Sending reply (intent={intent}): {reply_text[:100]}...")
+        future = _executor.submit(
+            rp_engine_gemini.synthesize_search_result,
+            event.text, all_raw, is_chinese,
+            context=router.get_session_context(session_id)
+        )
+        synth_reply = future.result(timeout=20)
         
-        # SUPPRESSION: If we have an image_b64 and it's a tool result (like a report), 
-        # minimize the text part to avoid duplication with the visual content.
-        if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha") or intent.startswith("tool_res:access_memory_alpha_direct")):
-            # If it's a search result, the user already sees the data on the screen
-            # Suppress text entirely - only send the image
-            reply_text = ""  # Empty string to suppress text message
-            logger.info(f"[Dispatcher] Text fully suppressed for visual report: {intent}")
+        current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
         
-        logger.info(f"[Dispatcher] Final reply check (intent={intent}): {reply_text[:100]}...")
+        # Decide if we render a visual report or simple text
+        is_comprehensive = "\n\n" in synth_reply and len(synth_reply) > 250
+        if is_comprehensive or "^^DATA_START^^" in synth_reply:
+            renderer = visual_core.get_renderer()
+            report_item = {
+                "title": f"SEARCH REPORT: {event.text[:35].upper()}",
+                "content": synth_reply,
+                "image_b64": (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None) or event.meta.get("image_b64"),
+                "source": current_source
+            }
+            final_items = renderer.split_content_to_pages(report_item)
+            SEARCH_RESULTS[session_id] = {
+                "items": final_items, "query": event.text, "page": 1, "items_per_page": 1, "total_pages": len(final_items)
+            }
+            image_b64 = renderer.render_report(final_items[:1], page=1, total_pages=len(final_items))
+            reply_text = "" 
+        else:
+            reply_text = synth_reply.replace("^^DATA_START^^", "").strip()
+            image_b64 = None
+
+    # Fallback sync for alert images
+    if not image_b64 and event.meta.get("image_b64"):
+        image_b64 = event.meta.get("image_b64")
+
+    # --- PHASE 3: DISPATCHING ---
+    if reply_text or image_b64:
+        logger.info(f"[Dispatcher] Sending reply (intent={intent}) [Len: {len(reply_text)}]")
         sq = send_queue.SendQueue.get_instance()
         session_key = f"qq:{event.group_id or event.user_id}"
         
         await sq.enqueue_send(session_key, reply_text, {
-            "group_id": event.group_id,
-            "user_id": event.user_id,
-            "reply_to": event.message_id,
-            "image_b64": image_b64
+            "group_id": event.group_id, "user_id": event.user_id,
+            "reply_to": event.message_id, "image_b64": image_b64
         })
         
-        # Add AI reply to history for context in next turn
+        # Persistence & History
         if not result.get("needs_escalation"):
             router.add_session_history(session_id, "assistant", reply_text, "Computer")
         
-        # Check if escalation is needed
         if result.get("needs_escalation"):
-            logger.info("[Dispatcher] Escalation needed, spawning background task...")
+            logger.info("[Dispatcher] Escalation needed...")
             _executor.submit(
-                _handle_escalation,
-                result.get("original_query", event.text),
-                result.get("is_chinese", False),
-                event.group_id,
-                event.user_id,
-                session_key,
-                event.message_id,
-                result.get("escalated_model")
+                _handle_escalation, result.get("original_query", event.text),
+                result.get("is_chinese", False), event.group_id, event.user_id,
+                session_key, event.message_id, result.get("escalated_model")
             )
-        
         return True
-    else:
-        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
-        return False
+    
+    logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
+    return False
 
 
 async def handle_event(event: InternalEvent):

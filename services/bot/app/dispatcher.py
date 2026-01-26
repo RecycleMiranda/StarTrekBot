@@ -706,6 +706,10 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                             tool_result = recovery_result
                             current_source = recovery_result.get("source", "MEMORY ALPHA")
                     
+                    # Final Sanitization: Ensure internal tokens never render
+                    if "INSUFFICIENT_DATA" in reply_text:
+                        reply_text = "CLASSIFIED DATA UNREACHABLE: INSUFFICIENT DATA.\n\n分级数据无法访问：数据不足。"
+                    
                     # UNIFIED RENDERING: Determine Scale (Simple vs. Comprehensive)
                     # If it's a short text without the report beacon (or just short enough), send directly
                     is_comprehensive = "\n\n" in reply_text and len(reply_text) > 200
@@ -714,14 +718,11 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                          logger.info(f"[Dispatcher] Scale Detection: FACTOID mode. Skipping Visual Report.")
                          # Clean up any leftover code tokens if they leaked
                          reply_text = reply_text.replace("^^DATA_START^^", "").strip()
-                         # Just use tool result image if it exists
                     else:
                         from .render_engine import get_renderer
                         renderer = get_renderer()
                         
-                        # Final Sanitization: Ensure internal tokens never render
-                        if "INSUFFICIENT_DATA" in reply_text:
-                            reply_text = "CLASSIFIED DATA UNREACHABLE: DATABASE ERROR OR LACK OF RELEVANT ARCHIVES.\n\n分类数据无法访问：数据库错误或缺乏相关档案。"
+                        # (Sanitization already handled above)
                         
                         # Construct a virtual item for the synthesized report
                         report_item = {

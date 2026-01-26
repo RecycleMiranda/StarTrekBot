@@ -358,7 +358,8 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False, 
         
         # QUALITY FILTER: Detect broad queries (including Chinese compounds)
         # Broad query: ship name only or class name (e.g. "银河级", "Galaxy class")
-        is_broad_query = len(query.split()) <= 3 or any(kw in query for kw in ["级", "Class", "Starship"])
+        # Also catch "List of..." queries which require comprehensive data
+        is_broad_query = len(query.split()) <= 5 or any(kw in query_lower for kw in ["级", "class", "starship", "list", "all", "所有", "列表"])
         
         if is_broad_query and hits:
             top_hit = hits[0]

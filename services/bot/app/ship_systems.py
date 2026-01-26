@@ -64,7 +64,7 @@ class ShipSystems:
             cls._instance = cls()
         return cls._instance
 
-    def set_alert(self, level: str) -> str:
+    def set_alert(self, level: str, validate_current: Optional[str] = None) -> (str, Optional[str]):
         level = level.upper()
         old_level = self.alert_status
         
@@ -73,25 +73,40 @@ class ShipSystems:
         if level in ["RED", "红色"]: target = "RED"
         if level in ["YELLOW", "黄色"]: target = "YELLOW"
         
+        # Validation for cancellation targeting a specific level
+        if validate_current and target == "NORMAL":
+            vc = validate_current.upper()
+            if old_level.value != vc:
+                display_names = {"RED": "红色警报", "YELLOW": "黄色警报", "NORMAL": "正常巡航模式"}
+                return f"无法完成：当前处于 {display_names.get(old_level.value)}，而非 {display_names.get(vc)}。", None
+
         # 1. State: Already in target
         if old_level.value == target:
-            if target == "RED": return "⚠️ 警报状态未变更：当前已处于红色警报状态。"
-            if target == "YELLOW": return "⚠️ 警报状态未变更：当前已处于黄色警报状态。"
-            return "ℹ️ 舰船当前已处于正常巡航模式。"
+            if target == "RED": return "⚠️ 警报状态未变更：当前已处于红色警报状态。", None
+            if target == "YELLOW": return "⚠️ 警报状态未变更：当前已处于黄色警报状态。", None
+            return "ℹ️ 舰船当前已处于正常巡航模式。", None
+
+        # Alert GIF paths (Local to Docker container)
+        # We assume the user will place these in the static/assets/alerts/ folder
+        asset_base = "/app/services/bot/app/static/assets/alerts"
+        gif_map = {
+            "RED": f"{asset_base}/red_alert.gif",
+            "YELLOW": f"{asset_base}/yellow_alert.gif"
+        }
 
         # 2. Transition Logic
         if target == "RED":
             self.alert_status = AlertStatus.RED
             self.shields_active = True
-            return "✅ 全体注意，红色警报！"
+            return "✅ 全体注意，红色警报！", gif_map.get("RED")
             
         elif target == "YELLOW":
             self.alert_status = AlertStatus.YELLOW
-            return "⚠️ 全体注意，黄色警报！"
+            return "⚠️ 全体注意，黄色警报！", gif_map.get("YELLOW")
             
         else: # NORMAL
             self.alert_status = AlertStatus.NORMAL
-            return "噔噔噔"
+            return "噔噔噔", None
 
     def toggle_shields(self, active: bool) -> str:
         if active and not self.is_subsystem_operational("shields"):

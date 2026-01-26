@@ -62,6 +62,19 @@ def _run_async(coro):
 
 # Global session mode tracking
 SESSION_MODES = {}
+# Global search results cache (for pagination)
+SEARCH_RESULTS = {} # {session_id: {"items": [], "query": "", "page": 1}}
+
+def _encode_image(image_path: str) -> Optional[str]:
+    """Helper to read local image and encode to base64."""
+    if not image_path or not os.path.exists(image_path):
+        return None
+    try:
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    except Exception as e:
+        logger.warning(f"[Dispatcher] Image encoding failed: {e}")
+        return None
 
 async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: dict, session_id: str, is_chinese: bool = False) -> dict:
     """Execute a tool dynamically based on name and args. Async version."""
@@ -194,11 +207,26 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "search_memory":
             result = tools.search_memory(args.get("query"), session_id)
             
-        elif tool == "query_knowledge_base":
-            result = tools.query_knowledge_base(args.get("query") or args.get("topic"), session_id)
+        elif tool == "query_knowledge_base" or tool == "search_memory_alpha":
+            # Multi-result handling with Visual LCARS
+            result = tools.query_knowledge_base(args.get("query"), session_id) if tool == "query_knowledge_base" else tools.search_memory_alpha(args.get("query"), session_id)
             
-        elif tool == "search_memory_alpha":
-            result = tools.search_memory_alpha(args.get("query") or args.get("topic"), session_id)
+            if result.get("ok") and "items" in result:
+                items = result["items"]
+                # Store in cache for pagination
+                SEARCH_RESULTS[session_id] = {
+                    "items": items,
+                    "query": args.get("query"),
+                    "page": 1,
+                    "total_pages": (len(items) + 3) // 4
+                }
+                
+                # Render Page 1
+                from .render_engine import get_renderer
+                renderer = get_renderer()
+                img_b64 = renderer.render_report(items[:4], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
+                event.meta["image_b64"] = img_b64
+                logger.info(f"[Dispatcher] Visual report rendered for {tool}")
             
         elif tool == "set_reminder":
             result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))
@@ -298,11 +326,17 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "set_alert_status":
             # Priority Level Inference using BEFORE-ALIAS name
             level = args.get("level") or args.get("new_alert_status")
+            validate_current = None
             
             if not level:
                 tool_lower = original_tool.lower()
                 if any(k in tool_lower for k in ["cancel", "normal", "解除", "stand_down", "deactivate", "abort"]):
                     level = "NORMAL"
+                    # Extract target for validation: What are they trying to cancel?
+                    if "red" in tool_lower or "红色" in tool_lower:
+                        validate_current = "RED"
+                    elif "yellow" in tool_lower or "黄色" in tool_lower:
+                        validate_current = "YELLOW"
                 elif "red" in tool_lower or "红色" in tool_lower:
                     level = "RED"
                 elif "yellow" in tool_lower or "黄色" in tool_lower:
@@ -310,13 +344,59 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 else:
                     level = "NORMAL"
                 
-            result = tools.set_alert_status(level.upper(), profile.get("clearance", 1))
+            result = tools.set_alert_status(level.upper(), profile.get("clearance", 1), validate_current=validate_current)
+            
+            # Attach Image if returned and exists
+            image_path = result.get("image_path")
+            if image_path:
+                image_b64 = _encode_image(image_path)
+                if image_b64:
+                    event.meta["image_b64"] = image_b64
+                    logger.info(f"[Dispatcher] Attached image from {image_path} to event meta.")
             
         elif tool == "toggle_shields":
             active = args.get("active") if "active" in args else ("raise" in tool_name or "升起" in tool_name)
             result = tools.toggle_shields(active, profile.get("clearance", 1))
             
-        elif tool == "get_shield_status":
+        elif tool == "next_page" or tool == "prev_page":
+            session_data = SEARCH_RESULTS.get(session_id)
+            if not session_data:
+                result = {"ok": False, "message": "无法完成：当前未开启查询进程，请先通过‘查询数据库’开启搜索。"}
+            else:
+                items = session_data["items"]
+                current_page = session_data["page"]
+                total_pages = session_data["total_pages"]
+                
+                new_page = current_page + 1 if tool == "next_page" else current_page - 1
+                if 1 <= new_page <= total_pages:
+                    SEARCH_RESULTS[session_id]["page"] = new_page
+                    start_idx = (new_page - 1) * 4
+                    end_idx = start_idx + 4
+                    
+                    from .render_engine import get_renderer
+                    renderer = get_renderer()
+                    img_b64 = renderer.render_report(items[start_idx:end_idx], page=new_page, total_pages=total_pages)
+                    event.meta["image_b64"] = img_b64
+                    result = {"ok": True, "message": f"正在调取第 {new_page} 页，共 {total_pages} 页。"}
+                else:
+                    result = {"ok": False, "message": f"无法完成：已到达{'末尾' if tool == 'next_page' else '首页'}。"}
+
+        elif tool == "show_details":
+            target_id = args.get("id", "").upper()
+            session_data = SEARCH_RESULTS.get(session_id)
+            if not session_data or not target_id:
+                result = {"ok": False, "message": "无法完成：请指定有效的检索编号（例如：1A）。"}
+            else:
+                target_item = next((i for i in session_data["items"] if i["id"] == target_id), None)
+                if target_item:
+                    # If it's a detail request, we can send the full text or high-res image
+                    msg = f"--- 详细记录检索: {target_id} ---\n\n{target_item.get('content', '该条目无详细文本说明。')}"
+                    result = {"ok": True, "message": msg}
+                    # If there's an image, attach it
+                    if target_item.get("image_b64"):
+                        event.meta["image_b64"] = target_item["image_b64"]
+                else:
+                    result = {"ok": False, "message": f"无法完成：未能在当前结果集中找到编号为 {target_id} 的条目。"}
             from .ship_systems import get_ship_systems
             result = {"ok": True, "message": get_ship_systems().get_shield_status()}
             

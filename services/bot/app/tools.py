@@ -298,26 +298,27 @@ def query_knowledge_base(query: str, session_id: str) -> dict:
         if not top_hits:
             logger.info(f"[KB] No local hits for '{query}'. Auto-falling back to Memory Alpha.")
             # Auto-fallback to Memory Alpha (Polymath Logic)
-            fallback_result = search_memory_alpha(query, session_id)
-            if fallback_result.get("ok"):
-                return {
-                    "ok": True,
-                    "message": f"LOCAL ARCHIVE NEGATIVE. INITIATING SUBSPACE QUERY...\n{fallback_result.get('message')}",
-                    "source": "Memory Alpha (Fallback)"
-                }
-            else:
-                 return {"ok": False, "message": "No matching records in local archives or Federation database.", "count": 0}
+            return search_memory_alpha(query, session_id)
             
-        # Construct a digest
+        # Construct structured items for rendering
+        results = []
         digest = f"FOUND {len(hits)} RECORDS IN ARCHIVE:\n"
-        for hit in top_hits:
-            digest += f"\n--- [FILE: {hit['file']}] ---\n{hit['snippet']}\n"
+        
+        for i, hit in enumerate(top_hits):
+            item_id = f"{i+1}{chr(65+i)}" # 1A, 2B, etc.
+            results.append({
+                "id": item_id,
+                "type": "text",
+                "title": f"ARCHIVE: {hit['file']}",
+                "content": hit['snippet']
+            })
+            digest += f"\n--- [{item_id}: {hit['file']}] ---\n{hit['snippet']}\n"
             
         return {
             "ok": True,
+            "items": results,
             "message": digest,
-            "count": len(hits),
-            "top_file": top_hits[0]["file"]
+            "count": len(hits)
         }
 
     except Exception as e:
@@ -343,12 +344,11 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
          
     try:
         client = genai.Client(api_key=api_key)
-        logger.info("[Tools] GenAI client initialized for search.")
         
-        # We use a separate model call to perform the search and reasoning
-        search_prompt = f"Search Memory Alpha (Star Trek Wiki) for: {query}. Summarize the technical specifications or details."
+        # Request structured summary and specific image search query
+        search_prompt = f"Find the official Star Trek database entry for {query}. Return: 1. A technical summary (under 100 words). 2. A specific keyword to find the main illustrative image for this topic on the web."
         
-        # Enable Google Search Tool
+        # Enable Google Search Tool 
         google_search_tool = types.Tool(
             google_search=types.GoogleSearch()
         )
@@ -358,23 +358,38 @@ def search_memory_alpha(query: str, session_id: str) -> dict:
             contents=search_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                response_mime_type="text/plain", 
                 temperature=0.3
             )
         )
         
-        if response.text:
-             return {
-                 "ok": True,
-                 "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{response.text}",
-                 "source": "Memory Alpha / Google Search"
-             }
-        else:
-            return {"ok": False, "message": "External database returned no data."}
-
-    except Exception as e:
-        logger.error(f"Memory Alpha search failed: {e}")
-        return {"ok": False, "message": f"Subspace communication error: {e}"}
+        text_content = response.text if response.text else "Subspace interference detected. No textual records found."
+        
+        # Extract image candidates from search metadata if available
+        images = []
+        # Check grounding metadata for potential image links from sources
+        if response.candidates and response.candidates[0].grounding_metadata:
+             metadata = response.candidates[0].grounding_metadata
+             if metadata.search_entry_point:
+                  # Note: The API doesn't always return raw image URLs directly, 
+                  # but we can try to extract thumbnails or main URLs from grounding chunks.
+                  pass
+        
+        # Return structured list for the render engine
+        return {
+            "ok": True,
+            "items": [
+                {
+                    "id": "1A",
+                    "type": "text",
+                    "content": text_content,
+                    "title": f"RECORD: {query.upper()}"
+                },
+                # Placeholder for dynamic images
+                # { "id": "1B", "type": "image", "url": "...", "caption": "Visual Record" }
+            ],
+            "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",
+            "source": "Memory Alpha / Google Search"
+        }
     """
     Retrieves library computer historical records.
     """
@@ -863,7 +878,7 @@ def update_protocol(category: str, key: str, value: str, user_id: str, clearance
         return {"ok": False, "message": "Failed to update protocol. System file write error."}
 # --- SHIP SYSTEMS & CONTROL TOOLS (1.8 Protocol) ---
 
-def set_alert_status(level: str, clearance: int) -> dict:
+def set_alert_status(level: str, clearance: int, validate_current: str = None) -> dict:
     """
     Sets the ship's alert status (RED, YELLOW, NORMAL).
     Requires Level 8+.
@@ -873,8 +888,8 @@ def set_alert_status(level: str, clearance: int) -> dict:
         
     from .ship_systems import get_ship_systems
     ss = get_ship_systems()
-    msg = ss.set_alert(level)
-    return {"ok": True, "message": msg, "level": ss.alert_status.value}
+    msg, image_path = ss.set_alert(level, validate_current=validate_current)
+    return {"ok": True, "message": msg, "level": ss.alert_status.value, "image_path": image_path}
 
 def toggle_shields(active: bool, clearance: int) -> dict:
     """

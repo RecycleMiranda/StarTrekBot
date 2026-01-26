@@ -19,6 +19,11 @@ CONTENT_W = 1220 # Maximized breadth
 CONTENT_B = 880
 CONTENT_H_TOTAL = CONTENT_B - CONTENT_T
 
+# Metric Constants
+LINE_HEIGHT = 26     # Aggressive compression for high density
+PARA_SPACING = 12    # Clear paragraph separation
+FONT_SIZE = 24
+
 class LCARS_Renderer:
     def __init__(self, root_path: str = None):
         if not root_path:
@@ -66,8 +71,6 @@ class LCARS_Renderer:
         # Programmatic prefix removal
         content = re.sub(r'\[(EN|ZH|Standard|Chinese)\]:?\s*', '', content, flags=re.IGNORECASE)
         
-        line_height = 34
-        para_spacing = 15
         wrap_w = CONTENT_W - 60
         
         pages = []
@@ -78,29 +81,25 @@ class LCARS_Renderer:
         for para in paragraphs:
             para = para.strip()
             if not para:
-                current_h += para_spacing
+                current_h += PARA_SPACING + 5 
                 continue
             
-            sentences = self._split_sentences(para)
-            for sentence in sentences:
-                f_c = self.get_font(sentence, 24)
-                lines = self._wrap_text_clean(sentence, f_c, wrap_w)
-                needed_h = len(lines) * line_height
-                
-                if current_h + needed_h > max_h:
-                    pages.append({
-                        "title": item.get("title", "TECHNICAL DATA"),
-                        "content": "\n\n".join([c for c in current_page_content if c]),
-                        "image_b64": item.get("image_b64") if len(pages) == 0 else None
-                    })
-                    current_page_content = ["(CONTINUED FROM PREVIOUS PAGE)", "", sentence]
-                    current_h = (3 * line_height) + needed_h
-                else:
-                    current_page_content.append(sentence)
-                    current_h += needed_h + 5
+            # Metric calculation based on full paragraph
+            f_c = self.get_font(para, FONT_SIZE)
+            lines = self._wrap_text_clean(para, f_c, wrap_w)
+            needed_h = len(lines) * LINE_HEIGHT
             
-            current_page_content.append("") # Para break
-            current_h += para_spacing
+            if current_h + needed_h > max_h:
+                pages.append({
+                    "title": item.get("title", "TECHNICAL DATA"),
+                    "content": "\n\n".join([c for c in current_page_content if c]),
+                    "image_b64": item.get("image_b64") if len(pages) == 0 else None
+                })
+                current_page_content = ["(CONTINUED FROM PREVIOUS PAGE)", "", para]
+                current_h = (3 * LINE_HEIGHT) + needed_h + PARA_SPACING
+            else:
+                current_page_content.append(para)
+                current_h += needed_h + PARA_SPACING
 
         if any(c.strip() for c in current_page_content):
             pages.append({
@@ -171,23 +170,25 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 90
+            text_y = pos[1] + 65 # Tightened top margin
             paragraphs = content.split('\n')
             for para in paragraphs:
                 para = para.strip()
                 if not para:
-                    text_y += 10
+                    text_y += PARA_SPACING
                     continue
-                sentences = self._split_sentences(para)
-                for sentence in sentences:
-                    f_line = self.get_font(sentence, 24)
-                    lines = self._wrap_text_clean(sentence, f_line, text_w)
-                    if text_y + (len(lines) * 32) > pos[1] + h - 10: break
-                    for line in lines:
-                        draw.text((text_l, text_y), line, fill=(255, 255, 255, 255), font=f_line)
-                        text_y += 32
-                    text_y += 4
-                text_y += 10
+                
+                # Render full paragraph as a block
+                f_line = self.get_font(para, FONT_SIZE)
+                lines = self._wrap_text_clean(para, f_line, text_w)
+                
+                if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
+                
+                for line in lines:
+                    draw.text((text_l, text_y), line, fill=(255, 255, 255, 255), font=f_line)
+                    text_y += LINE_HEIGHT # Tighter leading
+                
+                text_y += PARA_SPACING # Paragraph spacing
         elif img_b64:
             self._draw_stretched_brackets(canvas, pos, w, h)
             try:
@@ -197,23 +198,25 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y = pos[1] + 90
+            text_y = pos[1] + 65 # Tightened top margin
             paragraphs = content.split('\n')
             for para in paragraphs:
                 para = para.strip()
                 if not para:
-                    text_y += 15
+                    text_y += PARA_SPACING
                     continue
-                sentences = self._split_sentences(para)
-                for sentence in sentences:
-                    f_line = self.get_font(sentence, 24)
-                    lines = self._wrap_text_clean(sentence, f_line, w - 60)
-                    if text_y + (len(lines) * 34) > pos[1] + h - 10: return
-                    for line in lines:
-                        draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_line)
-                        text_y += 34
-                    text_y += 3 
-                text_y += 15
+                
+                # Render full paragraph as a block
+                f_line = self.get_font(para, FONT_SIZE)
+                lines = self._wrap_text_clean(para, f_line, w - 60)
+                
+                if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: return
+                
+                for line in lines:
+                    draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_line)
+                    text_y += LINE_HEIGHT # Tighter leading
+                
+                text_y += PARA_SPACING # Paragraph spacing
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

@@ -200,6 +200,15 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
             "ROLE: You are the LCARS Main Computer. Synthesize the following raw data into a comprehensive report.\n"
             f"{lang_instruction}\n"
             "STYLE: Professional, high-density, technical. Format as an LCARS technical brief.\n"
+            "NEGATIVE CONSTRAINTS: \n"
+            "- DO NOT start with 'Here is', 'I have found', 'Based on', or 'The following'.\n"
+            "- DO NOT use conversational fillers or politeness markers.\n"
+            "- DO NOT repeat the User Query.\n"
+            "- VIOLATION of these constraints will cause a system error.\n"
+            "TERMINOLOGY DIRECTIVES:\n"
+            "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
+            "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRECT IT to '进取号'.\n"
+            "- This rule is ABSOLUTE for the ship name.\n"
             "CRITICAL INSTRUCTION: Provide as much detail as possible from the RAW DATA. Do not just summarize; list specifications, dates, dimensions, and technical classifications if available.\n"
             "BILINGUAL REQUIREMENT: Since the user is communicating in Chinese, produce a SYNCHRONIZED BILINGUAL report.\n"
             "FORMAT: Present each technical point in English first, followed immediately by its professional Chinese translation. Provide ONLY the technical text, NO prefixes like [EN] or [ZH].\n"
@@ -227,6 +236,60 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
         return f"Data retrieved. Synthesis error: {e}. Raw data: {raw_data[:200]}..."
+
+    def translate_memory_alpha_content(self, raw_content: str, is_chinese: bool = False) -> str:
+        """
+        DIRECT PIPELINE: Translates Memory Alpha content VERBATIM without summarization.
+        Used for 'access_memory_alpha_direct'.
+        """
+        api_key = self.config.get("gemini_api_key", "")
+        model_name = self.config.get("gemini_model", "gemini-2.0-flash")
+        
+        if not api_key:
+            return raw_content
+
+        try:
+            client = genai.Client(api_key=api_key)
+            
+            lang_instruction = "Target Language: Simplified Chinese (zh-CN)." if is_chinese else "Target Language: Federation Standard (English)."
+            
+            prompt = (
+                "MODE: VERBATIM TRANSLATION & ARCHIVAL FORMATTING\n"
+                "ROLE: You are a Universal Translator linked directly to the Federation Database.\n"
+                f"{lang_instruction}\n"
+                "INPUT: Raw text from a Memory Alpha database entry.\n"
+                "TASK: translate the content VERBATIM into the target language. \n"
+                "CONSTRAINTS:\n"
+                "1. DO NOT SUMMARIZE. Retain all technical details, dates, names, and lists.\n"
+                "2. RETAIN STRUCTURE. If the input has infoboxes or lists, keep them.\n"
+                "3. NO METADATA. Remove wiki-specific meta like 'Edit', 'History', 'Talk'.\n"
+                "4. TECHNICAL ACCURACY. Ensure Trek terminology (Warp, Phaser, Class) is translated accurately.\n"
+                "5. NEGATIVE CONSTRAINTS: DO NOT add 'Here is the translation', DO NOT add 'Translation:', DO NOT add conversational filler.\n"
+                "TERMINOLOGY DIRECTIVES:\n"
+                "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
+                "- DO NOT use '企业号'. If the input text or your internal knowledge suggests '企业号', CORRCT IT to '进取号'.\n"
+                "- This rule is ABSOLUTE for the ship name.\n"
+                "FORMAT: Present the output as a clean technical record suitable for LCARS display. \n"
+                "BILINGUAL NOTE: Even if translating to Chinese, keep specific proper nouns (like ship registry numbers NCC-1701) in alphanumeric format if standard.\n\n"
+                f"RAW INPUT:\n{raw_content[:8000]}\n\n" # Increased context window for direct access
+                "TRANSLATED OUTPUT (Start Immediately):"
+            )
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=3000, # Expanded for full articles
+                    temperature=0.1 # Low temp for translation accuracy
+                )
+            )
+            
+            reply = response.text if response.text else "Subspace interference. Translation failed."
+            return strip_conversational_filler(reply)
+
+        except Exception as e:
+            logger.error(f"Translation failed: {e}")
+            return f"Translation error: {e}. Raw content preserved."
 
 def _parse_response(text: str) -> Dict:
     text = text.strip()

@@ -270,16 +270,31 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                 content = f.read()
                 
             score = 0
-            if query_lower in content.lower():
-                score += 5
+            content_lower = content.lower()
             
+            # 1. Literal Multi-word match (High confidence)
+            if query_lower in content_lower and len(keywords) > 1:
+                score += 15
+            elif query_lower in content_lower:
+                score += 8
+            
+            # 2. Keyword density
+            match_count = 0
             for k in keywords:
-                if k in content.lower():
-                    score += 1
+                if len(k) < 3: continue # Skip short words
+                if k in content_lower:
+                    score += 2
+                    match_count += 1
             
-            if score > 0:
-                # Extract relevant snippet (rudimentary)
-                idx = content.lower().find(keywords[0]) if keywords else -1
+            # 3. Technical Density Bonus (Specs, Class, Warp, etc)
+            tech_keywords = ["class", "specs", "specifications", "warp", "crew", "tactical", "registry", "history"]
+            for tk in tech_keywords:
+                if tk in content_lower:
+                    score += 1
+
+            if score >= 8: # Substance Threshold
+                # Extract relevant snippet
+                idx = content_lower.find(keywords[0]) if keywords else -1
                 start = max(0, idx - 200)
                 end = min(len(content), idx + 500)
                 snippet = content[start:end].replace("\n", " ") + "..."
@@ -292,11 +307,11 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
         
         # Sort by score
         hits.sort(key=lambda x: x["score"], reverse=True)
-        # Filter weak matches (Score must be > 3 to count as a real hit, e.g. multi-keyword match)
-        top_hits = [h for h in hits if h["score"] > 3][:3]
+        # Final filtering: Ensure top hits are actually substantial
+        top_hits = [h for h in hits if h["score"] >= 10][:3]
         
         if not top_hits:
-            logger.info(f"[KB] No local hits for '{query}'. Auto-falling back to Memory Alpha.")
+            logger.info(f"[KB] No high-confidence local hits for '{query}' (Top score: {hits[0]['score'] if hits else 0}). Auto-falling back to Memory Alpha.")
             # Auto-fallback to Memory Alpha (Polymath Logic)
             return search_memory_alpha(query, session_id, is_chinese)
             
@@ -397,6 +412,127 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False) -
 
     except Exception as e:
         logger.error(f"Memory Alpha search failed: {e}")
+        return {"ok": False, "message": f"Subspace communication error: {e}"}
+
+def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = False) -> dict:
+    """
+    Directly accesses Memory Alpha, bypassing summary logic.
+    Returns VERBATIM translated content or a list of ambiguous targets.
+    """
+    import os
+    import re
+    from .config_manager import ConfigManager
+    from google import genai
+    from google.genai import types
+    from .rp_engine_gemini import strip_conversational_filler, NeuralEngine
+    
+    config = ConfigManager.get_instance()
+    api_key = config.get("gemini_api_key", "")
+    
+        if not api_key:
+        return {"ok": False, "message": "Neural link offline (API Key missing)."}
+
+    # --- EASTER EGG: Enterprise Registry Challenge ---
+    q_norm = query.lower().strip()
+    if q_norm in ["enterprise", "uss enterprise", "企业号", "进取号", "星舰企业号"]:
+        msg = (
+            "⚠️ FEDERATION DATABASE QUERY EXCEPTION\n\n"
+            "There are 8 Federation starships bearing this name.\n"
+            "Please specify registry number.\n\n"
+            "有 8 艘联邦星舰以此命名。\n"
+            "请输入具体舷号。"
+        )
+        return {
+            "ok": False,
+            "status": "ambiguous",
+            "message": msg
+        }
+    # -------------------------------------------------
+
+    # Input Normalization for Search (Map Chinese to English for Memory Alpha)
+    if "企业号" in query or "进取号" in query:
+        query = query.replace("企业号", "Enterprise").replace("进取号", "Enterprise")
+        logger.info(f"[Tools] Normalized input query to: {query}")
+
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        # Enable Google Search Tool 
+        google_search_tool = types.Tool(
+            google_search=types.GoogleSearch()
+        )
+        
+        # Prompt for navigation/fetching
+        nav_prompt = (
+            f"Navigate to memory-alpha.fandom.com and locate the entry for '{query}'.\n"
+            "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects? (e.g. 'Enterprise' -> NX-01, 1701, 1701-D).\n"
+            "STEP 2: Output Logic:\n"
+            "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of the top 5 distinct page titles.\n"
+            "- IF UNIQUE MATCH: Output 'STATUS: FOUND' followed by the FULL RAW TEXT of the article (Intro + Specifications + History). Do not summarize.\n"
+            "  Also output 'IMAGE: [URL]' for the main infobox image.\n"
+        )
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", 
+            contents=nav_prompt,
+            config=types.GenerateContentConfig(
+                tools=[google_search_tool],
+                temperature=0.1 
+            )
+        )
+        
+        raw_output = response.text if response.text else ""
+        
+        if "STATUS: AMBIGUOUS" in raw_output:
+            # Extract candidates
+            lines = raw_output.split('\n')
+            candidates = [line.strip("- *") for line in lines if "STATUS" not in line and line.strip()]
+            return {
+                "ok": False, # False to trigger 'manual selection' flow in dispatcher if we implemented it, or just text msg
+                "status": "ambiguous",
+                "candidates": candidates[:5],
+                "message": f"Ambiguous query. Please specify:\n" + "\n".join([f"- {c}" for c in candidates[:5]])
+            }
+            
+        elif "STATUS: FOUND" in raw_output:
+            # Extract Image
+            img_url = None
+            img_match = re.search(r'IMAGE: (https?://[^ \n]+)', raw_output)
+            if img_match:
+                img_url = img_match.group(1).rstrip('.)')
+                raw_output = raw_output.replace(img_match.group(0), "")
+                
+            # Clean "STATUS: FOUND"
+            content_body = raw_output.replace("STATUS: FOUND", "").strip()
+            
+            # Translate Verbatim
+            engine = NeuralEngine() 
+            # Note: NeuralEngine usually needs config, but get_instance logic isn't there. 
+            # We'll just instantiate and it pulls from ConfigManager inside its methods if written that way? 
+            # Checking rp_engine_gemini.py... NeuralEngine.__init__ calls ConfigManager.get_instance(). Correct.
+            
+            translated_content = engine.translate_memory_alpha_content(content_body, is_chinese)
+            
+            return {
+                "ok": True,
+                "status": "content",
+                "items": [
+                    {
+                        "id": "1A",
+                        "type": "hybrid",
+                        "content": translated_content,
+                        "title": f"ARCHIVE: {query.upper()}",
+                        "image_url": img_url
+                    }
+                ],
+                "message": f"MEMORY ALPHA ARCHIVE LINK ESTABLISHED.\nSubject: {query}",
+                "source": "Memory Alpha Direct"
+            }
+        else:
+            return {"ok": False, "message": "Unable to lock onto a valid Memory Alpha frequency. (No clear data found)"}
+
+    except Exception as e:
+        logger.error(f"Direct Access failed: {e}")
         return {"ok": False, "message": f"Subspace communication error: {e}"}
 
 def get_historical_records(topic: str) -> dict:

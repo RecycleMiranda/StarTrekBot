@@ -208,9 +208,14 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "search_memory":
             result = tools.search_memory(args.get("query"), session_id)
             
-        elif tool == "query_knowledge_base" or tool == "search_memory_alpha":
+        elif tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
             # Multi-result handling with Visual LCARS
-            result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese) if tool == "query_knowledge_base" else tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese)
+            if tool == "query_knowledge_base":
+                result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese)
+            elif tool == "search_memory_alpha":
+                result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese)
+            else:
+                result = tools.access_memory_alpha_direct(args.get("query"), session_id, is_chinese=is_chinese)
             
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]
@@ -700,6 +705,26 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         is_chinese
                     )
                     reply_text = future.result(timeout=20)
+                    
+                    # SEMANTIC RECOVERY: If local synthesis reports insufficient data,
+                    # automatically escalate to Memory Alpha for a better briefing.
+                    if "Insufficient data in current archives" in reply_text:
+                        logger.info(f"[Dispatcher] Local synthesis for {tool} was insufficient. Triggering Recovery Fallback to Memory Alpha...")
+                        recovery_result = await _execute_tool("search_memory_alpha", {"query": args.get("query")}, event, user_profile, session_id, is_chinese=is_chinese)
+                        if recovery_result.get("ok"):
+                            # Update items for current session (rendering happened inside _execute_tool)
+                            raw_data = recovery_result.get("message", "")
+                            # Re-synthesize with better data
+                            future = _executor.submit(
+                                rp_engine_gemini.synthesize_search_result,
+                                result.get("original_query", ""),
+                                raw_data,
+                                is_chinese
+                            )
+                            reply_text = future.result(timeout=20)
+                            # Ensure we pick up the new image_b64 from the recovery tool's meta update
+                            if event.meta.get("image_b64"):
+                                image_b64 = event.meta.get("image_b64")
                 else:
                     reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
                 
@@ -713,7 +738,10 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 if event.meta.get("image_b64"):
                     image_b64 = event.meta.get("image_b64")
             else:
-                reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
+                if tool_result.get("status") == "ambiguous":
+                    reply_text = tool_result.get("message")
+                else:
+                    reply_text = f"Unable to comply. {tool_result.get('message', 'System error.')}"
             
             intent = f"tool_res:{tool}"
         else:
@@ -724,7 +752,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
         # SUPPRESSION: If we have an image_b64 and it's a tool result (like a report), 
         # minimize the text part to avoid duplication with the visual content.
-        if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha")):
+        if image_b64 and (intent.startswith("tool_res:query_knowledge_base") or intent.startswith("tool_res:search_memory_alpha") or intent.startswith("tool_res:access_memory_alpha_direct")):
             # If it's a search result, the user already sees the data on the screen
             reply_text = "FEDERATION DATABASE ACCESS GRANTED // VISUAL REPORT ATTACHED"
             logger.info(f"[Dispatcher] Redundant text suppressed with formal notification for {intent}")

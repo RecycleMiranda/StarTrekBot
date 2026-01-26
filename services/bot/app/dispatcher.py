@@ -694,7 +694,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         # Decide if we render a visual report or simple text
         is_comprehensive = "\n\n" in synth_reply and len(synth_reply) > 250
         if is_comprehensive or "^^DATA_START^^" in synth_reply:
-            renderer = visual_core.get_renderer()
+            from .render_engine import get_renderer
+            renderer = get_renderer()
             report_item = {
                 "title": f"SEARCH REPORT: {event.text[:35].upper()}",
                 "content": synth_reply,

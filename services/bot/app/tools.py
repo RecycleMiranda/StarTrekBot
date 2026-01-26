@@ -267,10 +267,21 @@ def query_knowledge_base(query: str, session_id: str) -> dict:
         
         # Sort by score
         hits.sort(key=lambda x: x["score"], reverse=True)
-        top_hits = hits[:3]
+        # Filter weak matches (Score must be > 3 to count as a real hit, e.g. multi-keyword match)
+        top_hits = [h for h in hits if h["score"] > 3][:3]
         
         if not top_hits:
-            return {"ok": False, "message": "No matching records found in local archives.", "count": 0}
+            logger.info(f"[KB] No local hits for '{query}'. Auto-falling back to Memory Alpha.")
+            # Auto-fallback to Memory Alpha (Polymath Logic)
+            fallback_result = search_memory_alpha(query, session_id)
+            if fallback_result.get("ok"):
+                return {
+                    "ok": True,
+                    "message": f"LOCAL ARCHIVE NEGATIVE. INITIATING SUBSPACE QUERY...\n{fallback_result.get('message')}",
+                    "source": "Memory Alpha (Fallback)"
+                }
+            else:
+                 return {"ok": False, "message": "No matching records in local archives or Federation database.", "count": 0}
             
         # Construct a digest
         digest = f"FOUND {len(hits)} RECORDS IN ARCHIVE:\n"

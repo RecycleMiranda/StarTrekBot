@@ -65,7 +65,7 @@ class LCARS_Renderer:
 
     def split_content_to_pages(self, item: Dict, max_h: int = None) -> List[Dict]:
         """Splits a single technical record into multiple LCARS pages if it exceeds height."""
-        if not max_h: max_h = CONTENT_H_TOTAL - 120 
+        if not max_h: max_h = CONTENT_H_TOTAL - 170 
         
         content = item.get("content", "")
         # Beacon Protocol (Surgical Strike)
@@ -81,8 +81,13 @@ class LCARS_Renderer:
         paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
         
         # COLUMNAR DETECTOR (Universal)
-        is_dense_list = len(paragraphs) > 8 and (sum(len(p) for p in paragraphs) / len(paragraphs)) < 60
-        num_cols = 2 if is_dense_list else 1
+        avg_len = (sum(len(p) for p in paragraphs) / len(paragraphs)) if paragraphs else 0
+        if len(paragraphs) > 15 and avg_len < 45:
+            num_cols = 3
+        elif len(paragraphs) > 8 and avg_len < 60:
+            num_cols = 2
+        else:
+            num_cols = 1
         
         pages = []
         current_page_paras = []
@@ -156,16 +161,27 @@ class LCARS_Renderer:
 
     def _draw_mega_slot(self, canvas, item, pos, w, h, item_id, f_t, f_id):
         draw = ImageDraw.Draw(canvas)
-        # DYNAMIC FONT FOR TITLE (Prevents square boxes for CJK)
-        title_text = (item.get("title") or "TECHNICAL DATA STREAM").upper()
-        f_title_dynamic = self.get_font(title_text, 38)
+        # DYNAMIC BILINGUAL HEADER
+        raw_title = (item.get("title") or "TECHNICAL DATA STREAM").strip()
+        title_parts = [p.strip() for p in raw_title.split('\n') if p.strip()]
+        title_en = title_parts[0] if title_parts else "TECHNICAL DATA"
+        title_zh = title_parts[1] if len(title_parts) > 1 else ""
+        
+        f_title_en = self.get_font(title_en, 44)
+        f_title_zh = self.get_font(title_zh, 32)
+        
         content = item.get("content", "").strip()
-        # AGGRESSIVE NORMALIZATION
         content = self._normalize_text_flow(content)
         img_b64 = item.get("image_b64")
         
-        draw.text((pos[0] + 15, pos[1] + 5), item_id, fill=(255, 170, 0, 255), font=f_id)
-        draw.text((pos[0] + 120, pos[1] + 5), title_text, fill=(200, 200, 255, 255), font=f_title_dynamic)
+        # Draw ID and Leading English Title (Left Aligned)
+        draw.text((pos[0] + 15, pos[1] + 10), item_id, fill=(255, 170, 0, 255), font=f_id)
+        # Shifted English title to left, larger size
+        draw.text((pos[0] + 70, pos[1] + 5), title_en, fill=(255, 180, 50, 255), font=f_title_en)
+        
+        # Sub-title (Chinese) with color differentiation
+        if title_zh:
+            draw.text((pos[0] + 70, pos[1] + 55), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
         # SOURCE BADGE (Verification Layer)
         source = item.get("source", "UNKNOWN")
@@ -173,10 +189,12 @@ class LCARS_Renderer:
         badge_w = draw.textlength(badge_text, font=f_id)
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
-        line_y = pos[1] + 55
+        # Lower horizontal line to create distance
+        line_y = pos[1] + 100
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
         
         if img_b64 and content:
+            # ... (image remains same, but text_y adjusted)
             img_w = int(w * 0.45)
             text_l = pos[0] + img_w + 40
             text_w = w - img_w - 60
@@ -185,11 +203,11 @@ class LCARS_Renderer:
                 img_data = base64.b64decode(img_b64)
                 with Image.open(BytesIO(img_data)).convert("RGBA") as img:
                     img.thumbnail((img_w - 80, h - 160), Image.Resampling.LANCZOS)
-                    canvas.alpha_composite(img, (pos[0] + (img_w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
+                    canvas.alpha_composite(img, (pos[0] + (img_w - img.width) // 2, pos[1] + (h - img.height) // 2 + 50))
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
 
-            text_y = pos[1] + 65 # Tightened top margin
+            text_y = pos[1] + 115 # Jump below header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -213,31 +231,37 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y_start = pos[1] + 65 
+            text_y_start = pos[1] + 115 
             
             # DYNAMIC FONT SELECTION & COLUMN DETECTION
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             
             # Smart Columnar Protocol: Detect if we should use columns (Dense List Detection)
-            # Conditions: > 8 paragraphs and average length < 60 chars
-            is_dense_list = len(paragraphs) > 8 and (sum(len(p) for p in paragraphs) / len(paragraphs)) < 60
-            num_cols = 2 if is_dense_list else 1
-            col_w = (w - 80) // num_cols
+            avg_len = (sum(len(p) for p in paragraphs) / len(paragraphs)) if paragraphs else 0
+            if len(paragraphs) > 15 and avg_len < 45:
+                num_cols = 3
+            elif len(paragraphs) > 8 and avg_len < 60:
+                num_cols = 2
+            else:
+                num_cols = 1
+                
+            col_inner_spacing = 30 if num_cols == 3 else 50
+            col_w = (w - 60 - (num_cols - 1) * col_inner_spacing) // num_cols
             
-            # Dynamic Font Inflation logic (Simplified for cols)
+            # Dynamic Font Inflation logic (Enhanced for Tri-Col)
             best_size = FONT_SIZE # 24
             best_lh = LINE_HEIGHT # 28
             
-            # Test sizes for best fit
-            for size in range(32, 23, -2):
-                lh = int(size * 1.25)
+            # Test sizes for best fit - down to 18pt for high density
+            for size in range(32, 17, -2):
+                lh = int(size * 1.2)
                 f_test = self.get_font(content, size)
                 
                 # Estimate height with columns
                 lines_per_col = (len(paragraphs) + num_cols - 1) // num_cols
-                est_h = (lines_per_col * lh) + (lines_per_col * PARA_SPACING // 2)
+                est_h = (lines_per_col * lh) + (lines_per_col * PARA_SPACING // 4)
                 
-                if est_h <= (h - 100):
+                if est_h <= (h - 130):
                     best_size = size
                     best_lh = lh
                     break
@@ -249,8 +273,8 @@ class LCARS_Renderer:
                 col_idx = i % num_cols
                 row_idx = i // num_cols # Zebra by row
                 
-                curr_x = pos[0] + 30 + (col_idx * (col_w + 50))
-                curr_y = text_y_start + (row_idx * (best_lh + PARA_SPACING // 2))
+                curr_x = pos[0] + 30 + (col_idx * (col_w + col_inner_spacing))
+                curr_y = text_y_start + (row_idx * (best_lh + PARA_SPACING // 4))
                 
                 if curr_y + best_lh > pos[1] + h - 10: break
                 

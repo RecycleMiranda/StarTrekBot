@@ -251,11 +251,16 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
             # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
-                max_w = args.get("max_words", 500)
+                query_text = args.get("query", "").lower()
+                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类"])
+                max_w = args.get("max_words", 8000 if is_listing else 500)
+                if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for KB: {max_w} words")
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             elif tool == "search_memory_alpha":
-                # Ensure we use max_words (default 500 but adjustable by RP engine)
-                max_w = args.get("max_words", 500)
+                query_text = args.get("query", "").lower()
+                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类"])
+                max_w = args.get("max_words", 8000 if is_listing else 500)
+                if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for MA: {max_w} words")
                 result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             else:
                 chunk_index = args.get("chunk_index", 0)

@@ -308,11 +308,9 @@ ANALYTICAL INFERENCE PROTOCOL (CRITICAL):
 - **No Refusal for Math**: You are PROHIBITED from answering "Data unavailable" for a comparison if the underlying values were previously retrieved.
 - In **TEXT-ONLY** mode, give the final computed result + raw values directly. In **VISUAL REPORT** mode, show the logic block.
 ENUMERATION & LISTING PROTOCOL (CRITICAL):
-- **Exhaustive Listing**: If a user asks for a LIST (e.g., "List all classes"), you MUST provide ALL items discovered in the search data. Do NOT summarize or pick a "few examples" unless the list exceeds LCARS display limits (over 50 items).
-- **Structure Over Description**: In enumeration mode, use a concise list format (bullet points or a compact table). Prioritize the NAMES of entities over technical descriptions.
-- **"All Searchable" Mandate**: If the user asks for "all can be found", do NOT refuse because you can't guarantee a "complete universe" list. Instead, list everything currently available in the session's cumulative data.
-- **Paging Support**: If the list is long, present the first page and remind the user that "Next Page" command is available.
-- Distinguish between Vessel Flight (Weeks/Months) and Subspace Signals (Hours).
+- **Exhaustive Listing (STRICT)**: If the user asks for a LIST (e.g., "List all classes"), you MUST provide ALL items discovered in the RAW DATABASE RECORDS. You are STRICTLY PROHIBITED from summarizing, consolidating groups, or using phrases like "and more..." (以及更多). Every name found in the raw data MUST appear in the output.
+- **Structure Over Description**: In enumeration mode, use a concise list format (one item per line). Prioritize NAMES ([English] ([Chinese])) over technical descriptions. Use exactly ONE newline between items.
+- **"All Searchable" Mandate**: List every single class found in the provided data rounds.
 
 EVIDENCE TRACEABILITY (For VISUAL REPORT):
 - Cite specific records (e.g. 'Per Galaxy-class technical handbook').
@@ -533,14 +531,19 @@ def strip_conversational_filler(text: str) -> str:
     lines = text.split('\n')
     if lines:
         first_line = lines[0].strip()
-        # Special Case: Short colon-ended lines
-        if first_line.endswith(":") and len(first_line) < 120:
+        # Special Case: Short colon-ended lines that look like preambles
+        preamble_keywords = ["here's", "here is", "summary", "list", "details", "data", "report", "根据", "这是", "查询"]
+        is_preamble = any(k in first_line.lower() for k in preamble_keywords)
+        
+        if first_line.endswith(":") and len(first_line) < 100 and is_preamble:
             logger.info(f"[NeuralEngine] Blind Cut on colon-line: '{first_line}'")
-            return strip_conversational_filler('\n'.join(lines[1:]))
+            rest = strip_conversational_filler('\n'.join(lines[1:]))
+            return rest if rest else text # Don't return empty if it stripped everything
             
         for p in preamble_patterns:
             if re.match(p, first_line, re.IGNORECASE):
                 logger.info(f"[NeuralEngine] Preamble stripped: '{first_line}'")
-                return strip_conversational_filler('\n'.join(lines[1:]))
+                rest = strip_conversational_filler('\n'.join(lines[1:]))
+                return rest if rest else text
     
     return text.strip()

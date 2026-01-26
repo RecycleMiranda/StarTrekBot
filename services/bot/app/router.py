@@ -12,8 +12,9 @@ _session_states: Dict[str, dict] = {}
 # Consts
 MODE_COMPUTER = "computer"
 MODE_CHAT = "chat"
-DEFAULT_TTL = 30 # Reduced to 30s for group chat safety
-MAX_HISTORY = 6  # Last 6 turns for context
+DEFAULT_TTL = 60 # Increased to 60s for better conversational flow
+MAX_HISTORY = 8  # Increased to 8 turns for deeper context
+SILENCE_THRESHOLD = 1800 # 30 minutes silence before clearing history on fresh wake
 
 # Keywords and Regex
 RE_MANUAL_ENTER = re.compile(r"(进入计算机模式|计算机模式|computer on|enter computer mode)", re.I)
@@ -57,8 +58,12 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
     state = _session_states.get(session_id, {
         "mode": None,
         "expires_at": 0,
+        "last_activity": now,
         "last_texts": []
     })
+    
+    # Dynamic Activity Refresh: Update activity timestamp on every incoming event
+    state["last_activity"] = now
 
     # Identifiers: Use Nickname/Card and include QQ ID for unique identification
     event_raw = meta.get("event_raw", {}) if meta else {}
@@ -93,12 +98,11 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
     # 2. Wake Word
     match = RE_WAKE_WORD.match(text_clean)
     if match:
-        # If it's a fresh wake word and the session was partially stale (e.g. > 10s of silence)
-        # or if it was already expired, clear history to prevent "topic fixation"
+        # Context Preservation: Only clear history if silence exceeds 30 minutes
         silence_duration = now - state.get("last_activity", 0)
-        if is_expired or silence_duration > 15:
-            state["last_texts"] = [] # Clear history for fresh wake
-            logger.info(f"[Router] Fresh wake word detected after {silence_duration}s. Clearing context history.")
+        if is_expired and silence_duration > SILENCE_THRESHOLD:
+            state["last_texts"] = [] # Clear history for fresh start after long silence
+            logger.info(f"[Router] Stale session detected after {silence_duration}s. Resetting context.")
             
         state["mode"] = MODE_COMPUTER
         state["expires_at"] = now + DEFAULT_TTL

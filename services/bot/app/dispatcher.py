@@ -886,7 +886,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
         
         # Decide if we render a visual report or simple text
-        is_comprehensive = "\n\n" in synth_reply and len(synth_reply) > 250
+        # Relaxed logic: Render if > 200 chars OR has newline and > 100 chars
+        is_comprehensive = len(synth_reply) > 200 or ("\n" in synth_reply and len(synth_reply) > 100)
         if is_comprehensive or "^^DATA_START^^" in synth_reply:
             from .render_engine import get_renderer
             renderer = get_renderer()

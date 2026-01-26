@@ -314,12 +314,13 @@ class LCARS_Renderer:
                 prev = lines[i-1]
                 curr = lines[i]
                 
-                # Language Transition Detection (Markdown Aware)
-                # English regex improved to include more punctuation and delimiters
-                prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\)\}\]\"\*\' ]$', prev))
+                # Enhanced detection: If line contains Chinese and ends with ')', treat as CN/Bilingual end
+                has_cn = bool(re.search(r'[\u4e00-\u9fff]', prev))
+                
+                prev_is_en = bool(re.search(r'[a-zA-Z0-9\.,:;!?\}\]\"\*\' ]$', prev)) # Removed ) from EN end if it might be CN
                 curr_is_cn = bool(re.search(r'^[\*\s]*[\u4e00-\u9fff\（\【]', curr))
                 
-                prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？\）\】\*]$', prev))
+                prev_is_cn = bool(re.search(r'[\u4e00-\u9fff。！？\）\】\)\*]$', prev)) and (has_cn or not prev_is_en)
                 curr_is_en = bool(re.search(r'^[\*\s]*[a-zA-Z0-9]', curr))
                 
                 if (prev_is_en and curr_is_cn) or (prev_is_cn and curr_is_en):

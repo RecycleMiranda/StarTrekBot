@@ -270,12 +270,12 @@ class LCARS_Renderer:
             col_w = (w - 60 - (num_cols - 1) * col_inner_spacing) // num_cols
             
             # Dynamic Font Inflation logic (Enhanced for Massive Display)
-            best_size = 28 # Baseline reduced for cleaner look
-            best_lh = int(28 * 1.25)
+            best_size = 40 # Baseline massively increased per user request
+            best_lh = int(40 * 1.15)
             
-            # Test sizes for best fit - down to 20pt for high density
-            for size in range(36, 19, -2):
-                lh = int(size * 1.25)
+            # Test sizes for best fit - up to 60pt
+            for size in range(60, 27, -2):
+                lh = int(size * 1.15)
                 f_test = self.get_font(content, size)
                 
                 # Estimate height with columns (Double-line height for EN+ZH)

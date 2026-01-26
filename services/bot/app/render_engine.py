@@ -96,7 +96,9 @@ class LCARS_Renderer:
         def get_page_h(paras, cols):
             if not paras: return 0
             rows = (len(paras) + cols - 1) // cols
-            return rows * (LINE_HEIGHT + PARA_SPACING // 2)
+            # Columnar items are now double-lined (EN + subsidiary ZH)
+            lh_factor = 1.8 if cols > 1 else 1.0
+            return int(rows * (LINE_HEIGHT * lh_factor + PARA_SPACING // 4))
 
         for para in paragraphs:
             test_paras = current_page_paras + [para]
@@ -257,9 +259,9 @@ class LCARS_Renderer:
                 lh = int(size * 1.2)
                 f_test = self.get_font(content, size)
                 
-                # Estimate height with columns
+                # Estimate height with columns (Double-line height for EN+ZH)
                 lines_per_col = (len(paragraphs) + num_cols - 1) // num_cols
-                est_h = (lines_per_col * lh) + (lines_per_col * PARA_SPACING // 4)
+                est_h = (lines_per_col * (lh * 1.8)) + (lines_per_col * PARA_SPACING // 4)
                 
                 if est_h <= (h - 130):
                     best_size = size
@@ -267,19 +269,37 @@ class LCARS_Renderer:
                     break
             
             f_final = self.get_font(content, best_size)
+            f_sub = self.get_font(content, int(best_size * 0.75)) # Smaller font for Chinese sub-line
             
             # Render across columns
             for i, para in enumerate(paragraphs):
                 col_idx = i % num_cols
                 row_idx = i // num_cols # Zebra by row
                 
+                # Check for bilingual split: Name (Chinese)
+                match = re.search(r"^(.*?)\s*\((.*?)\)$", para)
+                if match and num_cols > 1:
+                    en_text, zh_text = match.groups()
+                    sub_lh = int(best_lh * 0.8) # Spacing for sub-line
+                else:
+                    en_text, zh_text = para, ""
+                    sub_lh = 0
+                
                 curr_x = pos[0] + 30 + (col_idx * (col_w + col_inner_spacing))
-                curr_y = text_y_start + (row_idx * (best_lh + PARA_SPACING // 4))
+                # Total height per item: best_lh (English) + sub_lh (Chinese)
+                item_full_h = best_lh + sub_lh + (PARA_SPACING // 4)
+                curr_y = text_y_start + (row_idx * item_full_h)
                 
-                if curr_y + best_lh > pos[1] + h - 10: break
+                if curr_y + item_full_h > pos[1] + h - 10: break
                 
-                color = self._get_color_for_text(para, index=row_idx)
-                draw.text((curr_x, curr_y), para, fill=color, font=f_final)
+                color_en = self._get_color_for_text(en_text, index=row_idx)
+                # Render Primary (English)
+                draw.text((curr_x, curr_y), en_text, fill=color_en, font=f_final)
+                
+                # Render Subsidiary (Chinese) below English, left aligned
+                if zh_text:
+                    color_zh = (150, 180, 255, 180) if (row_idx % 2 == 0) else (100, 150, 255, 150)
+                    draw.text((curr_x, curr_y + best_lh - 2), zh_text, fill=color_zh, font=f_sub)
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

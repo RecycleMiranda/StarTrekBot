@@ -3,6 +3,7 @@ import logging
 import base64
 import asyncio
 import threading
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from .models import InternalEvent
 from .config_manager import ConfigManager

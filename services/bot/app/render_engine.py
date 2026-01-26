@@ -19,16 +19,15 @@ logger = logging.getLogger(__name__)
 CANVAS_W = 1600
 CANVAS_H = 960
 
-# CONTENT AREA COORDIANTES (Scaled for 1600x960)
-CONTENT_L = 300
-CONTENT_T = 120
-CONTENT_R = 1550
-CONTENT_B = 850
+# FINAL COORDINATE DEFINITIONS
+CONTENT_L = 520  # Safe zone to clear all sidebar assets
+CONTENT_T = 160
+CONTENT_W = 1040 # Full breadth of the right-side database area
+CONTENT_B = 860
+CONTENT_H_TOTAL = CONTENT_B - CONTENT_T
 
 class LCARS_Renderer:
     def __init__(self, root_path: str = None):
-        # Resolve assets directory relative to this file
-        # /app/services/bot/app/render_engine.py -> /app/services/bot/app/static/assets/database/
         if not root_path:
             base_dir = os.path.dirname(__file__)
             self.assets_dir = os.path.join(base_dir, "static", "assets", "database")
@@ -36,135 +35,136 @@ class LCARS_Renderer:
             self.assets_dir = os.path.join(root_path, "services", "bot", "app", "static", "assets", "database")
             
         self.bg_path = os.path.join(self.assets_dir, "联邦数据库.png")
-        self.frame_full = os.path.join(self.assets_dir, "展示框1.png")
         self.frame_left = os.path.join(self.assets_dir, "展示框1左.png")
         self.frame_right = os.path.join(self.assets_dir, "展示框1右.png")
         
-        # Font configuration
-        # For Linux/Docker compatibility, we check common font paths
+        # Robust Font Discovery (Mac/Linux/Universal)
         font_candidates = [
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/SFNSMono.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans.ttf"
+            "arial.ttf"
         ]
         self.font_path = next((f for f in font_candidates if os.path.exists(f)), None)
 
     def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1) -> str:
-        """Renders items using a strict 2x2 absolute grid."""
+        """Renders items using a Dynamic Vertical List to maximize UI space."""
         if not os.path.exists(self.bg_path):
             logger.error(f"[Renderer] Background not found: {self.bg_path}")
             raise FileNotFoundError(f"Background not found: {self.bg_path}")
 
-        with Image.open(self.bg_path).convert("RGBA") as canvas:
-            canvas = canvas.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
-            draw = ImageDraw.Draw(canvas)
-            
-            # --- 1. Font Hardware Initialization ---
-            try:
-                f_title = ImageFont.truetype(self.font_path if self.font_path else "arial", 36)
-                f_id = ImageFont.truetype(self.font_path if self.font_path else "arial", 22)
-                f_content = ImageFont.truetype(self.font_path if self.font_path else "arial", 28)
-            except:
-                f_title = f_id = f_content = ImageFont.load_default()
+        try:
+            with Image.open(self.bg_path).convert("RGBA") as canvas:
+                canvas = canvas.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
+                draw = ImageDraw.Draw(canvas)
+                
+                # --- 1. Typography (Maxified for readability) ---
+                try:
+                    f_title = ImageFont.truetype(self.font_path if self.font_path else "arial", 48)
+                    f_id = ImageFont.truetype(self.font_path if self.font_path else "arial", 32)
+                    f_content = ImageFont.truetype(self.font_path if self.font_path else "arial", 38)
+                except:
+                    f_title = f_id = f_content = ImageFont.load_default()
 
-            # Pagination (Bottom Right)
-            p_text = f"PAGE {page} OF {total_pages}"
-            draw.text((CANVAS_W - 250, CANVAS_H - 80), p_text, fill=(255, 255, 255, 180), font=f_id)
-            
-            # --- 2. Absolute 2x2 Grid Definition ---
-            # Slots: [ (x, y, w, h) ]
-            grid = [
-                (320, 130, 600, 360), # 1A (Top Left)
-                (940, 130, 600, 360), # 1B (Top Right)
-                (320, 510, 600, 360), # 2A (Bottom Left)
-                (940, 510, 600, 360)  # 2B (Bottom Right)
-            ]
-            
-            labels = ["1A", "1B", "2A", "2B"]
-            
-            for idx, item in enumerate(items[:4]):
-                x, y, w, h = grid[idx]
-                item_copy = item.copy()
-                item_copy["id"] = labels[idx] # Force ID for grid alignment
-                self._draw_item_overhaul(canvas, item_copy, (x, y), w, h, f_title, f_id, f_content)
+                # Pagination (Lower Technical Area)
+                p_text = f"FED-DB // PAGE {page} OF {total_pages}"
+                draw.text((CANVAS_W - 400, CANVAS_H - 110), p_text, fill=(180, 180, 255, 200), font=f_id)
+                
+                # --- 2. Dynamic Vertical Distribution ---
+                display_items = items[:4]
+                count = len(display_items)
+                if count == 0: return self._empty_b64()
 
-            buffered = BytesIO()
-            canvas.save(buffered, format="PNG")
-            return base64.b64encode(buffered.getvalue()).decode("utf-8")
+                # Calculate height per item
+                item_h = CONTENT_H_TOTAL // count
+                spacing = 20
+                
+                labels = ["1A", "1B", "2A", "2B"]
+                
+                for i, item in enumerate(display_items):
+                    curr_y = CONTENT_T + (i * item_h)
+                    self._draw_mega_slot(
+                        canvas, 
+                        item, 
+                        (CONTENT_L, curr_y), 
+                        CONTENT_W, 
+                        item_h - spacing, 
+                        labels[i], 
+                        f_title, f_id, f_content
+                    )
 
-    def _draw_item_overhaul(self, canvas, item, pos, max_w, max_h, f_t, f_id, f_c):
-        """Absolute item renderer with distinct Image/Text modes."""
+                buffered = BytesIO()
+                canvas.save(buffered, format="PNG")
+                return base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger.error(f"[Renderer] Render critical failure: {e}")
+            return ""
+
+    def _draw_mega_slot(self, canvas, item, pos, w, h, item_id, f_t, f_id, f_c):
+        """High-density vertical slot renderer."""
         draw = ImageDraw.Draw(canvas)
-        item_id = item.get("id", "??")
-        title = (item.get("title") or "TECHNICAL RECORD").upper()
+        title = (item.get("title") or "TECHNICAL DATA STREAM").upper()
         content = item.get("content", "").strip()
         img_raw = item.get("image_b64") or item.get("image_path")
         
-        # --- 1. Payload Analysis ---
-        image_to_draw = None
+        # --- A. Header Area ---
+        # Large ID Tag
+        draw.text((pos[0] + 10, pos[1] + 5), item_id, fill=(255, 170, 0, 255), font=f_id)
+        # Bold Title
+        draw.text((pos[0] + 120, pos[1] + 5), title, fill=(200, 200, 255, 255), font=f_id)
+        
+        # Thick LCARS Separator
+        line_y = pos[1] + 60
+        draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 120))
+        
+        # --- B. Content Body ---
         if img_raw:
+            # FRAME + IMAGE MODE
+            self._draw_stretched_brackets(canvas, pos, w, h)
             try:
                 if item.get("image_b64"):
-                    image_to_draw = Image.open(BytesIO(base64.b64decode(item["image_b64"]))).convert("RGBA")
-                elif os.path.exists(str(img_raw)):
-                    image_to_draw = Image.open(img_raw).convert("RGBA")
-            except Exception as e:
-                logger.warning(f"[Renderer] Image load failed for {item_id}: {e}")
-
-        # --- 2. Layout Branching ---
-        if image_to_draw:
-            # --- IMAGE MODE (Stretched Brackets) ---
-            try:
-                with Image.open(self.frame_left).convert("RGBA") as f_l, \
-                     Image.open(self.frame_right).convert("RGBA") as f_r:
-                    # Height adjustment
-                    scale_h = max_h / f_l.height
-                    lw, rw = int(f_l.width * scale_h), int(f_r.width * scale_h)
-                    f_l_s = f_l.resize((lw, max_h), Image.Resampling.LANCZOS)
-                    f_r_s = f_r.resize((rw, max_h), Image.Resampling.LANCZOS)
-                    
-                    # Fill Middle (Body Stretch)
-                    mid_w = max_w - lw - rw
-                    if mid_w > 0:
-                        mid_slice = f_l_s.crop((lw-4, 0, lw-1, max_h))
-                        mid_body = mid_slice.resize((mid_w, max_h), Image.Resampling.NEAREST)
-                        canvas.alpha_composite(mid_body, (pos[0] + lw, pos[1]))
-                    
-                    # Draw Caps
-                    canvas.alpha_composite(f_l_s, pos)
-                    canvas.alpha_composite(f_r_s, (pos[0] + max_w - rw, pos[1]))
+                    img = Image.open(BytesIO(base64.b64decode(item["image_b64"]))).convert("RGBA")
+                else:
+                    img = Image.open(img_raw).convert("RGBA")
+                
+                img.thumbnail((w - 120, h - 180), Image.Resampling.LANCZOS)
+                ix = pos[0] + (w - img.width) // 2
+                iy = pos[1] + (h - img.height) // 2 + 30
+                canvas.alpha_composite(img, (ix, iy))
             except: pass
-
-            # Thumbnail fitting
-            tw, th = max_w - 90, max_h - 140
-            image_to_draw.thumbnail((tw, th), Image.Resampling.LANCZOS)
-            ix = pos[0] + (max_w - image_to_draw.width) // 2
-            iy = pos[1] + (max_h - image_to_draw.height) // 2 + 20
-            canvas.alpha_composite(image_to_draw, (ix, iy))
         else:
-            # --- TEXT MODE (Direct Briefing Style) ---
-            # Visual separator line
-            line_y = pos[1] + 55
-            draw.line([(pos[0] + 30, line_y), (pos[0] + max_w - 30, line_y)], fill=(150, 150, 255, 80), width=2)
-            
-            # Text body rendering
-            wrap_w = max_w - 60
-            lines = self._wrap_text(content, f_c, wrap_w)
-            text_y = pos[1] + 85
+            # FULL WIDTH TEXT MODE
+            text_y = pos[1] + 110
+            wrap_w = w - 60
+            lines = self._wrap_text_clean(content, f_c, wrap_w)
             for line in lines:
-                if text_y + 35 > pos[1] + max_h - 10: break
+                if text_y + 50 > pos[1] + h - 10: break
                 draw.text((pos[0] + 30, text_y), line, fill=(255, 255, 255, 255), font=f_c)
-                text_y += 38
+                text_y += 50
 
-        # --- 3. Header Overlay (Universal) ---
-        header_y = pos[1] + 15
-        # ID Tag
-        draw.text((pos[0] + 35, header_y), item_id, fill=(255, 170, 0, 255), font=f_id)
-        # Title
-        title_w = f_id.getlength(title)
-        draw.text((pos[0] + (max_w - title_w) // 2, header_y), title, fill=(200, 200, 255, 255), font=f_id)
+    def _draw_stretched_brackets(self, canvas, pos, w, h):
+        """Stretches brackets to match full content width."""
+        try:
+            with Image.open(self.frame_left).convert("RGBA") as f_l, \
+                 Image.open(self.frame_right).convert("RGBA") as f_r:
+                sh = h / f_l.height
+                lw, rw = int(f_l.width * sh), int(f_r.width * sh)
+                f_l_s = f_l.resize((lw, h), Image.Resampling.LANCZOS)
+                f_r_s = f_r.resize((rw, h), Image.Resampling.LANCZOS)
+                
+                # Stretch Middle Body
+                mid_w = w - lw - rw
+                if mid_w > 0:
+                    mid_slice = f_l_s.crop((lw-10, 0, lw-2, h)) # Wider slice for stability
+                    mid_body = mid_slice.resize((mid_w, h), Image.Resampling.NEAREST)
+                    canvas.alpha_composite(mid_body, (pos[0] + lw, pos[1]))
+                
+                canvas.alpha_composite(f_l_s, pos)
+                canvas.alpha_composite(f_r_s, (pos[0] + w - rw, pos[1]))
+        except: pass
 
-    def _wrap_text(self, text, font, max_width):
+    def _wrap_text_clean(self, text, font, max_width):
         if not text: return []
         lines = []
         curr = ""
@@ -177,6 +177,12 @@ class LCARS_Renderer:
                 curr = char
         if curr: lines.append(curr)
         return lines
+
+    def _empty_b64(self) -> str:
+        img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0,0,0,0))
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 _renderer = None
 def get_renderer():

@@ -309,6 +309,7 @@ ANALYTICAL INFERENCE PROTOCOL (CRITICAL):
 - In **TEXT-ONLY** mode, give the final computed result + raw values directly. In **VISUAL REPORT** mode, show the logic block.
 ENUMERATION & LISTING PROTOCOL (CRITICAL):
 - **Exhaustive Listing (STRICT)**: If the user asks for a LIST (e.g., "List all classes"), you MUST provide ALL items discovered in the RAW DATABASE RECORDS. You are STRICTLY PROHIBITED from summarizing, consolidating groups, or using phrases like "and more..." (以及更多). Every name found in the raw data MUST appear in the output.
+- **Content Purity (CRITICAL)**: DO NOT repeat or include the report title (e.g., "Starfleet Starship Classes") at the start of your response. Start immediately with the first item in the list.
 - **Structure Over Description**: In enumeration mode, use a concise list format (one item per line). Prioritize NAMES ([English] ([Chinese])) over technical descriptions. Use exactly ONE newline between items.
 - **"All Searchable" Mandate**: List every single class found in the provided data rounds.
 

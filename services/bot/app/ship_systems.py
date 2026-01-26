@@ -66,14 +66,24 @@ class ShipSystems:
 
     def set_alert(self, level: str) -> str:
         level = level.upper()
+        
+        # Check current state first
         if level == "RED":
+            if self.alert_status == AlertStatus.RED:
+                return "⚠️ 警报状态未变更：当前已处于红色警报状态。"
             self.alert_status = AlertStatus.RED
             self.shields_active = True
             return "✅ 全体注意，红 色 警 报！护盾已自启动。"
+            
         elif level == "YELLOW":
+            if self.alert_status == AlertStatus.YELLOW:
+                return "⚠️ 警报状态未变更：当前已处于黄色警报状态。"
             self.alert_status = AlertStatus.YELLOW
             return "⚠️ 全体注意，黄 色 警 报！"
-        else:
+            
+        else: # NORMAL / CANCEL
+            if self.alert_status == AlertStatus.NORMAL:
+                return "ℹ️ 舰船当前已处于正常巡航模式。"
             self.alert_status = AlertStatus.NORMAL
             return "✅ 警报解除，恢复正常运行状态。"
 

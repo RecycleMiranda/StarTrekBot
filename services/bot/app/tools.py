@@ -39,6 +39,31 @@ def get_subsystem_status(name: str) -> dict:
         }
     return {"ok": False, "message": f"找不到子系统：{name}。"}
 
+def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
+    """
+    Sets the state of a specific subsystem (ONLINE/OFFLINE).
+    Requires Level 11+ Clearance (Command Staff Only).
+    """
+    if clearance < 11:
+         return {
+            "ok": False,
+            "message": f"Access denied. Subsystem control requires Command Level Authorization (Level 11). Current level: {clearance}.",
+            "clearance_required": 11
+        }
+        
+    from .ship_systems import get_ship_systems, SubsystemState
+    ss = get_ship_systems()
+    
+    state_enum = SubsystemState.ONLINE if state.upper() in ["ONLINE", "ON", "TRUE"] else SubsystemState.OFFLINE
+    message = ss.set_subsystem(name.lower(), state_enum)
+    
+    return {
+        "ok": True,
+        "message": message,
+        "name": name,
+        "new_state": state_enum.value
+    }
+
 def get_time() -> dict:
     """
     Returns current system time.

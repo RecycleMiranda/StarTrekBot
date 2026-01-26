@@ -131,6 +131,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "yellow_alert": "set_alert_status",
         "activate_yellow_alert": "set_alert_status",
         "cancel_alert": "set_alert_status",
+        "cancel_red_alert": "set_alert_status",
         "raise_shields": "toggle_shields",
         "lower_shields": "toggle_shields",
         "shield_status": "get_shield_status",
@@ -140,6 +141,10 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "replicate": "replicate",
         "report_replicator_status": "get_subsystem_status",
         "subsystem_status": "get_subsystem_status",
+        "set_subsystem": "set_subsystem_state",
+        "toggle_system": "set_subsystem_state",
+        "system_offline": "set_subsystem_state",
+        "system_online": "set_subsystem_state",
     }
 
 
@@ -323,6 +328,14 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             if not name and "replicator" in tool_name:
                 name = "replicator"
             result = tools.get_subsystem_status(name or "unknown")
+            
+        elif tool == "set_subsystem_state":
+            result = tools.set_subsystem_state(
+                args.get("name") or args.get("subsystem") or ("replicator" if "replicator" in tool_name else ""),
+                args.get("state") or ("ONLINE" if "online" in tool_name else "OFFLINE"),
+                profile.get("clearance", 1)
+            )
+            
         elif tool == "get_repair_module_outline":
             result = tools.get_repair_module_outline(
                 args.get("module") or args.get("name", ""),

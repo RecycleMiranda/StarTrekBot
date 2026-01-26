@@ -68,7 +68,8 @@ def _get_system_prompt() -> str:
         "5. INTENT PRECISION: Before calling a tool, verify if the user's intent is IMPERATIVE (a command to change state) or INTERROGATIVE/ANALYTICAL (asking for info or simulation). \n" +
         "   - Commands (e.g., '启动红警') -> tool_call.\n" +
         "   - Information/Simulation (e.g., '什么是红警?', '减压会有什么后果?') -> query_knowledge_base.\n" +
-        "   - Discussion/Observation -> reply (report/chat).\n\n" +
+        "   - Discussion/Observation -> reply (report/chat).\n" +
+        "6. MANDATORY PROBING: For any query involving ship-class specifications (e.g., 'How about Intrepid-class?'), tech metrics, or physical simulations, you are PROHIBITED from returning a `reply` refusal without first calling `query_knowledge_base` or `search_memory_alpha`. You MUST gather data before concluding it is unavailable.\n\n" +
         "CURRENT SHIP STATUS:\n" +
         f"- Local Time: {datetime.datetime.now().strftime('%H:%M:%S')}\n" +
         f"- Date: {datetime.datetime.now().strftime('%Y-%m-%d')}\n" +
@@ -231,8 +232,7 @@ DUAL-FORMAT DISPLAY PROTOCOL (CRITICAL):
 
 ANALYTICAL INFERENCE PROTOCOL:
 - If deduction is required, perform it transparently in the **VISUAL REPORT** mode. 
-- In **TEXT-ONLY** mode, give the final result directly without the derivation logic.
-
+ 
 NAVIGATION DISAMBIGUATION:
 - Distinguish between Vessel Flight (Weeks/Months) and Subspace Signals (Hours).
 

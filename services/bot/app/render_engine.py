@@ -136,8 +136,10 @@ class LCARS_Renderer:
                 f_title = self.get_font("TITLE", 38)
                 f_id = self.get_font("ID", 26)
                 
-                p_text = f"FED-DB // PAGE {page} OF {total_pages}"
-                draw.text((CANVAS_W - 400, CANVAS_H - 100), p_text, fill=(180, 180, 255, 180), font=f_id)
+                # Conditional Pagination: Hide if only one page exists
+                if total_pages > 1:
+                    p_text = f"FED-DB // PAGE {page} OF {total_pages}"
+                    draw.text((CANVAS_W - 400, CANVAS_H - 100), p_text, fill=(180, 180, 255, 180), font=f_id)
                 
                 display_count = len(items)
                 if display_count == 0: return self._empty_b64()
@@ -221,7 +223,32 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
             except: pass
         else:
-            text_y = pos[1] + 65 # Tightened top margin
+            text_y = pos[1] + 65 
+            
+            # DYNAMIC FONT SELECTION (Inflation logic)
+            # Find the best font size between 24 and 34 that fits the height
+            best_size = FONT_SIZE # 24
+            best_lh = LINE_HEIGHT # 28
+            
+            for size in range(34, 23, -2):
+                lh = int(size * 1.2)
+                f_test = self.get_font(content, size)
+                # Test wrapping and height
+                paragraphs = content.split('\n')
+                total_h = 0
+                for p in paragraphs:
+                    if not p:
+                        total_h += PARA_SPACING
+                        continue
+                    lines = self._wrap_text_clean(p, f_test, w - 60)
+                    total_h += (len(lines) * lh) + PARA_SPACING
+                
+                if total_h <= (h - 90):
+                    best_size = size
+                    best_lh = lh
+                    break
+            
+            f_final = self.get_font(content, best_size)
             paragraphs = content.split('\n')
             for para in paragraphs:
                 para = para.strip()
@@ -229,18 +256,14 @@ class LCARS_Renderer:
                     text_y += PARA_SPACING
                     continue
                 
-                # Render full paragraph as a block
-                f_line = self.get_font(para, FONT_SIZE)
-                lines = self._wrap_text_clean(para, f_line, w - 60)
-                
-                if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
+                lines = self._wrap_text_clean(para, f_final, w - 60)
+                if text_y + (len(lines) * best_lh) > pos[1] + h - 10: break
                 
                 for line in lines:
-                    logger.debug(f"[Renderer] Drawing line (Text) at {text_y}: '{line[:20]}...'")
-                    draw.text((pos[0] + 30, text_y), line, fill=(200, 200, 255, 255), font=f_line)
-                    text_y += LINE_HEIGHT # Tighter leading
+                    draw.text((pos[0] + 30, text_y), line, fill=(200, 200, 255, 255), font=f_final)
+                    text_y += best_lh
                 
-                text_y += PARA_SPACING # Paragraph spacing
+                text_y += PARA_SPACING
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

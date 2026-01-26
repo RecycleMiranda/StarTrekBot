@@ -209,7 +209,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.search_memory(args.get("query"), session_id)
             
         elif tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
-            # Multi-result handling with Visual LCARS
+            # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese)
             elif tool == "search_memory_alpha":
@@ -219,16 +219,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]
-                
-                # Render Split Logic: Check for long entries
-                from .render_engine import get_renderer
-                renderer = get_renderer()
-                
-                final_items = []
                 import httpx
-                
                 for item in raw_items:
-                    # Pre-fetch Image if URL is present
+                    # Pre-fetch Image if URL is present (essential for synthesis)
                     if item.get("image_url") and not item.get("image_b64"):
                         try:
                             logger.info(f"[Dispatcher] Pre-fetching image: {item['image_url']}")
@@ -239,32 +232,6 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                                     logger.info("[Dispatcher] Image pre-fetched successfully.")
                         except Exception as e:
                             logger.warning(f"[Dispatcher] Image pre-fetch failed: {e}")
-
-                    # If an item is very long, split it into multiple virtual entries
-                    split_pages = renderer.split_content_to_pages(item)
-                    for i, page_item in enumerate(split_pages):
-                        # Tag sub-pages
-                        if len(split_pages) > 1:
-                            page_item["title"] = f"{page_item['title']} (RECORD {i+1})"
-                        final_items.append(page_item)
-
-                # Define Items Per Page (ipp): 1 for single-topic deep briefs, 4 for list results
-                raw_count = len(raw_items)
-                ipp = 1 if raw_count == 1 else 4
-                
-                # Store in cache for pagination
-                SEARCH_RESULTS[session_id] = {
-                    "items": final_items,
-                    "query": args.get("query"),
-                    "page": 1,
-                    "items_per_page": ipp,
-                    "total_pages": (len(final_items) + (ipp - 1)) // ipp
-                }
-                
-                # Render Page 1
-                img_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
-                event.meta["image_b64"] = img_b64
-                logger.info(f"[Dispatcher] Visual report rendered for {tool} (ipp={ipp}) with {len(final_items)} total record-pages.")
             
         elif tool == "set_reminder":
             result = tools.set_reminder(args.get("time"), args.get("content"), str(event.user_id))
@@ -692,39 +659,56 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
             
             if tool_result.get("ok"):
-                # Intercept for Polymath Synthesis (KB/Memory Alpha)
-                if tool in ["query_knowledge_base", "search_memory_alpha"]:
-                    logger.info(f"[Dispatcher] Synthesizing raw data for {tool}...")
+                # Intercept for Polymath Synthesis & Unified Rendering
+                if tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
+                    logger.info(f"[Dispatcher] Processing data for {tool}...")
                     raw_data = tool_result.get("message", "")
                     
-                    # Run synthesis in thread pool
-                    future = _executor.submit(
-                        rp_engine_gemini.synthesize_search_result,
-                        result.get("original_query", ""),
-                        raw_data,
-                        is_chinese
-                    )
-                    reply_text = future.result(timeout=20)
+                    # Direct Access uses direct translation, others use synthesis
+                    if tool == "access_memory_alpha_direct":
+                        # We use the NeuralEngine class for direct verbatim translation
+                        engine = rp_engine_gemini.NeuralEngine()
+                        # Extract content from tool items if available
+                        items = tool_result.get("items", [])
+                        content_to_translate = items[0].get("content", raw_data) if items else raw_data
+                        reply_text = engine.translate_memory_alpha_content(content_to_translate, is_chinese)
+                    else:
+                        # Synthesis mode
+                        future = _executor.submit(
+                            rp_engine_gemini.synthesize_search_result,
+                            result.get("original_query", ""),
+                            raw_data,
+                            is_chinese
+                        )
+                        reply_text = future.result(timeout=20)
                     
-                    # SEMANTIC RECOVERY: If local synthesis reports insufficient data,
-                    # automatically escalate to Memory Alpha for a better briefing.
-                    if "Insufficient data in current archives" in reply_text:
-                        logger.info(f"[Dispatcher] Local synthesis for {tool} was insufficient. Triggering Recovery Fallback to Memory Alpha...")
-                        recovery_result = await _execute_tool("search_memory_alpha", {"query": args.get("query")}, event, user_profile, session_id, is_chinese=is_chinese)
-                        if recovery_result.get("ok"):
-                            # Update items for current session (rendering happened inside _execute_tool)
-                            raw_data = recovery_result.get("message", "")
-                            # Re-synthesize with better data
-                            future = _executor.submit(
-                                rp_engine_gemini.synthesize_search_result,
-                                result.get("original_query", ""),
-                                raw_data,
-                                is_chinese
-                            )
-                            reply_text = future.result(timeout=20)
-                            # Ensure we pick up the new image_b64 from the recovery tool's meta update
-                            if event.meta.get("image_b64"):
-                                image_b64 = event.meta.get("image_b64")
+                    # UNIFIED RENDERING: Use synthesized/translated text for the visual report
+                    from .render_engine import get_renderer
+                    renderer = get_renderer()
+                    
+                    # Construct a virtual item for the synthesized report
+                    report_item = {
+                        "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
+                        "content": reply_text,
+                        "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None
+                    }
+                    
+                    # Split synthesized content across pages if necessary
+                    final_items = renderer.split_content_to_pages(report_item)
+                    ipp = 1 # High-density synthesized reports are 1-per-page
+                    
+                    # Store in cache for pagination
+                    SEARCH_RESULTS[session_id] = {
+                        "items": final_items,
+                        "query": args.get("query"),
+                        "page": 1,
+                        "items_per_page": ipp,
+                        "total_pages": (len(final_items) + (ipp - 1)) // ipp
+                    }
+                    
+                    # Final Render
+                    image_b64 = renderer.render_report(final_items[:ipp], page=1, total_pages=SEARCH_RESULTS[session_id]["total_pages"])
+                    logger.info(f"[Dispatcher] Unified Visual Report rendered (Pages: {len(final_items)})")
                 else:
                     reply_text = tool_result.get("message") or tool_result.get("reply") or f"Tool execution successful: {tool_result.get('result', 'ACK')}"
                 

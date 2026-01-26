@@ -97,13 +97,16 @@ class LCARS_Renderer:
             needed_h = len(lines) * LINE_HEIGHT
             
             if current_h + needed_h > max_h:
-                pages.append({
-                    "title": item.get("title", "TECHNICAL DATA"),
-                    "content": "\n\n".join([c for c in current_page_content if c]),
-                    "image_b64": item.get("image_b64") if len(pages) == 0 else None
-                })
-                current_page_content = ["(CONTINUED FROM PREVIOUS PAGE)", "", para]
-                current_h = (3 * LINE_HEIGHT) + needed_h + PARA_SPACING
+                # Only add a page if it has content to prevent blank pages
+                valid_content = "\n\n".join([c for c in current_page_content if c])
+                if valid_content.strip():
+                    pages.append({
+                        "title": item.get("title", "TECHNICAL DATA"),
+                        "content": valid_content,
+                        "image_b64": item.get("image_b64") if len(pages) == 0 else None
+                    })
+                current_page_content = [para]
+                current_h = needed_h + PARA_SPACING
             else:
                 current_page_content.append(para)
                 current_h += needed_h + PARA_SPACING

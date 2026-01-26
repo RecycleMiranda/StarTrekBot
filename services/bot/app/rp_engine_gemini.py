@@ -185,7 +185,7 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
     """
     config = get_config()
     api_key = config.get("gemini_api_key", "")
-    model_name = config.get("gemini_rp_model", "gemini-2.0-flash-lite")
+    model_name = config.get("gemini_synthesis_model", "gemini-2.0-flash")
     
     if not api_key:
         return "Data retrieved. (Synthesis offline)"
@@ -204,18 +204,19 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
             "- DO NOT add conversational fillers or politeness markers.\n"
             "- DO NOT interleave individual sentences (EN line, then ZH line). This is inefficient.\n"
             "6. DATA DELIMITER PROTOCOL (MANDATORY): You MUST output the token '^^DATA_START^^' immediately before the actual technical content begins.\n"
+            "   Failure to include this token will cause a buffer overflow.\n"
             "TERMINOLOGY DIRECTIVES:\n"
             "- 'Enterprise' (starship name) MUST be translated as '进取号'.\n"
             "- DO NOT use '企业号'.\n"
             "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Strictly Ordered)\n"
-            "For each logical section or large paragraph in the source:\n"
-            "1. Output the ENTIRE English paragraph block.\n"
-            "2. Output the FULL Chinese translation block on the next line.\n"
-            "3. Use a double newline to separate this bilingual block from the next.\n"
-            "Provide ONLY technical text. Density is the primary operational requirement.\n\n"
+            "Each logical point MUST be presented as follows:\n"
+            "1. A complete English paragraph summarizing all technical data for that point.\n"
+            "2. A complete Chinese translation of the ABOVE paragraph immediately on the next line.\n"
+            "3. NO sentence-by-sentence interleaving. Densify the language blocks.\n"
+            "4. Use double newlines only between these bilingual blocks.\n\n"
             f"USER QUERY: {query}\n\n"
             f"RAW DATABASE RECORD:\n{raw_data[:5000]} (Truncated)\n\n"
-            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then Full-Paragraph Bilingual Briefing):"
+            "COMPUTER OUTPUT (Start with ^^DATA_START^^ then High-Density Bilingual Briefing):"
         )
 
         response = client.models.generate_content(

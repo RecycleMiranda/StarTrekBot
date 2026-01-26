@@ -707,7 +707,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     report_item = {
                         "title": f"SEARCH REPORT: {args.get('query', 'GENERAL').upper()}",
                         "content": reply_text,
-                        "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None
+                        "image_b64": tool_result.get("items", [{}])[0].get("image_b64") if tool_result.get("items") else None,
+                        "source": tool_result.get("source", "UNKNOWN")
                     }
                     
                     # Split synthesized content across pages if necessary

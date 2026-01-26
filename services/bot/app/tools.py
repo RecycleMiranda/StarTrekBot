@@ -286,11 +286,19 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                     score += 2
                     match_count += 1
             
-            # 3. Technical Density Bonus (Specs, Class, Warp, etc)
+        # 3. Technical Density Bonus (Specs, Class, Warp, etc)
             tech_keywords = ["class", "specs", "specifications", "warp", "crew", "tactical", "registry", "history"]
             for tk in tech_keywords:
                 if tk in content_lower:
                     score += 1
+
+            # 4. Technical Spec Penalty (Manual/Maintenance Jargon)
+            # If a snippet is dominated by maintenance/hardware detail but lacks general overview,
+            # we penalize it for broad queries.
+            manual_jargon = ["pylon", "connector", "umbilical", "purlin", "pumping", "exhaust", "ventilation", "hatch", "circuit"]
+            jargon_count = sum(1 for j in manual_jargon if j in content_lower)
+            if jargon_count >= 3:
+                score -= 5 # Substantial penalty for "maintenance manual" content
 
             if score >= 12: # Increased Substance Threshold
                 # Extract relevant snippet
@@ -307,13 +315,20 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False) 
                 })
         
         # Sort by score, then by size (prefer larger documents for broad queries)
-        hits.sort(key=lambda x: (x["score"], x["size"]), reverse=True)
+        hits.sort(key=lambda x: (x.get("score", 0), x.get("size", 0)), reverse=True)
         
-        # QUALITY FILTER: If query is short (e.g. ship name only) but hit is tiny or specific,
-        # it's likely a technical spec snippet, not a general overview.
-        if len(query.split()) <= 3 and hits and hits[0]["size"] < 1000:
-             logger.info(f"[KB] Hit '{hits[0]['file']}' is too small ({hits[0]['size']} bytes) for a broad query '{query}'. Falling back.")
-             return search_memory_alpha(query, session_id, is_chinese)
+        # QUALITY FILTER: If query is short (e.g. ship name only) but hit is:
+        # 1. Tiny or specific manual snippet
+        # 2. Contains mostly maintenance jargon
+        is_broad_query = len(query.split()) <= 3
+        if is_broad_query and hits:
+            top_hit = hits[0]
+            # Check for "Manual/Maintenance" contamination
+            jargon_score = sum(1 for j in ["pylon", "connector", "umbilical", "purlin"] if j in top_hit["snippet"].lower())
+            
+            if top_hit["size"] < 1000 or jargon_score >= 2:
+                logger.info(f"[KB] Hit '{top_hit['file']}' is too specific/technical (jargon={jargon_score}) for broad query '{query}'. Falling back.")
+                return search_memory_alpha(query, session_id, is_chinese)
 
         # Final filtering
         top_hits = [h for h in hits if h["score"] >= 12][:3]

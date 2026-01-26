@@ -97,24 +97,34 @@ class LCARS_Renderer:
         content = item.get("content", "")
         img_raw = item.get("image_b64") or item.get("image_path")
         
-        # 1. Dynamic Framing Logic
-        # Calculate horizontal center area
-        with Image.open(self.frame_left).convert("RGBA") as f_l, \
-             Image.open(self.frame_right).convert("RGBA") as f_r:
-            
-            # Scale frames to match max_h
-            scale_h = max_h / f_l.height
-            f_l_s = f_l.resize((int(f_l.width * scale_h), max_h), Image.Resampling.LANCZOS)
-            f_r_s = f_r.resize((int(f_r.width * scale_h), max_h), Image.Resampling.LANCZOS)
-            
-            # Draw Left and Right Caps
-            canvas.alpha_composite(f_l_s, pos)
-            canvas.alpha_composite(f_r_s, (pos[0] + max_w - f_r_s.width, pos[1]))
-            
-            # Fill the middle with a stretched segment or background (if needed)
-            # Actually, the user says "随便拉伸排放", so we can use f_l/f_r as the anchors
-            # and draw the content in the middle.
-            
+        # 1. Dynamic Framing Logic (Fixed with Middle-Stretch)
+        try:
+            with Image.open(self.frame_left).convert("RGBA") as f_l, \
+                 Image.open(self.frame_right).convert("RGBA") as f_r:
+                
+                # Scale caps to match item height
+                scale_h = max_h / f_l.height
+                lw = int(f_l.width * scale_h)
+                rw = int(f_r.width * scale_h)
+                
+                f_l_s = f_l.resize((lw, max_h), Image.Resampling.LANCZOS)
+                f_r_s = f_r.resize((rw, max_h), Image.Resampling.LANCZOS)
+                
+                # Draw Left and Right Caps
+                canvas.alpha_composite(f_l_s, pos)
+                canvas.alpha_composite(f_r_s, (pos[0] + max_w - rw, pos[1]))
+                
+                # Fill the middle by stretching a slice
+                # We take a 4px slice from the right edge of the left cap (after scaling)
+                middle_w = max_w - lw - rw
+                if middle_w > 0:
+                    mid_slice = f_l_s.crop((lw - 5, 0, lw - 1, max_h)) # Take a slice from the vertical bar part
+                    mid_body = mid_slice.resize((middle_w, max_h), Image.Resampling.NEAREST)
+                    canvas.alpha_composite(mid_body, (pos[0] + lw, pos[1]))
+                
+        except Exception as e:
+            logger.warning(f"Frame rendering failed: {e}")
+
         # 2. Image Overlay (if exists)
         if img_raw:
             try:
@@ -124,8 +134,8 @@ class LCARS_Renderer:
                     img = Image.open(img_raw).convert("RGBA")
                 
                 # Fit image into the center of the frame
-                target_w = max_w - 60
-                target_h = max_h - 120
+                target_w = max_w - 100
+                target_h = max_h - 160
                 img.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
                 
                 ix = pos[0] + (max_w - img.width) // 2
@@ -134,22 +144,24 @@ class LCARS_Renderer:
             except Exception as e:
                 logger.warning(f"Image load failed for {item_id}: {e}")
 
-        # 3. Text/Label Overlay
+        # 3. Text/Label Overlay - 精校坐标 (Fine-tuned coordinates)
+        label_y = pos[1] + 15
         # ID Label (Top Left)
-        draw.text((pos[0] + 25, pos[1] + 15), item_id, fill=(255, 150, 0, 255), font=f_id)
+        draw.text((pos[0] + 45, label_y), item_id, fill=(255, 150, 0, 255), font=f_id)
         # Title (Top Center)
         tw = f_id.getlength(title)
-        draw.text((pos[0] + (max_w - tw) // 2, pos[1] + 15), title, fill=(200, 200, 255, 255), font=f_id)
+        draw.text((pos[0] + (max_w - tw) // 2, label_y), title, fill=(200, 200, 255, 255), font=f_id)
 
         # 4. Content Overlay (Only for text blocks)
         if not img_raw:
-            margin_l = 60
-            margin_t = 80
+            margin_l = 80
+            margin_t = 100
             text_y = pos[1] + margin_t
-            for line in self._wrap_text(content, f_c, max_w - margin_l - 40):
-                if text_y + 35 > pos[1] + max_h - 20: break
+            wrap_w = max_w - margin_l - 60
+            for line in self._wrap_text(content, f_c, wrap_w):
+                if text_y + 40 > pos[1] + max_h - 30: break
                 draw.text((pos[0] + margin_l, text_y), line, fill=(255, 255, 255, 255), font=f_c)
-                text_y += 35
+                text_y += 40
 
     def _wrap_text(self, text, font, max_width):
         lines = []

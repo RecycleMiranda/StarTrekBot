@@ -687,7 +687,11 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
         logger.info(f"[Dispatcher] Sending reply (intent={intent}): {reply_text[:100]}...")
         
-        # Enqueue the response
+        # SUPPRESSION: If we have an image_b64 and it's a tool result (like a report), 
+        # minimize the text part to avoid duplication with the visual content.
+        if image_b64 and intent.startswith("tool_res:"):
+            # If it's a search result, the user already sees the data on the screen
+            reply_text = "Accessing Federation Database... Data report displayed below."
         sq = send_queue.SendQueue.get_instance()
         session_key = f"qq:{event.group_id or event.user_id}"
         

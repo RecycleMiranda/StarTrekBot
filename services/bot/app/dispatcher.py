@@ -1162,14 +1162,16 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 result.get("is_chinese", False), event.group_id, event.user_id,
                 session_key, event.message_id, result.get("escalated_model")
             )
-        return True
-    
-        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
-        return False
-    finally:
         if ops_task:
             from .ops_registry import TaskState
             await ops.update_state(ops_task.pid, TaskState.COMPLETED)
+        return True
+    
+        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
+        if ops_task:
+            from .ops_registry import TaskState
+            await ops.update_state(ops_task.pid, TaskState.COMPLETED)
+        return False
 
 
 async def handle_event(event: InternalEvent):

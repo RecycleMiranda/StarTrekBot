@@ -572,6 +572,11 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
          return {"ok": False, "message": "External search offline (API Key missing)."}
          
     try:
+        # Safety Hard Cap: Never exceed 3000 words in standard agents
+        if max_words > 3000:
+            logger.warning(f"[Tools] MaxWords {max_words} exceeded safety threshold. Capping to 3000.")
+            max_words = 3000
+            
         client = genai.Client(api_key=api_key)
         
         # Upgraded Search Prompt: Deep Factification & Archetype Protocol
@@ -604,17 +609,21 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
             google_search=types.GoogleSearch()
         )
         
+        # Calculate dynamic output tokens (1 word ~ 1.5 tokens for safe margin)
+        safe_tokens = min(8192, max_words * 2)
+
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
             contents=search_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
                 temperature=0.1,
-                max_output_tokens=8192
+                max_output_tokens=safe_tokens
             )
         )
         
         text_content = response.text if response.text else "Subspace interference detected. No textual records found."
+        logger.info(f"[Tools] search_memory_alpha returned {len(text_content)} chars.")
         
         # Image Extraction Logic
         import re

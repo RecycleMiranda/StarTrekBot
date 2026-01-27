@@ -265,14 +265,22 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
                 query_text = args.get("query", "").lower()
-                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"])
-                max_w = args.get("max_words", 8000 if is_listing else 500)
+                # ENHANCED: Boundary-aware matching for listing keywords
+                list_keywords = ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"]
+                pattern = r'\b(' + '|'.join(list_keywords) + r')\b'
+                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"])
+                
+                # Cap max_w to a safe threshold (3000 words vs 8000)
+                max_w = args.get("max_words", 3000 if is_listing else 500)
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for KB: {max_w} words")
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             elif tool == "search_memory_alpha":
                 query_text = args.get("query", "").lower()
-                is_listing = any(kw in query_text for kw in ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"])
-                max_w = args.get("max_words", 8000 if is_listing else 500)
+                list_keywords = ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"]
+                pattern = r'\b(' + '|'.join(list_keywords) + r')\b'
+                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"])
+                
+                max_w = args.get("max_words", 1500 if is_listing else 500) # MA is more expensive, cap lower
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for MA: {max_w} words")
                 result = tools.search_memory_alpha(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             else:
@@ -1053,27 +1061,34 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             if tool_img and len(tool_img) > 20000: # Heuristic for full-frame LCARS
                  logger.warning("[Dispatcher] Recursive/Duplicate LCARS detected in synthesis. Discarding to prevent loop.")
                  tool_img = None # ACTUAL DISCARD
-            # ENHANCED: JSON Blueprint Detection (Phase 7.5)
+            # ENHANCED: Ultra-Robust JSON Blueprint Extraction (Phase 7.6)
             blueprint_data = None
             try:
                 import json
-                # Handle potential ^^DATA_START^^ markers or markdown fencing
-                clean_json_str = synth_reply.split("^^DATA_START^^")[-1].strip()
-                clean_json_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', clean_json_str, flags=re.S).strip()
+                # 1. Clean synthetic noise
+                test_str = synth_reply.replace("^^DATA_START^^", "").strip()
+                test_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
+                test_str = re.sub(r'```\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
                 
-                # Try parsing if it looks like JSON
-                if clean_json_str.startswith("{"):
-                    parsed = json.loads(clean_json_str)
+                # 2. Surgical Extraction: find first { and last }
+                start_ptr = test_str.find("{")
+                end_ptr = test_str.rfind("}")
+                if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
+                    candidate = test_str[start_ptr:end_ptr+1]
+                    parsed = json.loads(candidate)
                     if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
                         blueprint_data = parsed
-                        logger.info("[Dispatcher] Valid JSON Blueprint detected. Activating LCARS drawing.")
-            except:
-                pass
+                        logger.info(f"[Dispatcher] Blueprint Matrix Extraction SUCCESS ({len(candidate)} chars).")
+                
+                if not blueprint_data:
+                    logger.warning(f"[Dispatcher] Blueprint Matrix Extraction FAILED. Content start: {synth_reply[:50]}...")
+            except Exception as e:
+                logger.warning(f"[Dispatcher] Blueprint extraction error: {e}")
 
             report_item = {
                 "type": "blueprint" if blueprint_data else "text",
                 "title": "", # Suppress top bar title per user request
-                "content": synth_reply if not blueprint_data else "",
+                "content": synth_reply if not blueprint_data else "", 
                 "image_b64": tool_img or event.meta.get("image_b64"),
                 "source": current_source
             }

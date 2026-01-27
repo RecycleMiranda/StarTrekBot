@@ -192,7 +192,7 @@ class DestructSequence:
 class DestructManager:
     """Singleton manager for all self-destruct sequences."""
     _instance = None
-    OWNER_ID = "1993596624"  # From 1.8 script
+    OWNER_IDS = ["1993596624", "2819163610"]  # Full Admin Override access
     
     def __init__(self):
         self.sequences: Dict[str, DestructSequence] = {}
@@ -304,7 +304,7 @@ class DestructManager:
             return {"ok": False, "message": msg["already_active"].format(state=existing.state.value)}
 
         # Owner / Master bypass
-        is_owner = (user_id == self.OWNER_ID)
+        is_owner = (user_id in self.OWNER_IDS)
         is_master = (clearance >= 11)
         
         if not is_owner and not is_master:
@@ -460,9 +460,10 @@ class DestructManager:
         if not seq or seq.state == DestructState.IDLE:
             return {"ok": False, "message": msg["no_active"]}
         
-        # Level 12 immediate cancel
-        if clearance >= 12:
-            return self._do_cancel(session_id, "Level 12 override")
+        # Level 12 / Owner immediate cancel
+        is_owner = (user_id in self.OWNER_IDS)
+        if clearance >= 12 or is_owner:
+            return self._do_cancel(session_id, "Command Override" if is_owner else "Level 12 override")
         
         seq.state = DestructState.CANCEL_PENDING
         seq.cancel_authorizers = {user_id}  # Requester counts as first authorizer
@@ -554,7 +555,7 @@ class DestructManager:
         auths = self.pending_cancel_authorizers.get(session_id, set())
         
         # Masters / Owners bypass
-        is_owner = (user_id == self.OWNER_ID)
+        is_owner = (user_id in self.OWNER_IDS)
         is_master = (clearance >= 11)
         
         if not is_owner and not is_master and len(auths) < DestructSequence.MIN_AUTHORIZERS:

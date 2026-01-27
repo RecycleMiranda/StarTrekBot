@@ -943,6 +943,15 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
                 msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
                 
+                # --- BINARY IMAGE HANDLING (Phase 7) ---
+                if "image_io" in tool_result:
+                    import base64
+                    img_io = tool_result["image_io"]
+                    img_io.seek(0)
+                    img_b64 = base64.b64encode(img_io.read()).decode("utf-8")
+                    event.meta["image_b64"] = img_b64
+                    logger.info(f"[Dispatcher] Tool '{tool}' returned binary image. Attached to event meta.")
+                
                 # CONTEXT COMPACTION (Phase 4 Optimization)
                 if len(msg) > 2500:
                     msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
@@ -957,16 +966,20 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     active_node = "ENGINEER"
                     logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
                 
-                # CRITICAL COMMAND SHORT-CIRCUIT: Prevent redundant synthesis for simple state-change/UI tools
+                # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
                 shortcut_tools = [
-                    "next_page", "prev_page", "show_details",
-                    "initialize_self_destruct", "authorize_self_destruct", "activate_self_destruct",
+                    "next_page", "prev_page", "show_details", "get_personnel_file",
+                    "self_destruct", "initialize_self_destruct", "authorize_self_destruct", "activate_self_destruct",
+                    "cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct",
                     "authorize_cancel_self_destruct", "confirm_cancel_self_destruct", "get_destruct_status",
-                    "set_alert_status", "toggle_shields", "set_absolute_override"
+                    "set_alert_status", "toggle_shields", "set_absolute_override", "weapon_lock_fire", "replicate"
                 ]
                 if tool in shortcut_tools:
                     logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
                     reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
+                    if tool_result.get("ok") is False and not reply_text:
+                        reply_text = "Unable to comply. Check clearance or current state,"
+                    
                     image_b64 = event.meta.get("image_b64")
                     cumulative_data = [] # Clear to prevent synthesis phase
                     break
@@ -1020,7 +1033,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
         
         # PHASE 1.5: RESTRICTED RENDERING SCOPE (User request: Only Bio/Search info as images)
-        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details"]
+        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details", "get_status"]
         allow_image = any(t in IMAGE_WHITELIST for t in executed_tools)
         
         # Decide if we render a visual report or simple text
@@ -1050,7 +1063,27 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             image_b64 = renderer.render_report(final_items[:1], page=1, total_pages=len(final_items), active_node=active_node, audit_status=last_audit_status, integrity_status=wd.get_system_integrity().get("status", "OPTIMAL"))
             reply_text = "" 
         else:
-            reply_text = synth_reply.replace("^^DATA_START^^", "").strip()
+            # SAFETY FALLBACK (Phase 6): If we are here and not allowed to render image, 
+            # and it's a JSON block, try to extract a narrative if possible or just strip JSON markers.
+            cleaned_reply = synth_reply.replace("^^DATA_START^^", "").strip()
+            if cleaned_reply.startswith("{") and cleaned_reply.endswith("}"):
+                # This is a raw JSON block being leaked as text
+                logger.warning("[Dispatcher] JSON synthesis leak detected. Attempting extraction.")
+                try:
+                    import json
+                    data = json.loads(cleaned_reply)
+                    # Extract text from layout blocks if it's our LCARS schema
+                    blocks = data.get("layout", [])
+                    texts = [b.get("content", "") for b in blocks if b.get("type") == "text_block"]
+                    if texts:
+                        cleaned_reply = "\n\n".join(texts)
+                    else:
+                        # Fallback to header/footer if no core text
+                        cleaned_reply = data.get("header", {}).get("en", "") or data.get("footer", {}).get("en", "") or "Data retrieval complete."
+                except:
+                    pass
+            
+            reply_text = cleaned_reply
             image_b64 = None
             event.meta.pop("image_b64", None) # Clean up state for short text
 

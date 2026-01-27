@@ -7,35 +7,54 @@ import re
 
 logger = logging.getLogger(__name__)
 
-def get_status() -> dict:
+def get_status(**kwargs) -> dict:
     """
     Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
-    Use this for: "System status", "Memory usage", "CPU load", "Diagnostics", "Ship health".
+    Categorized for: "System status", "Condition report", "Ship health".
     """
     from .ship_systems import get_ship_systems
-    import psutil # For real metrics mixed with RP
+    import psutil
     import os
     
     ss = get_ship_systems()
-    
-    # Get Real/RP Hybrid Metrics
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / 1024 / 1024 # MB
     cpu_usage = psutil.cpu_percent(interval=None)
     
     return {
         "ok": True,
-        "message": "All systems nominal" if ss.alert_status.value == "NORMAL" else f"Condition: {ss.alert_status.value}",
+        "alert": ss.alert_status.value,
+        "message": f"CONDITION: {ss.alert_status.value}",
+        "engineering": {
+            "warp_core_output": f"{ss.warp_core_output}%",
+            "fuel_reserves": f"{ss.fuel_reserves}%",
+            "eps_grid": ss.subsystems.get("eps_grid", "ONLINE").value,
+            "structural_integrity": f"{ss.hull_integrity}%",
+            "sif": ss.subsystems.get("structural_integrity", "ONLINE").value,
+            "waste_management": ss.subsystems.get("waste_management", "ONLINE").value
+        },
+        "tactical": {
+            "shields_active": ss.shields_active,
+            "shield_integrity": f"{ss.shield_integrity}%",
+            "phasers": ss.subsystems.get("phasers", "ONLINE").value,
+            "torpedoes": ss.subsystems.get("torpedoes", "ONLINE").value
+        },
+        "operations": {
+            "life_support": ss.subsystems.get("life_support", "ONLINE").value,
+            "communications": ss.subsystems.get("comms", "ONLINE").value,
+            "transporters": ss.subsystems.get("transporters", "ONLINE").value,
+            "sensors": ss.subsystems.get("sensors", "ONLINE").value
+        },
+        "personnel": {
+            "casualties": ss.casualties,
+            "emh": ss.subsystems.get("emh", "OFFLINE").value
+        },
         "computer_core": {
             "status": "ONLINE",
             "memory_usage_mb": f"{mem_usage:.1f}",
             "cpu_load_percent": f"{cpu_usage:.1f}",
             "efficiency_index": "98.4%"
-        },
-        "shields_active": ss.shields_active,
-        "shield_integrity": ss.shield_integrity,
-        "alert": ss.alert_status.value,
-        "subsystems": {k: v.value for k, v in ss.subsystems.items()}
+        }
     }
 
 def get_subsystem_status(name: str) -> dict:

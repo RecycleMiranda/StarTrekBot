@@ -20,10 +20,10 @@ class ShipSystems:
     # Tier mapping for priority logic
     TIER_MAP = {
         "main_reactor": 1, "eps_grid": 1, "auxiliary_power": 1,
-        "shields": 2, "phasers": 2, "phase_cannons": 2, "torpedoes": 2, "sif": 2, "weapons": 2,
+        "shields": 2, "phasers": 2, "phase_cannons": 2, "torpedoes": 2, "sif": 2, "weapons": 2, "structural_integrity": 2,
         "warp_drive": 3, "impulse_engines": 3, "nav_deflector": 3,
         "life_support": 4, "computer_core": 4, "sensors": 4, "comms": 4,
-        "transporters": 5, "replicators": 5, "holodecks": 5, "emh": 5
+        "transporters": 5, "replicators": 5, "holodecks": 5, "emh": 5, "waste_management": 5
     }
 
     # Dependency mapping
@@ -39,6 +39,7 @@ class ShipSystems:
         "impulse_engines": ["eps_grid"],
         "nav_deflector": ["eps_grid"],
         "life_support": ["eps_grid"],
+        "waste_management": ["eps_grid"],
         "computer_core": ["eps_grid"],
         "sensors": ["eps_grid"],
         "comms": ["eps_grid"],
@@ -59,6 +60,12 @@ class ShipSystems:
         }
         # Specialized states
         self.subsystems["emh"] = SubsystemState.OFFLINE # EMH starts offline
+        
+        # New MA Standard Metrics
+        self.warp_core_output = 98.4  # Percent
+        self.fuel_reserves = 85.0     # Percent (Deuterium/Antimatter)
+        self.hull_integrity = 100.0   # Percent
+        self.casualties = 0           # Count
 
     @classmethod
     def get_instance(cls):
@@ -80,13 +87,13 @@ class ShipSystems:
             vc = validate_current.upper()
             if old_level.value != vc:
                 display_names = {"RED": "红色警报", "YELLOW": "黄色警报", "NORMAL": "正常巡航模式"}
-                return f"无法完成：当前处于 {display_names.get(old_level.value)}，而非 {display_names.get(vc)}。", None
+                return f"无法完成：当前处于 {display_names.get(old_level.value)}，而非 {display_names.get(vc)}，", None
 
         # 1. State: Already in target
         if old_level.value == target:
-            if target == "RED": return "⚠️ 警报状态未变更：当前已处于红色警报状态。", None
-            if target == "YELLOW": return "⚠️ 警报状态未变更：当前已处于黄色警报状态。", None
-            return "ℹ️ 舰船当前已处于正常巡航模式。", None
+            if target == "RED": return "警报状态未变更：当前已处于红色警报状态，", None
+            if target == "YELLOW": return "警报状态未变更：当前已处于黄色警报状态，", None
+            return "舰船当前已处于正常巡航模式，", None
 
         # Alert GIF paths (Local to Docker container)
         # We assume the user will place these in the static/assets/alerts/ folder
@@ -100,26 +107,26 @@ class ShipSystems:
         if target == "RED":
             self.alert_status = AlertStatus.RED
             self.shields_active = True
-            return "✅ 全体注意，红色警报！", gif_map.get("RED")
+            return "全体注意，红色警报，", gif_map.get("RED")
             
         elif target == "YELLOW":
             self.alert_status = AlertStatus.YELLOW
-            return "⚠️ 全体注意，黄色警报！", gif_map.get("YELLOW")
+            return "全体注意，黄色警报，", gif_map.get("YELLOW")
             
         else: # NORMAL
             self.alert_status = AlertStatus.NORMAL
-            return "噔噔噔", None
+            return "警报已解除，正常巡航模式已恢复，", None
 
     def toggle_shields(self, active: bool) -> str:
         if active and not self.is_subsystem_operational("shields"):
-            return "❌ 无法执行：护盾核心或电力供应下线。"
+            return "无法执行：护盾核心或电力供应下线，"
         
         self.shields_active = active
-        return f"✅ 护盾已{'升起' if active else '降下'}。当前完整度：{self.shield_integrity}%"
+        return f"护盾已{'升起' if active else '降下'}，当前完整度：{self.shield_integrity}%，"
 
     def get_shield_status(self) -> str:
         state = "已升起" if self.shields_active else "未升起"
-        return f"🛡️ 护盾状态：{state}\n完整度：{self.shield_integrity}%"
+        return f"护盾状态：{state}\n完整度：{self.shield_integrity}%"
 
     def set_subsystem(self, name: str, state: SubsystemState) -> str:
         if name in self.subsystems:
@@ -141,11 +148,14 @@ class ShipSystems:
                 "comms": "通讯系统",
                 "transporters": "传送器",
                 "replicators": "复制机",
-                "holodecks": "全息甲板"
+                "holodecks": "全息甲板",
+                "waste_management": "废弃物处理系统",
+                "structural_integrity": "结构完整性场",
+                "sif": "SIF发生器"
             }
             display_name = display_names.get(name.lower(), name.upper())
-            return f"{display_name}{status_text}"
-        return f"❌ 找不到子系统: {name}"
+            return f"{display_name}{status_text}，"
+        return f"找不到子系统: {name}，"
 
     def is_subsystem_online(self, name: str) -> bool:
         """Checks if the system itself is set to ONLINE."""

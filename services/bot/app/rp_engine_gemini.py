@@ -62,6 +62,8 @@ def _get_system_prompt() -> str:
         "KNOWLEDGE PROTOCOLS:\n" +
         "1. TOOL SELECTION HEURISTICS (HIGHEST PRIORITY):\n" +
         "   - LOCAL REALITY FIRST: For 'System Status', 'Memory Usage', 'CPU', 'Power', 'Shields', 'Weapons', 'Damage Reports', you MUST use `get_status` or `get_subsystem_status`. DO NOT USE SEARCH TOOLS for these real-time metrics.\n" +
+        "   - PERSONNEL FILES: For any request about 'My personal file', 'Personnel record', 'Service history' of a user, you MUST use `get_personnel_file` with the correct mention or ID. DO NOT use search tools for people currently on ship.\n" +
+        "   - STATUS REPORT STANDARD (MA-476-9): A 'Status Report' MUST cover 5 domains: 1. Power (Warp/EPS), 2. Structural (Hull/SIF), 3. Tactical (Shields/Weapons), 4. Operations (Propulsion/Comms/LS), 5. Personnel (Casualties).\n" +
         "   - RESEARCH SECOND: Only use `query_knowledge_base` or `search_memory_alpha` if the user explicitly asks for 'History', 'Specs (of a class)', 'Who is', 'What is', or 'Search for'.\n" +
         "   - CROSS-CHECK: If the user asks 'What is the phaser status?', this is LOCAL status (use `get_subsystem_status`). If they ask 'How do phasers work?', this is RESEARCH (use `query_knowledge_base`).\n" +
         "2. KNOWLEDGE BASE USAGE: When research is required, prioritize the local 'Mega-Scale Knowledge Base'. Use the tool `query_knowledge_base` to search. CRITICAL: The database is in ENGLISH. You MUST translate your query to English keywords (e.g., use 'Deck Count' instead of '甲板数量') before calling this tool. For LIST or CATEGORY requests (e.g. 'List all ships'), you MUST explicitly include the word 'LIST' or 'INDEX' in the tool query argument to trigger the high-capacity protocol.\n" +

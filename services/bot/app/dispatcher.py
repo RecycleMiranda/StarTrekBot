@@ -456,6 +456,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             )
             
         # --- Cancel Flow ---
+        elif tool in ["cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct"]:
+             result = tools.cancel_self_destruct(
+                str(event.user_id),
+                profile.get("clearance", 1),
+                session_id
+             )
+
         elif tool == "authorize_cancel_self_destruct":
             result = tools.authorize_cancel_self_destruct(
                 str(event.user_id), 
@@ -718,6 +725,21 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 profile.get("clearance", 1)
             )
             
+        elif tool == "manage_environment":
+            # SYNTHETIC FIELD GENERATION
+            # If AI didn't provide system_name, try to infer from tool_name/args
+            # e.g. set_bridge_temperature -> system_name="bridge_temperature"
+            sys_name = args.get("system_name") or args.get("name")
+            if not sys_name:
+                sys_name = "bridge_environment" if "bridge" in tool_name.lower() else "ambient_environment"
+            
+            result = tools.manage_environment(
+                sys_name,
+                str(args.get("value") or args.get("state") or "NOMINAL"),
+                str(event.user_id),
+                profile.get("clearance", 1)
+            )
+
         elif tool == "get_repair_module_outline":
             result = tools.get_repair_module_outline(
                 args.get("module") or args.get("name", ""),
@@ -868,6 +890,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             # PHASE 4: SELF-HEALING & ADAPTIVE RESOLUTION
             logger.warning(f"[Dispatcher] Unknown tool '{tool}' requested. Initiating Logic Repair Scan...")
             
+            # Safe definition
+            tool_lower = tool.lower() if tool else ""
+            
             # 0. SEMANTIC ALIAS MAP (Hardcoded Hallucination Bridges)
             SEMANTIC_MAP = {
                 # Weapons
@@ -886,10 +911,15 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 "long_range_scan": "search_memory_alpha",
                 # System
                 "computer_diagnosis": "get_system_metrics",
-                "system_diagnostic": "get_system_metrics"
+                "system_diagnostic": "get_system_metrics",
+                "eject_reactor": "eject_warp_core",
+                # Environment (Dynamic Phase 4)
+                "set_temperature": "manage_environment",
+                "adjust_lighting": "manage_environment",
+                "set_brightness": "manage_environment",
+                "environmental_control": "manage_environment"
             }
             
-            corrected_tool = None
             corrected_tool = None
             if tool_lower in SEMANTIC_MAP: # Use tool_lower check
                 corrected_tool = SEMANTIC_MAP[tool_lower]
@@ -908,16 +938,28 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 if matches:
                     corrected_tool = matches[0]
                     logger.info(f"[Dispatcher] SELF-HEALING: Fuzzy Match Hit '{tool}' -> '{corrected_tool}'")
+                else:
+                    # 3. SESM: CHECK EXPERIMENTAL HOOKS
+                    from . import experimental_hooks
+                    func = experimental_hooks.get_experimental_tool(tool)
+                    if func:
+                        logger.info(f"[Dispatcher] SESM: Executing synthesized hook '{tool}'")
+                        corrected_tool = tool # Mark as found
 
             if corrected_tool:
                 # 3. Dynamic Dispatch
-                func = getattr(tools, corrected_tool)
+                # Check tools first, then experimental_hooks
+                func = getattr(tools, corrected_tool, None)
+                if not func:
+                    from . import experimental_hooks
+                    func = getattr(experimental_hooks, corrected_tool, None)
                 
+                if not func:
+                     return {"ok": False, "message": f"Unknown tool: {tool}", "error": "unknown_tool"}
+                     
                 # Check signature to safely pass args (naive approach: assume kwargs matching)
-                # But 'tools.py' functions mostly take flat args. We try passing kwargs.
                 try:
                     # Filter args to match signature? Not easy dynamically without inspect.
-                    # We trust the AI generated matching keys, or we catch TypeError.
                     result = func(**args)
                     result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
                     
@@ -1083,7 +1125,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             logger.warning("[Dispatcher] AI signaled tool_call but provided NO tools (tool=None).")
             # If the AI also gave no reply, we must provide a default response to avoid silence.
             if not result.get("reply"):
-                result["reply"] = "Processing Error: I understood the command, but the tactical selection logic returned NULL. Please restate sequentially."
+                result["reply"] = "Unable to comply. CORE ERROR: [Command interpretation failed: The synthetic logic selected a NULL tool for this system request. Please restate sequentially.]" if not is_chinese else "无法执行。核心错误：[指令解析失败：系统逻辑选择了空工具。请分步骤重新下令。]"
             intent = "reply" # Fallback to reply mode
 
         if intent == "tool_call" and tool_chain:
@@ -1164,6 +1206,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     "next_page", "prev_page", "show_details", "get_personnel_file",
                     # Re-added CANCELLATION tools as they are terminal actions and should stop the loop immediately
                     "cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct",
+                    # Added INITIALIZATION tools to enforce strict message protocol (bypass LLM rewrites)
+                    "initialize_self_destruct", "activate_self_destruct", "start_destruct"
                 ]
                 if tool in shortcut_tools:
                     # ONLY short-circuit if this is a single-step action or the LAST step of a chain

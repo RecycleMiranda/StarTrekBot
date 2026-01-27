@@ -66,6 +66,28 @@ class ShipSystems:
         self.fuel_reserves = 85.0     # Percent (Deuterium/Antimatter)
         self.hull_integrity = 100.0   # Percent
         self.casualties = 0           # Count
+        
+        # --- PHASE 4: EPS ENERGY MODEL ---
+        self.power_output_mw = 12500000.0  # Total Warp Core Output in MW (Galaxy Class spec)
+        self.battery_reserve_pct = 100.0   # Emergency batteries
+        self.current_load_mw = 4200000.0   # Base load (Life Support, Computers, structural integrity)
+        
+        # Power drain mapping (Nominal costs in MW)
+        self.POWER_DRAIN = {
+            "shields": 1500000.0,
+            "phasers": 800000.0,
+            "warp_drive": 3000000.0,
+            "transporters": 500000.0,
+            "holodecks": 300000.0,
+            "replicators": 200000.0,
+            "eps_grid": 100000.0,
+            "life_support": 1000000.0,
+            "computer_core": 800000.0,
+            "sensors": 400000.0
+        }
+        
+        # --- PHASE 4: DYNAMIC AUXILIARY STATE ---
+        self.auxiliary_state: Dict[str, str] = {}
 
     @classmethod
     def get_instance(cls):
@@ -174,9 +196,33 @@ class ShipSystems:
         
         return True
 
+    def get_power_status(self) -> Dict:
+        """Calculates current load vs output."""
+        operational_output = self.power_output_mw if self.is_subsystem_online("main_reactor") else 0.0
+        
+        # Calculate load of all ONLINE systems
+        active_load = self.current_load_mw # Start with base load
+        for name, state in self.subsystems.items():
+            if state == SubsystemState.ONLINE:
+                active_load += self.POWER_DRAIN.get(name, 0.0)
+        
+        # Also add load for active shields
+        if self.shields_active:
+            active_load += self.POWER_DRAIN.get("shields", 1500000.0)
+            
+        load_pct = (active_load / self.power_output_mw) * 100 if self.power_output_mw > 0 else 100.0
+        
+        return {
+            "total_output_mw": operational_output,
+            "active_load_mw": active_load,
+            "load_percent": round(load_pct, 2),
+            "reserve_power": self.battery_reserve_pct if operational_output == 0 else 100.0,
+            "status": "STABLE" if active_load <= operational_output else "DEFICIT"
+        }
+
     def get_system_report(self) -> Dict:
         """Returns a full categorized status report."""
-        report = {}
+        report = {"power_grid": self.get_power_status()}
         for tier in range(1, 6):
             systems_in_tier = [name for name, t in self.TIER_MAP.items() if t == tier]
             report[f"Tier_{tier}"] = {

@@ -293,7 +293,7 @@ class DestructManager:
                 "not_worthy": "拒绝访问，",
                 "low_clearance": "权限不足，",
                 "auth_needed": "授权不足，",
-                "success": "自毁程序已启动，{duration_str} 后执行，"
+                "success": "自毁系统已启动，{duration_str}后反应堆破裂"
             }
         }
         msg = msgs.get(lang_code, msgs["en"])
@@ -330,10 +330,14 @@ class DestructManager:
         if session_id in self.pending_authorizers:
             del self.pending_authorizers[session_id]
             
+        check_msg = msg["success"].format(duration_str=duration_str)
+        if silent:
+             check_msg = "(Silent Auto-Destruct Armed)" if lang_code == "en" else "（静默自毁程序已锁定）"
+
         return {
             "ok": True,
             "state": seq.state.value,
-            "message": msg["success"].format(duration_str=duration_str)
+            "message": check_msg
         }
     
     def authorize(self, session_id: str, user_id: str, clearance: int) -> dict:
@@ -460,10 +464,12 @@ class DestructManager:
         if not seq or seq.state == DestructState.IDLE:
             return {"ok": False, "message": msg["no_active"]}
         
-        # Level 12 / Owner immediate cancel
+        # Level 12 / Owner / Initiator immediate cancel
         is_owner = (user_id in self.OWNER_IDS)
-        if clearance >= 12 or is_owner:
-            return self._do_cancel(session_id, "Command Override" if is_owner else "Level 12 override")
+        is_initiator = (user_id == seq.initiator_id)
+        
+        if clearance >= 12 or is_owner or is_initiator:
+            return self._do_cancel(session_id, "Command Override" if is_owner else ("Initiator Cancel" if is_initiator else "Level 12 override"))
         
         seq.state = DestructState.CANCEL_PENDING
         seq.cancel_authorizers = {user_id}  # Requester counts as first authorizer

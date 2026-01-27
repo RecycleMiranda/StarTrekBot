@@ -72,8 +72,41 @@ def get_status(**kwargs) -> dict:
             "memory_usage_mb": f"{mem_usage:.1f}",
             "cpu_load_percent": f"{cpu_usage:.1f}",
             "efficiency_index": "98.4%"
-        }
+        },
+        "eps_energy_grid": ss.get_power_status()
     }
+
+def normalize_subsystem_name(name: str) -> str:
+    """Normalizes variations of subsystem names (e.g. Holodeck 1 -> holodecks)."""
+    if not name: return ""
+    name = name.lower().strip()
+    
+    # 1. Handle Chinese "numbering" (一号/1号) prefix/suffix
+    import re
+    name = re.sub(r'^\d+号', '', name)
+    name = re.sub(r'^[一二三四五六七八九十]+号', '', name)
+    name = re.sub(r'\d+号$', '', name)
+    name = re.sub(r'[一二三四五六七八九十]+号$', '', name)
+    
+    # 2. Handle English numbering
+    name = re.sub(r'[\s_]\d+$', '', name)
+    
+    # 3. Keyword Mapping (Substrings)
+    if "holodeck" in name or "全息甲板" in name: return "holodecks"
+    if "reactor" in name or "反应堆" in name or "core" in name or "核心" in name: return "main_reactor"
+    if "shield" in name or "护盾" in name: return "shields"
+    if "weapon" in name or "武器" in name: return "weapons"
+    if "phaser" in name or "相位" in name: return "phasers"
+    if "torpedo" in name or "鱼雷" in name: return "torpedoes"
+    if "engine" in name or "发动机" in name or "曲速" in name: return "warp_drive"
+    if "sensor" in name or "传感器" in name or "扫描" in name: return "sensors"
+    if "comms" in name or "通讯" in name or "通信" in name: return "comms"
+    if "eps" in name: return "eps_grid"
+    if "life" in name or "生命" in name: return "life_support"
+    if "replicator" in name or "复制" in name: return "replicators"
+    if "transporter" in name or "传送" in name: return "transporters"
+    
+    return name
 
 def get_subsystem_status(name: str) -> dict:
     """
@@ -83,16 +116,39 @@ def get_subsystem_status(name: str) -> dict:
     """
     from .ship_systems import get_ship_systems
     ss = get_ship_systems()
-    name = name.lower()
+    original_name = name
+    name = normalize_subsystem_name(name)
+    
     if name in ss.subsystems:
         state = ss.subsystems[name].value
         return {
             "ok": True,
             "name": name,
             "state": state,
-            "message": f"子系统 {name} 当前状态：{state}，"
+            "message": f"子系统 {original_name} 当前状态：{state}，"
         }
-    return {"ok": False, "message": f"找不到子系统：{name}，"}
+    return {"ok": False, "message": f"找不到子系统：{original_name}，建议尝试：{', '.join(ss.subsystems.keys())}"}
+
+def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Ejects the Warp Core (Main Reactor). 
+    Requires Level 12+ Clearance. THIS IS A TERMINAL COMMAND.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Warp Core ejection requires Level 12 authorization."}
+    
+    from .ship_systems import get_ship_systems, SubsystemState
+    ss = get_ship_systems()
+    ss.set_subsystem("main_reactor", SubsystemState.OFFLINE)
+    ss.warp_core_output = 0.0
+    
+    # Also trigger Red Alert if not already active
+    ss.set_alert("RED")
+    
+    return {
+        "ok": True,
+        "message": "警报：正反物质反应堆已弹出，曲速核心过载已终止，目前全舰依靠储备能源运行，"
+    }
 
 def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
     """
@@ -110,7 +166,8 @@ def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
     ss = get_ship_systems()
     
     state_enum = SubsystemState.ONLINE if state.upper() in ["ONLINE", "ON", "TRUE"] else SubsystemState.OFFLINE
-    message = ss.set_subsystem(name.lower(), state_enum)
+    normalized_name = normalize_subsystem_name(name)
+    message = ss.set_subsystem(normalized_name, state_enum)
     
     return {
         "ok": True,
@@ -267,7 +324,8 @@ def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> di
     from .quota_manager import get_quota_manager
     from .ship_systems import get_ship_systems
     
-    if not ss.is_subsystem_online("replicator"):
+    ss = get_ship_systems()
+    if not ss.is_subsystem_online("replicators"):
         return {"ok": False, "message": "无法完成：复制机系统下线，"}
 
     qm = get_quota_manager()
@@ -947,9 +1005,19 @@ def initiate_self_destruct(seconds: int, silent: bool, user_id: str, clearance: 
     return initialize_self_destruct(seconds, silent, user_id, clearance, session_id, notify_callback)
 
 
+def cancel_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
+    """
+    Step 1 (Version 2.0): Smart Cancellation. 
+    Attempts to cancel immediately if Initiator/Owner/Level 12. 
+    Otherwise starts authorization vote.
+    """
+    from .self_destruct import get_destruct_manager
+    dm = get_destruct_manager()
+    return dm.request_cancel(session_id, user_id, clearance)
+
 def abort_self_destruct(user_id: str, clearance: int, session_id: str) -> dict:
-    """Legacy wrapper - redirects to authorize_cancel_self_destruct."""
-    return authorize_cancel_self_destruct(user_id, clearance, session_id)
+    """Legacy wrapper - redirects to cancel_self_destruct."""
+    return cancel_self_destruct(user_id, clearance, session_id)
 
 
 def authorize_sequence(action_type: str, user_id: str, clearance: int, session_id: str) -> dict:
@@ -1406,4 +1474,72 @@ async def locate_user(target_mention: str, clearance: int) -> dict:
     return {
         "ok": True, 
         "message": f"正在定位用户：{target_id}，\n[信号追踪中]\n定位成功：用户当前位于 001 扇区，地球空间站，"
+    }
+
+def commit_research(system_id: str, summary: str, user_id: str, clearance: int) -> dict:
+    """
+    Stages dynamically synthesized logic to a GitHub branch for audit.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "权限不足：提交研发项目需要 12 级安全授权。"}
+        
+    import subprocess
+    import os
+    
+    branch_name = f"research/{system_id.lower().replace(' ', '-')}"
+    try:
+        # 1. Branching
+        subprocess.run(["git", "checkout", "-b", branch_name], check=True)
+        # 2. Add experimental hooks
+        subprocess.run(["git", "add", "services/bot/app/experimental_hooks.py"], check=True)
+        # 3. Commit
+        subprocess.run(["git", "commit", "-m", f"[SESM-DISCOVERY] {system_id}: {summary}"], check=True)
+        
+        return {
+            "ok": True,
+            "branch": branch_name,
+            "message": f"确认，研发协议已封存至分支 {branch_name}。请通过终端或 GitHub 执行跨网桥接（Merge）审核。"
+        }
+    except Exception as e:
+        logger.error(f"Git execution failed: {e}")
+        return {"ok": False, "message": f"Git 提交失败：本地终端环境异常（{str(e)}），请检查服务器权限。"}
+
+def manage_environment(system_name: str, value: str, user_id: str, clearance: int) -> dict:
+    """
+    Manages dynamic environmental variables (temperature, lighting, gravity, etc.).
+    Uses fuzzy matching to prevent name fragmentation.
+    """
+    from .ship_systems import get_ship_systems
+    import difflib
+    ss = get_ship_systems()
+    
+    # 1. Normalize the request
+    # Pattern: [location]_[function]
+    system_name = system_name.lower().replace(" ", "_")
+    
+    # Standard mappings for common requests
+    if "temp" in system_name or "温度" in system_name:
+        if "bridge" in system_name or "舰桥" in system_name: system_name = "bridge_temperature"
+        elif "quarter" in system_name or "舱房" in system_name: system_name = "quarters_temperature"
+    
+    if "light" in system_name or "亮度" in system_name or "灯光" in system_name:
+         if "bridge" in system_name or "舰桥" in system_name: system_name = "bridge_lighting"
+
+    # 2. Fuzzy Match against existing auxiliary states to prevent duplicates
+    existing_keys = list(ss.auxiliary_state.keys())
+    matches = difflib.get_close_matches(system_name, existing_keys, n=1, cutoff=0.7)
+    
+    final_key = matches[0] if matches else system_name
+    
+    # 3. Update State
+    ss.auxiliary_state[final_key] = value
+    
+    logger.info(f"[Tools] Environment Update: {final_key} -> {value} (Match: {final_key == system_name})")
+    
+    return {
+        "ok": True,
+        "system": final_key,
+        "value": value,
+        "message": f"确认，{final_key} 已调整为 {value}。" if not "舰桥" in final_key else f"确认，舰桥环境参数已更新：{final_key} 设定为 {value}。"
     }

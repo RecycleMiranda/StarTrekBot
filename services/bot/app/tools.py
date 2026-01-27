@@ -27,10 +27,22 @@ def get_status(**kwargs) -> dict:
     
     ss = get_ship_systems()
     
+    # Construct Narrative Summary for AI
+    summary_parts = [
+        f"Ship Alert Status: {ss.alert_status.value}",
+        f"Warp Core Output: {ss.warp_core_output}%",
+        f"Hull Integrity: {ss.hull_integrity}%",
+        f"Shields: {'ACTIVE' if ss.shields_active else 'OFFLINE'} ({ss.shield_integrity}%)",
+        f"Power/EPS: {ss.subsystems.get('eps_grid', SubsystemState.ONLINE).value}",
+        f"Life Support: {ss.subsystems.get('life_support', SubsystemState.ONLINE).value}",
+        f"Computer Core Metrics: CPU {cpu_usage}%, Memory {mem_usage}MB"
+    ]
+    summary_text = ", ".join(summary_parts)
+    
     return {
         "ok": True,
         "alert": ss.alert_status.value,
-        "message": f"CONDITION: {ss.alert_status.value}",
+        "message": f"SYSTEM STATUS REPORT: {summary_text}",
         "engineering": {
             "warp_core_output": f"{ss.warp_core_output}%",
             "fuel_reserves": f"{ss.fuel_reserves}%",

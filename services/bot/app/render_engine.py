@@ -148,6 +148,25 @@ class LCARS_Renderer:
             return len(block.get("items", [])) * 32 + 20
         return 50
 
+    def _wrap_text(self, text: str, font: ImageFont, max_w: int) -> List[str]:
+        """Bilingual wrapping logic supporting Chinese/English characters."""
+        if not text: return []
+        lines = []
+        curr_line = ""
+        
+        for char in text:
+            test_line = curr_line + char
+            if font.getlength(test_line) < max_w:
+                curr_line = test_line
+            else:
+                if curr_line:
+                    lines.append(curr_line)
+                curr_line = char
+        
+        if curr_line:
+            lines.append(curr_line)
+        return lines
+
     def _split_legacy_text_to_pages(self, item: Dict, max_h: int) -> List[Dict]:
         """Legacy text splitting logic (Simplified)."""
         content = item.get("content", "")
@@ -284,17 +303,7 @@ class LCARS_Renderer:
         
         font = self.get_font(content, 26)
         
-        # Simple wrapping
-        lines = []
-        curr_line = ""
-        for word in content.split():
-            test_line = curr_line + " " + word if curr_line else word
-            if font.getlength(test_line) < CONTENT_W:
-                curr_line = test_line
-            else:
-                lines.append(curr_line)
-                curr_line = word
-        if curr_line: lines.append(curr_line)
+        lines = self._wrap_text(content, font, CONTENT_W)
         
         # Draw
         lh = 34
@@ -328,14 +337,21 @@ class LCARS_Renderer:
         return y + 10
 
     def _render_legacy(self, canvas: Image, draw: ImageDraw, item: Dict):
-        """Fallback for old text-only content."""
+        """Fallback for old text-only content with proper wrapping."""
         content = item.get("content", "")
-        lines = content.split('\n')
         y = CONTENT_T + 50
-        font = self.get_font("Legacy", 24)
-        for line in lines:
-             draw.text((CONTENT_L, y), line, fill=(255, 255, 255), font=font)
-             y += 30
+        font = self.get_font(content, 24)
+        
+        # Split by newlines first, then wrap each paragraph
+        paragraphs = content.split('\n')
+        for para in paragraphs:
+            if not para.strip():
+                y += 20
+                continue
+            lines = self._wrap_text(para, font, CONTENT_W)
+            for line in lines:
+                draw.text((CONTENT_L, y), line, fill=(255, 255, 255), font=font)
+                y += 30
 
     def _empty_b64(self) -> str:
         return ""

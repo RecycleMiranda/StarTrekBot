@@ -61,7 +61,7 @@ def _get_system_prompt() -> str:
         "DECISION LOGIC: " + pm.get_prompt("rp_engine", "decision_logic") + "。STRICT: Do not justify tool calls or narrate internal steps in the 'reply' field. Concise technical confirmation only.\n\n" +
         "KNOWLEDGE PROTOCOLS:\n" +
         "1. TOOL SELECTION HEURISTICS (HIGHEST PRIORITY):\n" +
-        "   - LOCAL REALITY FIRST: For 'System Status', 'Memory Usage', 'CPU', 'Power', 'Shields', 'Weapons', 'Damage Reports', you MUST use `get_status` or `get_subsystem_status`. DO NOT USE SEARCH TOOLS for these real-time metrics.\n" +
+        "   - LOCAL REALITY FIRST: For 'System Status', 'Memory Usage', 'CPU', 'Power', 'Shields', 'Weapons', 'Damage Reports', you MUST use `get_status` or `get_subsystem_status`. DO NOT USE SEARCH TOOLS for these real-time metrics. `get_status` provides a COMPREHENSIVE overview; usually ONE call is sufficient.\n" +
         "   - PERSONNEL FILES: For any request about 'My personal file', 'Personnel record', 'Service history' of a user, you MUST use `get_personnel_file` with the correct mention or ID. DO NOT use search tools for people currently on ship.\n" +
         "   - STATUS REPORT STANDARD (MA-476-9): A 'Status Report' MUST cover 5 domains: 1. Power (Warp/EPS), 2. Structural (Hull/SIF), 3. Tactical (Shields/Weapons), 4. Operations (Propulsion/Comms/LS), 5. Personnel (Casualties).\n" +
         "   - RESEARCH SECOND: Only use `query_knowledge_base` or `search_memory_alpha` if the user explicitly asks for 'History', 'Specs (of a class)', 'Who is', 'What is', or 'Search for'.\n" +

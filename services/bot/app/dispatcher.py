@@ -1022,6 +1022,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
     
     # --- PHASE 2: SYNTHESIS & RENDERING ---
     if cumulative_data:
+        intent = "report" # FORCE report intent for finalized synthesis
         logger.info(f"[Dispatcher] Final Synthesis with {len(cumulative_data)} rounds of data...")
         all_raw = "\n\n".join(cumulative_data)
         is_chinese = result.get("is_chinese", any('\u4e00' <= char <= '\u9fff' for char in event.text))

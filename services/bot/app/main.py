@@ -5,7 +5,7 @@ import logging
 import asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from .models import InternalEvent
-from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini, tools
+from . import dispatcher, router, judge_gemini, moderation, send_queue, rp_engine_gemini, tools, sentinel
 from .config_manager import ConfigManager
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -68,6 +68,12 @@ async def startup_event():
 
     sq = send_queue.SendQueue.get_instance(sender=sender)
     asyncio.create_task(sq.worker_loop())
+    
+    # --- PHASE 5: SENTINEL EVOLUTION CORE ---
+    from .ship_systems import get_ship_systems
+    asyncio.create_task(sentinel.sentinel_loop(get_ship_systems()))
+    logger.info("Sentinel Evolution Core launched (Trigger mode).")
+    
     logger.info(f"Startup complete: SendQueue worker launched with {sender_type} sender (Persistent Config).")
 
 @app.on_event("shutdown")

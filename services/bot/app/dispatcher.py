@@ -686,6 +686,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 else:
                     result = {"ok": False, "message": f"无法完成：未能在当前结果集中找到编号为 {target_id} 的条目，"}
             
+        elif tool == "get_status":
+            result = tools.get_status(
+                user_id=str(event.user_id),
+                clearance=profile.get("clearance", 1)
+            )
+
         elif tool == "get_shield_status":
             from .ship_systems import get_ship_systems
             result = {"ok": True, "message": get_ship_systems().get_shield_status()}
@@ -737,7 +743,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 sys_name,
                 str(args.get("value") or args.get("state") or "NOMINAL"),
                 str(event.user_id),
-                profile.get("clearance", 1)
+                profile.get("clearance", 1),
+                **args
             )
 
         elif tool == "get_repair_module_outline":
@@ -886,6 +893,24 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 profile.get("clearance", 1),
                 action=action
             )
+        
+        elif tool == "register_sentinel_trigger":
+            # Normalize arguments for Sentinel
+            condition = args.get("condition") or args.get("if")
+            action = args.get("action") or args.get("then")
+            desc = args.get("description") or f"If {condition}, then {action}"
+            ttl = args.get("ttl", 3600)
+            
+            result = tools.register_sentinel_trigger(
+                condition=str(condition),
+                action=str(action),
+                description=str(desc),
+                user_id=str(event.user_id),
+                ttl=float(ttl)
+            )
+
+        elif tool == "get_sentinel_status":
+            result = tools.get_sentinel_status()
         else:
             # PHASE 4: SELF-HEALING & ADAPTIVE RESOLUTION
             logger.warning(f"[Dispatcher] Unknown tool '{tool}' requested. Initiating Logic Repair Scan...")
@@ -1300,7 +1325,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         IMAGE_WHITELIST = [
             "get_personnel_file", "query_knowledge_base", "search_memory_alpha", 
             "show_details", "get_system_metrics", "get_subsystem_status", 
-            "get_destruct_status", "get_shield_status"
+            "get_destruct_status", "get_shield_status", "get_status", "manage_environment"
         ]
         # STRICT: Only generate image if a Data/Status tool was explicitly used.
         # We ignore 'blueprint_data' presence alone because the LLM sometimes hallucinates layouts for simple actions.

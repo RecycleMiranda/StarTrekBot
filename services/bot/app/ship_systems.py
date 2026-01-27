@@ -233,5 +233,14 @@ class ShipSystems:
             }
         return report
 
+    def batch_shutdown(self, tier: Optional[int] = None, exclude: List[str] = None):
+        """Batch shutdown for energy conservation."""
+        exclude = exclude or []
+        for name, t in self.TIER_MAP.items():
+            if tier is not None and t < tier: continue
+            if name in exclude: continue
+            self.set_subsystem(name, SubsystemState.OFFLINE)
+        logger.warning(f"[ShipSystems] Batch shutdown executed for Tier {tier}+")
+
 def get_ship_systems():
     return ShipSystems.get_instance()

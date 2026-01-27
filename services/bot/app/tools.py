@@ -4,6 +4,7 @@ import ast
 import operator
 import logging
 import re
+from .sentinel import SentinelRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,6 @@ def normalize_subsystem_name(name: str) -> str:
     name = name.lower().strip()
     
     # 1. Handle Chinese "numbering" (一号/1号) prefix/suffix
-    import re
     name = re.sub(r'^\d+号', '', name)
     name = re.sub(r'^[一二三四五六七八九十]+号', '', name)
     name = re.sub(r'\d+号$', '', name)
@@ -94,6 +94,7 @@ def normalize_subsystem_name(name: str) -> str:
     # 3. Keyword Mapping (Substrings)
     if "holodeck" in name or "全息甲板" in name: return "holodecks"
     if "reactor" in name or "反应堆" in name or "core" in name or "核心" in name: return "main_reactor"
+    if "main_reactor" in name: return "main_reactor"
     if "shield" in name or "护盾" in name: return "shields"
     if "weapon" in name or "武器" in name: return "weapons"
     if "phaser" in name or "相位" in name: return "phasers"
@@ -127,7 +128,24 @@ def get_subsystem_status(name: str) -> dict:
             "state": state,
             "message": f"子系统 {original_name} 当前状态：{state}，"
         }
-    return {"ok": False, "message": f"找不到子系统：{original_name}，建议尝试：{', '.join(ss.subsystems.keys())}"}
+    
+    # Check Auxiliary/Environmental states
+    # Use normalization logic here too or fuzzy match
+    target_key = original_name.lower().replace(" ", "_")
+    if "light" in target_key or "亮度" in target_key:
+        if "bridge" in target_key or "舰桥" in target_key: target_key = "bridge_lighting"
+        elif "engineering" in target_key or "轮机室" in target_key: target_key = "engineering_lighting"
+    
+    if target_key in ss.auxiliary_state:
+        val = ss.auxiliary_state[target_key]
+        return {
+            "ok": True,
+            "name": target_key,
+            "state": val,
+            "message": f"探测到环境指标 {original_name} 设定值为：{val}，"
+        }
+
+    return {"ok": False, "message": f"找不到子系统或环境指标：{original_name}，建议尝试：{', '.join(list(ss.subsystems.keys()) + list(ss.auxiliary_state.keys()))}"}
 
 def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     """
@@ -1505,7 +1523,7 @@ def commit_research(system_id: str, summary: str, user_id: str, clearance: int) 
         logger.error(f"Git execution failed: {e}")
         return {"ok": False, "message": f"Git 提交失败：本地终端环境异常（{str(e)}），请检查服务器权限。"}
 
-def manage_environment(system_name: str, value: str, user_id: str, clearance: int) -> dict:
+def manage_environment(system_name: str, value: str, user_id: str, clearance: int, **kwargs) -> dict:
     """
     Manages dynamic environmental variables (temperature, lighting, gravity, etc.).
     Uses fuzzy matching to prevent name fragmentation.
@@ -1515,16 +1533,37 @@ def manage_environment(system_name: str, value: str, user_id: str, clearance: in
     ss = get_ship_systems()
     
     # 1. Normalize the request
-    # Pattern: [location]_[function]
+    # Handle cases where AI might send target/lighting instead of system_name/value
+    target = kwargs.get("target") or kwargs.get("location")
+    lighting = kwargs.get("lighting") or kwargs.get("brightness")
+    temp = kwargs.get("temp") or kwargs.get("temperature")
+    gravity = kwargs.get("gravity")
+    
+    if target:
+        if lighting:
+            system_name = f"{target}_lighting"
+            value = str(lighting)
+        elif temp:
+            system_name = f"{target}_temperature"
+            value = str(temp)
+        elif gravity:
+            system_name = f"{target}_gravity"
+            value = str(gravity)
+        else:
+            system_name = f"{target}_environment"
+            value = value or "NOMINAL"
+
     system_name = system_name.lower().replace(" ", "_")
     
     # Standard mappings for common requests
     if "temp" in system_name or "温度" in system_name:
         if "bridge" in system_name or "舰桥" in system_name: system_name = "bridge_temperature"
         elif "quarter" in system_name or "舱房" in system_name: system_name = "quarters_temperature"
+        elif "engineering" in system_name or "轮机室" in system_name or "工程部" in system_name: system_name = "engineering_temperature"
     
     if "light" in system_name or "亮度" in system_name or "灯光" in system_name:
          if "bridge" in system_name or "舰桥" in system_name: system_name = "bridge_lighting"
+         elif "engineering" in system_name or "轮机室" in system_name or "工程部" in system_name: system_name = "engineering_lighting"
 
     # 2. Fuzzy Match against existing auxiliary states to prevent duplicates
     existing_keys = list(ss.auxiliary_state.keys())
@@ -1541,5 +1580,44 @@ def manage_environment(system_name: str, value: str, user_id: str, clearance: in
         "ok": True,
         "system": final_key,
         "value": value,
-        "message": f"确认，{final_key} 已调整为 {value}。" if not "舰桥" in final_key else f"确认，舰桥环境参数已更新：{final_key} 设定为 {value}。"
+        "message": f"确认，{final_key} 已调整为 {value}。"
+    }
+
+def register_sentinel_trigger(condition: str, action: str, description: str, user_id: str, ttl: float = 3600, **kwargs) -> dict:
+    """
+    Registers an autonomous conditional trigger (If X, then Y).
+    Requires high-level logic.
+    """
+    registry = SentinelRegistry.get_instance()
+    tid = registry.register_trigger(
+        condition=condition,
+        action=action,
+        desc=description,
+        user_id=user_id,
+        ttl=ttl
+    )
+    return {
+        "ok": True,
+        "trigger_id": tid,
+        "message": f"确认，自动判定逻辑 [哨兵-{tid}] 已激活：{description}。"
+    }
+
+def get_sentinel_status(**kwargs) -> dict:
+    """Lists all active autonomous triggers."""
+    registry = SentinelRegistry.get_instance()
+    triggers = registry.get_active_triggers()
+    
+    t_list = []
+    for t in triggers:
+        t_list.append({
+            "id": t.id,
+            "desc": t.description,
+            "hits": t.hit_count,
+            "last_run": t.last_run
+        })
+        
+    return {
+        "ok": True,
+        "triggers": t_list,
+        "count": len(t_list)
     }

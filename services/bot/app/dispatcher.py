@@ -907,6 +907,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         intent = result.get("intent")
         if intent == "tool_call":
             tool = result.get("tool")
+            args = result.get("args") or {}
             is_chinese = result.get("is_chinese", False)
             
             # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop

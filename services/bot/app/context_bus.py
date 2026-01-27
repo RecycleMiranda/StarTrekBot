@@ -10,7 +10,7 @@ def get_odn_snapshot(session_id: str, user_profile: dict = None) -> Dict[str, An
     Generates a structured 'ODN Snapshot' representing the current ship/system state.
     This provides the AI with its 'Proprioception' (Self-Awareness).
     """
-    from .ship_systems import get_ship_systems
+    from .ship_systems import get_ship_systems, SubsystemState
     ss = get_ship_systems()
     
     snapshot = {
@@ -26,18 +26,18 @@ def get_odn_snapshot(session_id: str, user_profile: dict = None) -> Dict[str, An
             "power": {
                 "warp_core_output": f"{ss.warp_core_output:.1f}%",
                 "fuel_reserves": f"{ss.fuel_reserves:.1f}%",
-                "eps_grid": ss.subsystems.get("eps_grid", "ONLINE")
+                "eps_grid": ss.subsystems.get("eps_grid", SubsystemState.ONLINE).value
             },
             "defense": {
                 "shields_active": ss.shields_active,
                 "shield_integrity": f"{ss.shield_integrity:.1f}%",
-                "weapons_status": ss.subsystems.get("weapons", "ONLINE")
+                "weapons_status": ss.subsystems.get("weapons", SubsystemState.ONLINE).value
             },
             "hull": {
                 "integrity": f"{ss.hull_integrity:.1f}%",
-                "structural_integrity_field": ss.subsystems.get("structural_integrity", "ONLINE")
+                "structural_integrity_field": ss.subsystems.get("structural_integrity", SubsystemState.ONLINE).value
             },
-            "life_support": ss.subsystems.get("life_support", "ONLINE"),
+            "life_support": ss.subsystems.get("life_support", SubsystemState.ONLINE).value,
             "casualties": ss.casualties
         },
         "subsystems": {

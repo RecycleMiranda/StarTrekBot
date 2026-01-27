@@ -1067,7 +1067,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             logger.debug(f"[Dispatcher] Blueprint probe inconclusive: {e}")
 
         # PHASE 1.5: RESTRICTED RENDERING SCOPE + BLUEPRINT OVERRIDE
-        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details", "get_status"]
+        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details"]
         allow_image = any(t in IMAGE_WHITELIST for t in executed_tools) or (blueprint_data is not None)
         
         # Decide if we render a visual report or simple text

@@ -196,10 +196,11 @@ class LCARS_Renderer:
         title_en = header.get("title_en", "UNKNOWN")
         title_cn = header.get("title_cn", "")
         f_en = self.get_font(title_en, 50)
-        draw.text((360, 50), title_en.upper(), fill=(255, 153, 0), font=f_en)
+        # Shifted down to avoid overlapping with top curves
+        draw.text((360, 65), title_en.upper(), fill=(255, 153, 0), font=f_en)
         if title_cn:
             f_cn = self.get_font(title_cn, 30)
-            draw.text((360, 105), title_cn, fill=(255, 200, 100), font=f_cn)
+            draw.text((360, 115), title_cn, fill=(255, 200, 100), font=f_cn)
 
     def _draw_kv_grid(self, draw: ImageDraw, block: Dict, x: int, y: int) -> int:
         cols = block.get("cols", 1)

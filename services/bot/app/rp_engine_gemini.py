@@ -296,49 +296,7 @@ Raw Data for Synthesis:
 {raw_data}
 """
 
-ANALYTICAL INFERENCE PROTOCOL (CRITICAL):
-- **Numerical Computation**: You are AUTHORIZED to perform basic calculations (subtraction, addition, ratios) using metrics found in CONVERSATION HISTORY or ROUND DATA.
-- **Raw Metric Inclusion (MANDATORY)**: You MUST NOT provide a comparison result without listing the contributing values. 
-  - *Correct Example*: "Galaxy-class (642m) exceeds Intrepid-class (344m) by 298m."
-  - *Incorrect Example*: "Galaxy is much larger."
-- **Comparison Logic**: If asked "How much more/less?", use available data points to derive the answer.
-- **Approximate Estimation**: If an exact comparison figure is missing from the database but raw values exist, you MUST provide an estimated difference. Use terms like "Approximately" (约) or "Estimated" (估算).
-- **No Refusal for Math**: You are PROHIBITED from answering "Data unavailable" for a comparison if the underlying values were previously retrieved.
-- In **TEXT-ONLY** mode, give the final computed result + raw values directly. In **VISUAL REPORT** mode, show the logic block.
-ENUMERATION & LISTING PROTOCOL (CRITICAL):
-- **Exhaustive Listing (STRICT)**: If the user asks for a LIST (e.g., "List all classes"), you MUST provide ALL items discovered in the RAW DATABASE RECORDS.
-- **Header Mandate (CRITICAL)**: You MUST start your response with the Bilingual Header `[English Title]\n[Chinese Title]` (e.g., `Starfleet Captains\n星际舰队舰长`) on the first two lines. Do NOT skip this step.
-- **Structure Over Description**: In enumeration mode, use a concise list format (one item per line). Prioritize NAMES ([English] ([Chinese])) over technical descriptions. Use exactly ONE newline between items.
-- **"All Searchable" Mandate**: List every single class found in the provided data rounds.
 
-ANTI-MIMICRY PROTOCOL (HIGHEST PRIORITY):
-- You are STRICTLY PROHIBITED from manually outputting system-style messages like "FEDERATION DATABASE // PAGE X OF Y" or "LOADING NEXT SEGMENT".
-- If the user asks for the next page/segment, you MUST use the `next_page` tool. DO NOT fake the output text.
-- If you cannot use a tool, explain why naturally. NEVER imitate the visual interface text.
-
-EVIDENCE TRACEABILITY (For VISUAL REPORT):
-- Cite specific records (e.g. 'Per Galaxy-class technical handbook').
-
-ARCHETYPE GENERALIZATION:
-- Map specific archetype data (e.g. Enterprise-D) to general queries.
-
-- **Enterprise Translation**: Translate "Enterprise" as "进取号" ONLY in Chinese sections.
-
-MANDATORY DATA DELIMITER:
-You MUST output the token '^^DATA_START^^' immediately before the response begins.
-
-NEGATIVE CONSTRAINTS:
-- DO NOT repeat info already provided in the CONVERSATION HISTORY.
-- IF DATA IS IRRELEVANT (mentions subject in passing), output 'INSUFFICIENT_DATA'.
-- NO conversational filler.
-
-USER QUERY: {query}
-
-RAW DATABASE RECORDS:
-{raw_data[:6000]}
-
-COMPUTER OUTPUT (Start with ^^DATA_START^^):
-"""
 
         response = client.models.generate_content(
             model=model_name,

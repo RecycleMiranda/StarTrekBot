@@ -213,9 +213,6 @@ class LCARS_Renderer:
         title_en = title_parts[0] if title_parts else "TECHNICAL DATA"
         title_zh = title_parts[1] if len(title_parts) > 1 else ""
         
-        content = item.get("content", "").strip()
-        
-        content = item.get("content", "").strip()
         # Header consumption is now handled globally in split_content_to_pages
         
         content = self._normalize_text_flow(content)
@@ -249,10 +246,11 @@ class LCARS_Renderer:
         if title_zh:
             draw.text((pos[0] + 85, pos[1] + 85), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
-        badge_w = draw.textlength(badge_text, font=f_id)
+        # DRAW SOURCE BADGE
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
-        draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
-
+        
+        img_b64 = item.get("image_b64")
+        
         # Lower horizontal line to create absolute distance
         line_y = pos[1] + 155
         draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))

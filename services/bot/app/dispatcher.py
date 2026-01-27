@@ -12,7 +12,12 @@ from . import send_queue
 from . import rp_engine_gemini
 from . import permissions
 from . import report_builder
-from . import visual_core
+from . import render_engine
+from . import context_bus
+from . import agents
+from . import shadow_audit
+from . import watchdog
+from . import emergency_kernel
 from .protocol_manager import get_protocol_manager
 
 logger = logging.getLogger(__name__)
@@ -676,6 +681,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 language="zh" if is_chinese else "en"
             )
 
+        elif tool == "verify_logical_consistency":
+            result = tools.verify_logical_consistency(
+                args.get("logic_chain") or args.get("logic", ""),
+                profile.get("clearance", 1)
+            )
+
             
         elif tool == "get_personnel_file":
             result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
@@ -811,24 +822,22 @@ def is_group_enabled(group_id: str | None) -> bool:
 
 async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None):
     """
-    Agentic execution engine for StarTrekBot (STAR Architecture).
-    Coordinates multi-step reasoning, tool execution, and final synthesis.
+    STAR EXECUTION LOOP 2.0 (Liquid Agent Matrix with Phase 4 Resilience)
     """
+    wd = watchdog.get_watchdog()
+    wd.record_heartbeat()
     profile_str = permissions.format_profile_for_ai(user_profile)
     logger.info(f"[Dispatcher] Starting Agentic Loop for session {session_id}")
     
     iteration = 0
-    max_iterations = 3
-    cumulative_data = [] # Buffer for search results
-    last_tool_result = None
-    reply_text = ""
-    image_b64 = None
-    intent = "reply"
-    result = {"ok": False}
+    max_iterations = 6 # Increased limit for deep multi-node recursion
+    cumulative_data = [] 
+    active_node = "COORDINATOR"
+    last_audit_status = "NOMINAL"
     
     while iteration < max_iterations:
         iteration += 1
-        logger.info(f"[Dispatcher] STAR Iteration {iteration}/{max_iterations}")
+        logger.info(f"[Dispatcher] Liquid Matrix Iteration {iteration}/{max_iterations} [Node: {active_node}]")
 
         if force_tool and iteration == 1:
             result = {
@@ -840,31 +849,79 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             if cumulative_data:
                 extra_meta["cumulative_data"] = "\n---\n".join(cumulative_data)
 
+            # PHASE 1: Generate ODN Snapshot (Proprioception)
+            odn_snapshot = context_bus.get_odn_snapshot(session_id, user_profile)
+            # Inject Watchdog data into Snapshot
+            odn_snapshot["watchdog"] = wd.get_system_integrity()
+            
+            extra_meta["odn_snapshot"] = context_bus.format_snapshot_for_prompt(odn_snapshot)
+            extra_meta["active_node"] = active_node
+            
+            # LIQUID SPAWNING: Override prompt based on active node
+            if active_node != "COORDINATOR":
+                node_obj = agents.AgentNode(active_node)
+                extra_meta["node_instruction"] = node_obj.get_context_modifier()
+
             # Normal AI generation in thread pool
+            start_t = time.time()
             future = _executor.submit(
                 rp_engine_gemini.generate_computer_reply,
                 event.text, router.get_session_context(session_id), extra_meta
             )
-            result = future.result(timeout=15)
+            result = future.result(timeout=20) 
+            wd.update_latency(time.time() - start_t)
         
         logger.info(f"[Dispatcher] AI iteration {iteration} result: {result}")
         if not result or not result.get("ok"): break
 
+        if result.get("node") and result.get("node").upper() != active_node:
+            new_node = result.get("node").upper()
+            logger.info(f"[Dispatcher] AI requested node delegation: {active_node} -> {new_node}")
+            active_node = new_node
+            cumulative_data.append(f"SYSTEM: Delegating tasks to {active_node} node.")
+            iteration -= 1 # Node switching is budget-neutral (Free Action)
+            continue # Force another iteration with the new node context
+
         intent = result.get("intent")
-        
         if intent == "tool_call":
             tool = result.get("tool")
             args = result.get("args") or {}
             is_chinese = result.get("is_chinese", False)
             
-            logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args})")
+            # --- SHADOW AUDIT (Phase 3) ---
+            auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
+            audit_report = auditor.audit_intent(tool, args)
+            last_audit_status = audit_report.get("status", "NOMINAL")
+            
+            if audit_report.get("status") == "REJECTED":
+                logger.warning(f"[Dispatcher] Shadow Audit REJECTED tool '{tool}': {audit_report.get('message')}")
+                reply_text = f"Unable to comply. SHADOW AUDIT REJECTION: {audit_report.get('message')}"
+                break
+            
+            if audit_report.get("status") == "CAUTION" and active_node != "SECURITY_AUDITOR":
+                logger.info(f"[Dispatcher] Shadow Audit flagged CAUTION for '{tool}'. Spawning SECURITY_AUDITOR.")
+                active_node = "SECURITY_AUDITOR"
+                cumulative_data.append(f"SHADOW AUDIT CAUTION: {audit_report.get('warnings')}")
+                continue # Recurse with Security Auditor context
+                
+            logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
             tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
             last_tool_result = tool_result
             
             if tool_result.get("ok"):
                 # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
                 msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
-                cumulative_data.append(f"ROUND {iteration} ACTION ({tool}):\nResult: {msg}")
+                
+                # CONTEXT COMPACTION (Phase 4 Optimization)
+                if len(msg) > 2500:
+                    msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
+                
+                cumulative_data.append(f"ROUND {iteration} ACTION ({tool}) @ NODE ({active_node}):\nResult: {msg}")
+                
+                # DYNAMIC NODE SHIFT: Logic can decide to switch node after a tool
+                if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
+                    active_node = "RESEARCHER"
+                    logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
                 
                 # UI NAVIGATION SHORT-CIRCUIT: Prevent redundant synthesis for simple UI tools
                 if tool in ["next_page", "prev_page", "show_details"]:
@@ -879,13 +936,45 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 reply_text = f"Unable to comply. CORE ERROR: [{tool_result.get('message', 'System error.')}]"
                 break
         else:
-            # Report or Reply - Finalize the loop
             reply_text = result.get("reply", "")
+            
+            # ANTI-LAZINESS CHECK: If mode is technical and no data was gathered, force a search
+            technical_keywords = ["规格", "参数", "措施", "procedures", "specs", "metrics", "data", "how to", "why"]
+            if iteration == 1 and intent == "report" and not cumulative_data:
+                if any(kw in event.text.lower() for kw in technical_keywords):
+                    logger.info("[Dispatcher] Anti-Laziness triggered: Forced knowledge probe for technical query.")
+                    cumulative_data.append("SYSTEM NOTE: You attempted a report without database verification. You MUST use 'query_knowledge_base' now.")
+                    intent = "tool_call" # Force loop to continue
+                    continue
+
+            # --- NARRATIVE AUDIT (Phase 3) ---
+            if intent in ["reply", "report"]:
+                auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
+                contradictions = auditor.audit_technical_reply(str(reply_text))
+                if contradictions:
+                    logger.warning(f"[Dispatcher] Shadow Audit found contradictions: {contradictions}")
+                    last_audit_status = "CAUTION"
+                    cumulative_data.append(f"SHADOW AUDIT WARNING: Contradictions detected in technical report.")
+
             if intent == "report" and isinstance(reply_text, dict):
-                img_io = visual_core.render_report(reply_text)
-                image_b64 = base64.b64encode(img_io.getvalue()).decode("utf-8")
-                reply_text = f"Generating visual report... (Intent: {intent})"
+                renderer = render_engine.get_renderer()
+                integrity = wd.get_system_integrity().get("status", "OPTIMAL")
+                image_b64 = renderer.render_report([reply_text], active_node=active_node, audit_status=last_audit_status, integrity_status=integrity)
+                reply_text = f"Generating visual report... (Intent: {intent} | Node: {active_node})"
             break
+        
+    except Exception as e:
+        logger.error(f"[Dispatcher] Critical Loop Failure: {e}", exc_info=True)
+        # wd might not be initialized if error happens at the very start, but we initialize it now
+        wd = watchdog.get_watchdog()
+        wd.record_error(severity="critical")
+        
+        # --- PHASE 4 BYPASS: Emergency Kernel Takeover ---
+        logger.warning("[Dispatcher] Activating Phase 4 Emergency Bypass Protocol.")
+        kernel = emergency_kernel.get_emergency_kernel()
+        result = kernel.execute_static_command(event.text)
+        reply_text = result["reply"]
+        image_b64 = None
     
     # --- PHASE 2: SYNTHESIS & RENDERING ---
     if cumulative_data:
@@ -912,9 +1001,9 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             tool_img = (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None)
             
             # If tool_img exists, ensure it's not a recursive render (Canvas size match)
-            if tool_img and len(tool_img) > 10000: # Heuristic for full-frame LCARS
-                 # We could be more precise by decoding, but this check prevents obvious loops
-                 pass
+            if tool_img and len(tool_img) > 20000: # Heuristic for full-frame LCARS
+                 logger.warning("[Dispatcher] Recursive/Duplicate LCARS detected in synthesis. Discarding to prevent loop.")
+                 tool_img = None # ACTUAL DISCARD
 
             report_item = {
                 "title": "", # Suppress top bar title per user request
@@ -926,7 +1015,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             SEARCH_RESULTS[session_id] = {
                 "items": final_items, "query": event.text, "page": 1, "items_per_page": 1, "total_pages": len(final_items)
             }
-            image_b64 = renderer.render_report(final_items[:1], page=1, total_pages=len(final_items))
+            image_b64 = renderer.render_report(final_items[:1], page=1, total_pages=len(final_items), active_node=active_node, audit_status=last_audit_status, integrity_status=wd.get_system_integrity().get("status", "OPTIMAL"))
             reply_text = "" 
         else:
             reply_text = synth_reply.replace("^^DATA_START^^", "").strip()
@@ -939,7 +1028,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
 
     # --- PHASE 3: DISPATCHING ---
     if reply_text or image_b64:
-        logger.info(f"[Dispatcher] Sending reply (intent={intent}) [Len: {len(reply_text)}]")
+        logger.info(f"[Dispatcher] Sending reply (intent={intent}) [Txt: {len(reply_text)}, Img: {len(image_b64) if image_b64 else 0}]")
         sq = send_queue.SendQueue.get_instance()
         session_key = f"qq:{event.group_id or event.user_id}"
         

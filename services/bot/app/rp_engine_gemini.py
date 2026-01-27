@@ -128,14 +128,23 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
         balance = qm.get_balance(user_id, "Ensign")
 
         formatted_sys = _get_system_prompt()
-        formatted_sys = formatted_sys.replace("{quota_balance}", str(balance))
         
-        logger.info(f"[NeuralEngine] Grounding with System Instruction (Len: {len(formatted_sys)})")
+        # LIQUID AGENT INJECTION
+        if meta and "node_instruction" in meta:
+            formatted_sys += f"\n\nACTIVATE SPECIALIZED LOGIC:\n{meta['node_instruction']}"
+            logger.info(f"[NeuralEngine] Node activated: {meta.get('active_node')}")
+
+        formatted_sys = formatted_sys.replace("{quota_balance}", str(balance))
 
         cumulative_context = ""
-        if meta and "cumulative_data" in meta:
-            cumulative_context = f"\nCUMULATIVE SEARCH DATA (PREVIOUS ROUNDS):\n{meta['cumulative_data']}\n"
-            logger.info(f"[NeuralEngine] Injecting {len(meta['cumulative_data'])} chars of cumulative data.")
+        if meta:
+            if "cumulative_data" in meta:
+                cumulative_context += f"\nCUMULATIVE AGENT/ACTION DATA:\n{meta['cumulative_data']}\n"
+            if "odn_snapshot" in meta:
+                cumulative_context += f"\n{meta['odn_snapshot']}\n"
+        
+        if cumulative_context:
+            logger.info(f"[NeuralEngine] Injecting {len(cumulative_context)} chars of cumulative/ODN context.")
 
         response = client.models.generate_content(
             model=fast_model,
@@ -472,6 +481,7 @@ def _parse_response(text: str) -> Dict:
             "reply": reply,
             "intent": intent,
             "reason": "success",
+            "node": data.get("node"), # Explicit node request
             "needs_escalation": data.get("needs_escalation", False),
             "escalated_model": data.get("escalated_model")
         }

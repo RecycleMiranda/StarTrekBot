@@ -169,7 +169,7 @@ class LCARS_Renderer:
             
         return pages
 
-    def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1) -> str:
+    def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1, active_node: str = "COORDINATOR", audit_status: str = "NOMINAL", integrity_status: str = "OPTIMAL") -> str:
         """Renders items using a Dynamic Vertical List to maximize UI space."""
         if not os.path.exists(self.bg_path):
             logger.error(f"[Renderer] Background not found: {self.bg_path}")
@@ -187,6 +187,18 @@ class LCARS_Renderer:
                 if total_pages > 1:
                     p_text = f"FED-DB // PAGE {page} OF {total_pages}"
                     draw.text((CANVAS_W - 400, CANVAS_H - 100), p_text, fill=(180, 180, 255, 180), font=f_id)
+                
+                # ACTIVE NODE INDICATOR
+                node_text = f"ACTIVE NODE: {active_node.upper()}"
+                draw.text((345, 115), node_text, fill=(255, 150, 50, 180), font=f_id)
+                
+                # SHADOW AUDIT STATUS
+                audit_color = (0, 255, 100, 180) if audit_status == "NOMINAL" else (255, 100, 0, 220)
+                draw.text((CANVAS_W - 400, 115), f"SHADOW AUDIT: {audit_status}", fill=audit_color, font=f_id)
+                
+                # SYSTEM INTEGRITY (Phase 4)
+                integrity_color = (0, 255, 255, 180) if integrity_status == "OPTIMAL" else (255, 0, 0, 220)
+                draw.text((CANVAS_W - 400, 80), f"SYSTEM INTEGRITY: {integrity_status}", fill=integrity_color, font=f_id)
                 
                 display_count = len(items)
                 if display_count == 0: return self._empty_b64()

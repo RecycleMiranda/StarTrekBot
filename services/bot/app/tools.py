@@ -120,6 +120,39 @@ def calc(expr: str) -> dict:
         logger.warning(f"Calculation failed: {e}")
         return {"ok": False, "result": None, "error": str(e)}
 
+def verify_logical_consistency(logic_chain: str, clearance: int) -> dict:
+    """
+    Shadow Audit Tool: Verifies a proposed logical chain for technical consistency.
+    Requires Level 5+ Clearance.
+    """
+    if clearance < 5:
+        return {"ok": False, "message": "Access denied. Shadow Audit requires Level 5+."}
+        
+    # LOGIC: Perform a rapid heuristic check (placeholder for Phase 3 deep audit)
+    # Check for contradictions like "offline" AND "active"
+    warnings = []
+    logic_lower = logic_chain.lower()
+    
+    if "offline" in logic_lower and "active" in logic_lower:
+        warnings.append("CONTRADICTION: System cannot be both OFFLINE and ACTIVE.")
+    if "damage" in logic_lower and "nominal" in logic_lower:
+        warnings.append("CONTRADICTION: System cannot be DAMAGED and NOMINAL.")
+        
+    if warnings:
+        return {
+            "ok": True,
+            "status": "CAUTION",
+            "message": "Shadow Audit found potential inconsistencies:\n" + "\n".join(warnings),
+            "verification_id": f"AUDIT-{int(time.time())}"
+        }
+    
+    return {
+        "ok": True,
+        "status": "VERIFIED",
+        "message": "Logical chain verified by Shadow Audit Node.",
+        "verification_id": f"AUDIT-{int(time.time())}"
+    }
+
 def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> dict:
     """
     Replicates an item using replicator credits (1.8 Style: 5 credits per item).

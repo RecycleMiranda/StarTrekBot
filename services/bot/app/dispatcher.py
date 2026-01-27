@@ -1053,13 +1053,32 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             if tool_img and len(tool_img) > 20000: # Heuristic for full-frame LCARS
                  logger.warning("[Dispatcher] Recursive/Duplicate LCARS detected in synthesis. Discarding to prevent loop.")
                  tool_img = None # ACTUAL DISCARD
+            # ENHANCED: JSON Blueprint Detection (Phase 7.5)
+            blueprint_data = None
+            try:
+                import json
+                # Handle potential ^^DATA_START^^ markers or markdown fencing
+                clean_json_str = synth_reply.split("^^DATA_START^^")[-1].strip()
+                clean_json_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', clean_json_str, flags=re.S).strip()
+                
+                # Try parsing if it looks like JSON
+                if clean_json_str.startswith("{"):
+                    parsed = json.loads(clean_json_str)
+                    if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
+                        blueprint_data = parsed
+                        logger.info("[Dispatcher] Valid JSON Blueprint detected. Activating LCARS drawing.")
+            except:
+                pass
 
             report_item = {
+                "type": "blueprint" if blueprint_data else "text",
                 "title": "", # Suppress top bar title per user request
-                "content": synth_reply,
+                "content": synth_reply if not blueprint_data else "",
                 "image_b64": tool_img or event.meta.get("image_b64"),
                 "source": current_source
             }
+            if blueprint_data:
+                report_item.update(blueprint_data)
             final_items = renderer.split_content_to_pages(report_item)
             SEARCH_RESULTS[session_id] = {
                 "items": final_items, "query": event.text, "page": 1, "items_per_page": 1, "total_pages": len(final_items)

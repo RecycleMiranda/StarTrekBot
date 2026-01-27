@@ -458,11 +458,15 @@ def strip_conversational_filler(text: str) -> str:
     if not text: return ""
     text = text.strip()
     
-    # LEVEL 1: BEACON PROTOCOL (Surgical Strike)
+    # LEVEL 1: BEACON PROTOCOL & MARKDOWN ERASURE
     if "^^DATA_START^^" in text:
         beacon = "^^DATA_START^^"
         text = text[text.find(beacon) + len(beacon):].strip()
         logger.info("[NeuralEngine] Beacon Protocol engaged: Forward cut complete.")
+    
+    # Strip Markdown JSON blocks
+    text = re.sub(r'```json\s*(.*?)\s*```', r'\1', text, flags=re.S).strip()
+    text = re.sub(r'```\s*(.*?)\s*```', r'\1', text, flags=re.S).strip()
 
     # LEVEL 2: Conversational Erasure (Search Apologies & Metatalk)
     # This targets the specific "Due to limitations..." noise found in the image

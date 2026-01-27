@@ -12,7 +12,7 @@ def get_status(**kwargs) -> dict:
     Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
     Categorized for: "System status", "Condition report", "Ship health".
     """
-    from .ship_systems import get_ship_systems
+    from .ship_systems import get_ship_systems, SubsystemState
     import os
     
     # Graceful degradation for OS metrics

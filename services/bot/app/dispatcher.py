@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import re
 import base64
 import asyncio
 import threading
@@ -1044,14 +1045,35 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
         current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
         
-        # PHASE 1.5: RESTRICTED RENDERING SCOPE (User request: Only Bio/Search info as images)
+        # ENHANCED: Move JSON detection UP to inform allow_image (Phase 7.7)
+        blueprint_data = None
+        try:
+            import json
+            # 1. Clean synthetic noise
+            test_str = synth_reply.replace("^^DATA_START^^", "").strip()
+            test_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
+            test_str = re.sub(r'```\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
+            
+            # 2. Surgical Extraction: find first { and last }
+            start_ptr = test_str.find("{")
+            end_ptr = test_str.rfind("}")
+            if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
+                candidate = test_str[start_ptr:end_ptr+1]
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
+                    blueprint_data = parsed
+                    logger.info(f"[Dispatcher] Blueprint Matrix detected ({len(candidate)} chars). Force-enabling LCARS.")
+        except Exception as e:
+            logger.debug(f"[Dispatcher] Blueprint probe inconclusive: {e}")
+
+        # PHASE 1.5: RESTRICTED RENDERING SCOPE + BLUEPRINT OVERRIDE
         IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details", "get_status"]
-        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools)
+        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools) or (blueprint_data is not None)
         
         # Decide if we render a visual report or simple text
-        # Relaxed logic: Render if (> 200 chars OR has newline and > 100 chars) AND tool is in whitelist
+        # Relaxed logic: Render if (> 200 chars OR has newline and > 100 chars) AND (whitelist OR blueprint)
         is_comprehensive = len(synth_reply) > 200 or ("\n" in synth_reply and len(synth_reply) > 100)
-        if (is_comprehensive or "^^DATA_START^^" in synth_reply) and allow_image:
+        if (is_comprehensive or "^^DATA_START^^" in synth_reply or blueprint_data) and allow_image:
             from .render_engine import get_renderer
             renderer = get_renderer()
             # ENHANCED: Protect against recursive LCARS in synthesis
@@ -1061,29 +1083,6 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             if tool_img and len(tool_img) > 20000: # Heuristic for full-frame LCARS
                  logger.warning("[Dispatcher] Recursive/Duplicate LCARS detected in synthesis. Discarding to prevent loop.")
                  tool_img = None # ACTUAL DISCARD
-            # ENHANCED: Ultra-Robust JSON Blueprint Extraction (Phase 7.6)
-            blueprint_data = None
-            try:
-                import json
-                # 1. Clean synthetic noise
-                test_str = synth_reply.replace("^^DATA_START^^", "").strip()
-                test_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-                test_str = re.sub(r'```\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-                
-                # 2. Surgical Extraction: find first { and last }
-                start_ptr = test_str.find("{")
-                end_ptr = test_str.rfind("}")
-                if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
-                    candidate = test_str[start_ptr:end_ptr+1]
-                    parsed = json.loads(candidate)
-                    if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
-                        blueprint_data = parsed
-                        logger.info(f"[Dispatcher] Blueprint Matrix Extraction SUCCESS ({len(candidate)} chars).")
-                
-                if not blueprint_data:
-                    logger.warning(f"[Dispatcher] Blueprint Matrix Extraction FAILED. Content start: {synth_reply[:50]}...")
-            except Exception as e:
-                logger.warning(f"[Dispatcher] Blueprint extraction error: {e}")
 
             report_item = {
                 "type": "blueprint" if blueprint_data else "text",

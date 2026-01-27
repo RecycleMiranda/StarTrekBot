@@ -407,7 +407,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             )
             
         # --- Self-Destruct 3-Step Flow ---
-        elif tool in ["initialize_self_destruct", "activate_self_destruct"]:
+        if tool in ["initialize_self_destruct", "activate_self_destruct", "start_destruct", "engage_destruct"]:
             # Define callback for async notifications
             async def notify_callback(sid, message):
                 sq = send_queue.SendQueue.get_instance()
@@ -417,23 +417,22 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                     "user_id": event.user_id
                 })
             
-            if tool == "initialize_self_destruct":
-                result = await tools.initialize_self_destruct(
-                    args.get("duration", 300), 
-                    args.get("silent", False), 
-                    str(event.user_id), 
-                    profile.get("clearance", 1), 
-                    session_id,
-                    notify_callback,
-                    language="zh" if is_chinese else "en"
-                )
-            else: # activate_self_destruct
-                result = await tools.activate_self_destruct(
-                    str(event.user_id), 
-                    profile.get("clearance", 1), 
-                    session_id,
-                    notify_callback
-                )
+            # ARGUMENT NORMALIZATION
+            duration = int(args.get("duration", 300))
+            silent = args.get("silent", False)
+            if isinstance(silent, str):
+                silent = (silent.lower() == "true")
+            
+            # Both tools map to the same internal logic: Initialize (which starts countdown)
+            result = await tools.initialize_self_destruct(
+                duration, 
+                silent, 
+                str(event.user_id), 
+                profile.get("clearance", 1), 
+                session_id,
+                notify_callback,
+                language="zh" if is_chinese else "en"
+            )
             
         elif tool == "authorize_self_destruct":
             result = tools.authorize_self_destruct(
@@ -529,6 +528,22 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool in ["cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct"]:
             result = tools.abort_self_destruct(profile.get("user_id"), profile.get("clearance", 1), session_id)
             
+        elif tool in ["set_holodeck_program", "reserve_holodeck", "run_program", "start_simulation", "holodeck_control"]:
+             # ARGUMENT NORMALIZATION: 'program'/'name'/'title' -> 'program_name'
+             prog = args.get("program_name") or args.get("program") or args.get("name") or args.get("title") or "Generic Simulation"
+             duration = float(args.get("duration", 1.0))
+             safety = args.get("disable_safety", False)
+             if isinstance(safety, str): safety = (safety.lower() == "true")
+             
+             result = tools.reserve_holodeck(
+                 program_name=prog, 
+                 duration_hours=duration,
+                 user_id=profile.get("user_id"),
+                 rank=profile.get("rank", "ENSIGN"),
+                 clearance=profile.get("clearance", 1),
+                 disable_safety=safety
+             )
+
         elif tool == "next_page" or tool == "prev_page":
             session_data = SEARCH_RESULTS.get(session_id)
             if not session_data:
@@ -819,7 +834,49 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 action=action
             )
         else:
-            return {"ok": False, "message": f"Unknown tool: {tool}", "error": "unknown_tool"}
+            # PHASE 4: SELF-HEALING & ADAPTIVE RESOLUTION
+            logger.warning(f"[Dispatcher] Unknown tool '{tool}' requested. Initiating Logic Repair Scan...")
+            
+            import difflib
+            # 1. Inspect 'tools' module for all valid callable functions
+            valid_tools = [
+                name for name in dir(tools) 
+                if callable(getattr(tools, name)) and not name.startswith("_")
+            ]
+            
+            # 2. Find closest match (cutoff=0.6 covers simple typos like 'set_holodeck' -> 'reserve_holodeck')
+            matches = difflib.get_close_matches(tool, valid_tools, n=1, cutoff=0.5)
+            
+            if matches:
+                corrected_tool = matches[0]
+                logger.info(f"[Dispatcher] SELF-HEALING: Correcting hallucinations '{tool}' -> '{corrected_tool}'")
+                
+                # 3. Dynamic Dispatch
+                func = getattr(tools, corrected_tool)
+                
+                # Check signature to safely pass args (naive approach: assume kwargs matching)
+                # But 'tools.py' functions mostly take flat args. We try passing kwargs.
+                try:
+                    # Filter args to match signature? Not easy dynamically without inspect.
+                    # We trust the AI generated matching keys, or we catch TypeError.
+                    result = func(**args)
+                    result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
+                    
+                except TypeError as te:
+                     # Fallback: Check if it needs specific common args like 'user_id' not in args
+                     logger.warning(f"[Dispatcher] Dynamic dispatch arg mismatch: {te}. Retrying with profile injection...")
+                     try:
+                         # Inject common profile args if missing
+                         if "user_id" not in args: args["user_id"] = str(event.user_id)
+                         if "session_id" not in args: args["session_id"] = session_id
+                         if "clearance" not in args: args["clearance"] = profile.get("clearance", 1)
+                         
+                         result = func(**args)
+                         result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
+                     except Exception as e2:
+                         return {"ok": False, "message": f"Self-repair failed for '{corrected_tool}': {e2}", "error": "repair_execution_failed"}
+            else:
+                return {"ok": False, "message": f"Unknown tool: {tool} (No matching protocol found)", "error": "unknown_tool"}
             
         if result and "ok" not in result:
             result["ok"] = True
@@ -954,6 +1011,12 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 
                 tool = step.get("tool")
                 args = step.get("args") or {}
+                
+                # SAFETY FILTER: Hallucination Catch
+                if tool in ["tool_call", "intent", "none", "", None]:
+                    logger.warning(f"[Dispatcher] Ignored invalid tool name: {tool}")
+                    continue
+                    
                 is_chinese = result.get("is_chinese", False)
                 
                 # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop

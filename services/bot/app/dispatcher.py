@@ -835,6 +835,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
     cumulative_data = [] 
     active_node = "COORDINATOR"
     last_audit_status = "NOMINAL"
+    image_b64 = None
     
     while iteration < max_iterations:
         iteration += 1

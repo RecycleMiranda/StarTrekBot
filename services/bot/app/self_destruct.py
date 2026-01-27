@@ -194,6 +194,7 @@ class DestructManager:
     _instance = None
     OWNER_ID = "1993596624"  # From 1.8 script
     
+    def __init__(self):
         self.sequences: Dict[str, DestructSequence] = {}
         # Track authorizations per session BEFORE initialization
         self.pending_authorizers: Dict[str, Set[str]] = {}

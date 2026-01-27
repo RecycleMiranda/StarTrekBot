@@ -207,9 +207,13 @@ class LCARS_Renderer:
                 spacing = 25
                 labels = ["1A", "1B", "2A", "2B"]
                 
+                # Start Y position
+                curr_y = CONTENT_TOP 
+                
                 for i, item in enumerate(items):
                     is_list = (display_count > 1)
                     self._draw_mega_slot(canvas, item, (CONTENT_L, curr_y), CONTENT_W, item_h - spacing, labels[i], f_title, f_id, is_list=is_list)
+                    curr_y += item_h
 
                 buffered = BytesIO()
                 canvas.save(buffered, format="PNG")

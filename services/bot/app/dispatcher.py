@@ -506,7 +506,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "next_page" or tool == "prev_page":
             session_data = SEARCH_RESULTS.get(session_id)
             if not session_data:
-                result = {"ok": False, "message": "无法完成：当前未开启查询进程，请先通过‘查询数据库’开启搜索。"}
+                result = {"ok": False, "message": "无法完成：当前未开启查询进程，请先通过‘查询数据库’开启搜索，"}
             else:
                 if session_data.get("mode") == "article":
                     # DUAL-TIER ARTICLE PAGING: Sub-pages (local) vs Chunks (network)
@@ -566,7 +566,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                             # TRIGGER PRE-WARM FOR NEW CHUNK
                             _executor.submit(_prefetch_next_pages, session_id, is_chinese)
                         else:
-                            result = {"ok": False, "message": "无法调阅后续分片：子空间通信干扰。"}
+                            result = {"ok": False, "message": "无法调阅后续分片：子空间通信干扰，"}
                     else:
                         result = {"ok": False, "message": "NO FURTHER RECORDS FOUND."}
                 else:
@@ -604,7 +604,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             target_id = args.get("id", "").upper()
             session_data = SEARCH_RESULTS.get(session_id)
             if not session_data or not target_id:
-                result = {"ok": False, "message": "无法完成：请指定有效的检索编号（例如：1A）。"}
+                result = {"ok": False, "message": "无法完成：请指定有效的检索编号（例如：1A），"}
             else:
                 target_item = next((i for i in session_data.get("items", []) if i["id"] == target_id), None)
                 if target_item:
@@ -615,7 +615,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                     if target_item.get("image_b64"):
                         event.meta["image_b64"] = target_item["image_b64"]
                 else:
-                    result = {"ok": False, "message": f"无法完成：未能在当前结果集中找到编号为 {target_id} 的条目。"}
+                    result = {"ok": False, "message": f"无法完成：未能在当前结果集中找到编号为 {target_id} 的条目，"}
             
         elif tool == "get_shield_status":
             from .ship_systems import get_ship_systems
@@ -637,10 +637,10 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             from .ship_systems import get_ship_systems
             ss = get_ship_systems()
             if not ss.is_subsystem_online("weapons"):
-                result = {"ok": False, "message": "无法完成，武器系统下线。"}
+                result = {"ok": False, "message": "无法完成，武器系统下线，"}
             else:
                 is_fire = any(k in tool_name.lower() for k in ["fire", "开火", "射击"])
-                msg = "确认，正在开火。" if is_fire else "目标已锁定。"
+                msg = "确认，正在开火，" if is_fire else "目标已锁定，"
                 result = {"ok": True, "message": msg}
             
         elif tool == "get_subsystem_status":
@@ -946,10 +946,16 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     active_node = "ENGINEER"
                     logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
                 
-                # UI NAVIGATION SHORT-CIRCUIT: Prevent redundant synthesis for simple UI tools
-                if tool in ["next_page", "prev_page", "show_details"]:
-                    logger.info(f"[Dispatcher] UI Navigation tool '{tool}' completed. Breaking early.")
-                    reply_text = tool_result.get("message", "")
+                # CRITICAL COMMAND SHORT-CIRCUIT: Prevent redundant synthesis for simple state-change/UI tools
+                shortcut_tools = [
+                    "next_page", "prev_page", "show_details",
+                    "initialize_self_destruct", "authorize_self_destruct", "activate_self_destruct",
+                    "authorize_cancel_self_destruct", "confirm_cancel_self_destruct", "get_destruct_status",
+                    "set_alert_status", "toggle_shields", "set_absolute_override"
+                ]
+                if tool in shortcut_tools:
+                    logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
+                    reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
                     image_b64 = event.meta.get("image_b64")
                     cumulative_data = [] # Clear to prevent synthesis phase
                     break

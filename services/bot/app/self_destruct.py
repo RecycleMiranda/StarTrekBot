@@ -43,30 +43,30 @@ class DestructSequence:
     # Translation Dictionary
     MESSAGES = {
         "zh": {
-            "dup_auth_init": "重复授权：发起者无法自我授权。",
-            "dup_auth_id": "重复授权：该身份已记录。",
-            "auth_complete": "授权码集齐，输入最终授权码后确认自毁",
-            "vouch_accepted": "授权已确认：还需要 {needed} 个签名。",
-            "dup_cancel_auth": "重复授权：该取消请求的身份已记录。",
-            "cancel_auth_complete": "授权码集齐，输入最终授权码后确认取消自毁",
-            "cancel_vouch_accepted": "取消担保已接受：还需要 {needed} 个签名以授权取消。",
-            "alert_prefix": "⚠️ 自毁警报：",
-            "countdown": "自毁将在 {time_str} 后执行。",
-            "detonated": "启动自毁系统，解除反物质储罐约束力场，过载反应堆核心",
-            "cancelled": "确认：自毁程序已取消。"
+            "dup_auth_init": "重复授权，发起者身份已确认，",
+            "dup_auth_id": "重复授权，该身份已记录，",
+            "auth_complete": "授权确认，等待最终指令，",
+            "vouch_accepted": "授权确认，需要 {needed} 个额外签名，",
+            "dup_cancel_auth": "重复授权，该身份已记录，",
+            "cancel_auth_complete": "取消授权确认，等待最终指令，",
+            "cancel_vouch_accepted": "取消授权确认，需要 {needed} 个额外签名，",
+            "alert_prefix": "警报，",
+            "countdown": "自毁程序将在 {time_str} 后执行，",
+            "detonated": "自毁程序已执行，核心过载，",
+            "cancelled": "自毁程序已取消，"
         },
         "en": {
-            "dup_auth_init": "DUPLICATE AUTHORIZATION: Initiator cannot self-authorize.",
-            "dup_auth_id": "DUPLICATE AUTHORIZATION: Identity already recorded.",
-            "auth_complete": "AUTHORIZATION COMPLETE: {count} officers confirmed. Awaiting activation command.",
-            "vouch_accepted": "AUTHORIZATION ACCEPTED: {needed} more signature(s) required.",
-            "dup_cancel_auth": "DUPLICATE AUTHORIZATION: Identity already recorded for cancellation.",
-            "cancel_auth_complete": "CANCELLATION AUTHORIZED: {count} officers confirmed. Awaiting confirmation.",
-            "cancel_vouch_accepted": "CANCEL VOUCH ACCEPTED: {needed} more signature(s) required to authorize cancellation.",
-            "alert_prefix": "⚠️ AUTO-DESTRUCT ALERT: ",
-            "countdown": "Self-destruct in {time_str}.",
-            "detonated": "AUTO-DESTRUCT SEQUENCE COMPLETE: REACTOR CORE BREACHED.",
-            "cancelled": "Self-destruct sequence cancelled."
+            "dup_auth_init": "DUPLICATE AUTHORIZATION: Identity confirmed.",
+            "dup_auth_id": "DUPLICATE AUTHORIZATION: Identity recorded.",
+            "auth_complete": "AUTHORIZATION COMPLETE. Awaiting final command.",
+            "vouch_accepted": "AUTHORIZATION ACKNOWLEDGED. {needed} additional signature(s) required.",
+            "dup_cancel_auth": "DUPLICATE AUTHORIZATION: Identity recorded.",
+            "cancel_auth_complete": "CANCELLATION AUTHORIZED. Awaiting confirmation.",
+            "cancel_vouch_accepted": "CANCELLATION ACKNOWLEDGED. {needed} additional signature(s) required.",
+            "alert_prefix": "AUTO-DESTRUCT ALERT: ",
+            "countdown": "Auto-destruct in {time_str}.",
+            "detonated": "AUTO-DESTRUCT SEQUENCE COMPLETE.",
+            "cancelled": "Auto-destruct sequence cancelled."
         }
     }
 
@@ -281,19 +281,19 @@ class DestructManager:
         msgs = {
             "en": {
                 "denied": "ACCESS DENIED.",
-                "already_active": "SEQUENCE ALREADY ACTIVE: Current state is {state}.",
-                "not_worthy": "ARE YOU WORTHY?",
+                "already_active": "SEQUENCE ALREADY ACTIVE. Current state: {state}.",
+                "not_worthy": "ACCESS DENIED.",
                 "low_clearance": "INSUFFICIENT CLEARANCE.",
                 "auth_needed": "INSUFFICIENT AUTHORIZATION.",
-                "success": f"AUTO-DESTRUCT ACTIVATED: {{duration_str}} countdown pending. Detonation core primed."
+                "success": "AUTO-DESTRUCT SEQUENCE INITIATED. Detonation in {duration_str}."
             },
             "zh": {
-                "denied": "拒绝访问。",
-                "already_active": "程序已激活：当前状态为 {state}。",
-                "not_worthy": "权限不足拒绝访问",
-                "low_clearance": "权限不足",
-                "auth_needed": "授权人数不足 拒绝访问",
-                "success": f"确认，自毁系统已启动。反应堆核心 {{duration_str}} 后破裂..."
+                "denied": "拒绝访问，",
+                "already_active": "程序已激活，当前状态：{state}，",
+                "not_worthy": "拒绝访问，",
+                "low_clearance": "权限不足，",
+                "auth_needed": "授权不足，",
+                "success": "自毁程序已启动，{duration_str} 后执行，"
             }
         }
         msg = msgs.get(lang_code, msgs["en"])
@@ -394,16 +394,16 @@ class DestructManager:
             
         msgs = {
             "en": {
-                "denied": f"ACCESS DENIED: Clearance Level {DestructSequence.CLE_ACTIVATE}+ required.",
-                "no_seq": "NO PENDING SEQUENCE: Initialize self-destruct first.",
-                "cannot_active": "CANNOT ACTIVATE: Sequence not authorized. Current state: {state}.",
-                "success": f"⚠️ AUTO-DESTRUCT ACTIVATED: Detonation in {{time_str}}. Abandon ship."
+                "denied": "ACCESS DENIED.",
+                "no_seq": "UNABLE TO COMPLY. No pending sequence.",
+                "cannot_active": "UNABLE TO COMPLY. Sequence not authorized.",
+                "success": "AUTO-DESTRUCT SEQUENCE ARMED. TIME REMAINING: {time_str}."
             },
             "zh": {
-                "denied": f"拒绝访问：需要 {DestructSequence.CLE_ACTIVATE} 级以上权限。",
-                "no_seq": "无法完成：请先初始化自毁程序。",
-                "cannot_active": "无法激活：程序未授权。当前状态：{state}。",
-                "success": f"⚠️ 启动自毁系统。解除反物质储罐约束力场。过载反应堆核心。警告：自毁系统已启动，{{time_str}} 后执行。"
+                "denied": "拒绝访问，",
+                "no_seq": "无法执行，无待处理程序，",
+                "cannot_active": "无法执行，程序未授权，",
+                "success": "自毁系统已锁定，剩余时间：{time_str}，"
             }
         }
         msg = msgs.get(lang, msgs["en"])
@@ -486,17 +486,17 @@ class DestructManager:
         msgs = {
             "en": {
                 "ineligible": "INSUFFICIENT CLEARANCE.",
-                "no_active": "NO ACTIVE SEQUENCE.",
-                "dup": "DUPLICATE: You have already authorized cancellation.",
-                "complete": "CANCEL AUTHORIZATION COMPLETE: Signatures collected. Awaiting final command to terminate.",
-                "accepted": "CANCEL AUTHORIZATION ACCEPTED: {needed} more senior officer signature(s) required."
+                "no_active": "UNABLE TO COMPLY.",
+                "dup": "DUPLICATE AUTHORIZATION.",
+                "complete": "CANCELLATION AUTHORIZED. Awaiting confirmation.",
+                "accepted": "AUTHORIZATION ACKNOWLEDGED. {needed} additional signature(s) required."
             },
             "zh": {
-                "ineligible": "权限不足拒绝访问",
-                "no_active": "无法完成：无自毁序列运行中。",
-                "dup": "无法完成，你已授权",
-                "complete": "取消授权码集齐，输入终止指令后确认取消",
-                "accepted": "取消担保已接受：还需要 {needed} 个高级军官签名以授权取消。"
+                "ineligible": "权限不足，",
+                "no_active": "无法执行，",
+                "dup": "重复授权，",
+                "complete": "取消已授权，等待确认，",
+                "accepted": "授权确认，需要 {needed} 个额外签名，"
             }
         }
         msg = msgs.get(lang, msgs["en"])
@@ -575,8 +575,8 @@ class DestructManager:
         lang = seq.language if seq else "en"
         
         msgs = {
-            "en": "✅ AUTO-DESTRUCT ABORTED: {reason}. Ship systems returning to nominal status.",
-            "zh": "✅ 自毁程序已终止：{reason}。舰船系统恢复正常。"
+            "en": "AUTO-DESTRUCT CANCELLED: {reason}.",
+            "zh": "自毁程序已取消：{reason}，"
         }
         
         if seq:

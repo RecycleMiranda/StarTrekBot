@@ -9,13 +9,29 @@ logger = logging.getLogger(__name__)
 
 def get_status() -> dict:
     """
-    Returns real-time starship status from ShipSystems.
+    Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
+    Use this for: "System status", "Memory usage", "CPU load", "Diagnostics", "Ship health".
     """
     from .ship_systems import get_ship_systems
+    import psutil # For real metrics mixed with RP
+    import os
+    
     ss = get_ship_systems()
+    
+    # Get Real/RP Hybrid Metrics
+    process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss / 1024 / 1024 # MB
+    cpu_usage = psutil.cpu_percent(interval=None)
+    
     return {
         "ok": True,
         "message": "All systems nominal" if ss.alert_status.value == "NORMAL" else f"Condition: {ss.alert_status.value}",
+        "computer_core": {
+            "status": "ONLINE",
+            "memory_usage_mb": f"{mem_usage:.1f}",
+            "cpu_load_percent": f"{cpu_usage:.1f}",
+            "efficiency_index": "98.4%"
+        },
         "shields_active": ss.shields_active,
         "shield_integrity": ss.shield_integrity,
         "alert": ss.alert_status.value,
@@ -37,9 +53,9 @@ def get_subsystem_status(name: str) -> dict:
             "ok": True,
             "name": name,
             "state": state,
-            "message": f"子系统 {name} 当前状态：{state}。"
+            "message": f"子系统 {name} 当前状态：{state}，"
         }
-    return {"ok": False, "message": f"找不到子系统：{name}。"}
+    return {"ok": False, "message": f"找不到子系统：{name}，"}
 
 def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
     """
@@ -214,9 +230,8 @@ def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> di
     from .quota_manager import get_quota_manager
     from .ship_systems import get_ship_systems
     
-    ss = get_ship_systems()
     if not ss.is_subsystem_online("replicator"):
-        return {"ok": False, "message": "无法完成：复制机系统下线。"}
+        return {"ok": False, "message": "无法完成：复制机系统下线，"}
 
     qm = get_quota_manager()
     cost = 5 # 1.8 Standard cost
@@ -229,12 +244,12 @@ def replicate(item_name: str, user_id: str, rank: str, clearance: int = 1) -> di
     
     balance = qm.get_balance(user_id, rank)
     if balance < cost:
-        return {"ok": False, "message": f"无法完成：你的配额不足。需要 {cost} 个配额，当前剩余 {balance} 个。"}
+        return {"ok": False, "message": f"无法完成：你的配额不足，需要 {cost} 个配额，当前剩余 {balance} 个，"}
         
     qm.spend_credits(user_id, cost)
     return {
         "ok": True,
-        "message": f"复制中…（消耗 {cost} 配额）\n[嘀—— 嘶嘶——]\n复制完成：{item_name}。",
+        "message": f"正在复制，消耗 {cost} 配额，\n[嘀—— 嘶嘶——]\n复制完成：{item_name}，",
         "item": item_name,
         "cost": cost
     }
@@ -1293,7 +1308,7 @@ def set_absolute_override(state: bool, user_id: str, clearance: int) -> dict:
         return {"ok": False, "message": "权限不足拒绝访问"}
         
     set_command_override(state)
-    msg = "确认，指挥权覆盖已激活。计算机现在仅响应授权命令。" if state else "确认，指挥权覆盖已解除。"
+    msg = "确认，指挥权覆盖已激活，计算机现在仅响应授权命令，" if state else "确认，指挥权覆盖已解除，"
     return {"ok": True, "message": msg}
 
 async def locate_user(target_mention: str, clearance: int) -> dict:
@@ -1311,5 +1326,5 @@ async def locate_user(target_mention: str, clearance: int) -> dict:
     # 1.8 Mock logic: "Accessing Starfleet tracking... User located at Sector 001."
     return {
         "ok": True, 
-        "message": f"正在定位用户：{target_id}…\n[信号追踪中…]\n定位成功：用户当前位于 001 扇区，地球空间站。"
+        "message": f"正在定位用户：{target_id}，\n[信号追踪中]\n定位成功：用户当前位于 001 扇区，地球空间站，"
     }

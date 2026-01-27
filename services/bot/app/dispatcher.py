@@ -266,21 +266,31 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool in ["query_knowledge_base", "search_memory_alpha", "access_memory_alpha_direct"]:
             # Multi-result handling with Visual LCARS (RENDER MOVED TO SYNTHESIS STAGE)
             if tool == "query_knowledge_base":
-                query_text = args.get("query", "").lower()
+                raw_query = args.get("query", "")
+                if isinstance(raw_query, list):
+                    query_text = " ".join(str(q) for q in raw_query).lower()
+                else:
+                    query_text = str(raw_query).lower()
+
                 # ENHANCED: Boundary-aware matching for listing keywords
                 list_keywords = ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"]
                 pattern = r'\b(' + '|'.join(list_keywords) + r')\b'
-                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"])
+                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"]) or isinstance(raw_query, list)
                 
                 # Cap max_w to a safe threshold (3000 words vs 8000)
                 max_w = args.get("max_words", 3000 if is_listing else 500)
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for KB: {max_w} words")
                 result = tools.query_knowledge_base(args.get("query"), session_id, is_chinese=is_chinese, max_words=max_w)
             elif tool == "search_memory_alpha":
-                query_text = args.get("query", "").lower()
+                raw_query = args.get("query", "")
+                if isinstance(raw_query, list):
+                    query_text = " ".join(str(q) for q in raw_query).lower()
+                else:
+                    query_text = str(raw_query).lower()
+
                 list_keywords = ["list", "all", "级别", "列表", "名录", "种类", "classes", "types", "vessels", "ships", "fleet"]
                 pattern = r'\b(' + '|'.join(list_keywords) + r')\b'
-                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"])
+                is_listing = bool(re.search(pattern, query_text)) or any(kw in query_text for kw in ["级别", "列表", "名录", "种类"]) or isinstance(raw_query, list)
                 
                 max_w = args.get("max_words", 1500 if is_listing else 500) # MA is more expensive, cap lower
                 if is_listing: logger.info(f"[Dispatcher] Giga-Scan Protocol forced for MA: {max_w} words")

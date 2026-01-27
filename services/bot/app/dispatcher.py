@@ -1164,7 +1164,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             )
         return True
     
-    logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
+        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
         return False
     finally:
         if ops_task:

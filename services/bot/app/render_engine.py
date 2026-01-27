@@ -2,8 +2,10 @@ import os
 import base64
 import logging
 import re
+import json
+import math
 from io import BytesIO
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
@@ -21,10 +23,321 @@ CONTENT_H_TOTAL = CONTENT_B - CONTENT_T
 
 # Metric Constants
 LINE_HEIGHT = 28     # Balanced for multi-font blocks
-PARA_SPACING = 6     # Tightened for bilingual density
+PARA_SPACING = 15     # Standard spacing between blocks
 FONT_SIZE = 24
 
 class LCARS_Renderer:
+    def __init__(self, root_path: str = None):
+        if not root_path:
+            base_dir = os.path.dirname(__file__)
+            self.assets_dir = os.path.join(base_dir, "static", "assets", "database")
+        else:
+            self.assets_dir = os.path.join(root_path, "services", "bot", "app", "static", "assets", "database")
+            
+        self.bg_path = os.path.join(self.assets_dir, "联邦数据库.png")
+        self.frame_left = os.path.join(self.assets_dir, "展示框1左.png")
+        self.frame_right = os.path.join(self.assets_dir, "展示框1右.png")
+        
+        # Custom Local Fonts
+        app_dir = os.path.dirname(__file__)
+        self.font_dir = os.path.join(app_dir, "static", "assets", "fonts")
+        self.lcars_font = os.path.join(self.font_dir, "lcars.ttf")
+        self.chinese_font = os.path.join(self.font_dir, "No.67-ShangShouXuanSongTi-2.ttf")
+        
+        # Fallback fonts
+        font_candidates = [
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "arial.ttf"
+        ]
+        self.fallback_font = next((f for f in font_candidates if os.path.exists(f)), "arial.ttf")
+
+    def get_font(self, text: str, size: int):
+        """Returns the appropriate font object based on content language."""
+        is_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
+        target_path = self.chinese_font if is_chinese and os.path.exists(self.chinese_font) else self.lcars_font
+        
+        if not os.path.exists(target_path):
+            target_path = self.fallback_font
+            
+        try:
+            return ImageFont.truetype(target_path, size)
+        except:
+            return ImageFont.load_default()
+
+    def _extract_json_blueprint(self, text: str) -> Optional[Dict]:
+        """Attempts to extract and parse a JSON object from text."""
+        try:
+            # Try finding JSON block
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+                return json.loads(json_str)
+        except:
+            pass
+        return None
+
+    def split_content_to_pages(self, item: Dict, max_h: int = None) -> List[Dict]:
+        """Splits content into pages. Supports both Legacy Text and New JSON Blueprint."""
+        if not max_h: max_h = CONTENT_H_TOTAL - 50
+        
+        content = item.get("content", "")
+        blueprint = self._extract_json_blueprint(content)
+        
+        if blueprint and "layout" in blueprint:
+            return self._split_blueprint_to_pages(blueprint, item, max_h)
+        else:
+            return self._split_legacy_text_to_pages(item, max_h)
+
+    def _split_blueprint_to_pages(self, blueprint: Dict, original_item: Dict, max_h: int) -> List[Dict]:
+        """Paginate based on JSON Layout Blocks."""
+        pages = []
+        current_blocks = []
+        current_h = 0
+        layout = blueprint.get("layout", [])
+        header = blueprint.get("header", {})
+        footer = blueprint.get("footer", {})
+        
+        # Simple height estimation
+        for block in layout:
+            block_h = self._estimate_block_height(block)
+            
+            if current_h + block_h > max_h and current_blocks:
+                # Flush current page
+                pages.append({
+                    "type": "blueprint",
+                    "header": header,
+                    "footer": footer,
+                    "layout": current_blocks,
+                    "source": original_item.get("source", "UNKNOWN"),
+                    "image_b64": original_item.get("image_b64") if len(pages) == 0 else None
+                })
+                current_blocks = []
+                current_h = 0
+            
+            current_blocks.append(block)
+            current_h += block_h
+            
+        if current_blocks:
+            pages.append({
+                "type": "blueprint",
+                "header": header,
+                "footer": footer,
+                "layout": current_blocks,
+                "source": original_item.get("source", "UNKNOWN"),
+                "image_b64": original_item.get("image_b64") if len(pages) == 0 else None
+            })
+            
+        return pages
+
+    def _estimate_block_height(self, block: Dict) -> int:
+        """Roughly estimate pixel height of a block."""
+        b_type = block.get("type")
+        if b_type == "kv_grid":
+            rows = math.ceil(len(block.get("data", [])) / block.get("cols", 1))
+            return rows * 40 + 20 # 40px per row + padding
+        elif b_type == "text_block":
+            # Rough char count estimate
+            text_len = len(block.get("content", ""))
+            lines = math.ceil(text_len / 45) # Approx chars per line
+            return lines * 32 + 20
+        elif b_type == "section_header":
+            return 60
+        elif b_type == "bullet_list":
+            return len(block.get("items", [])) * 32 + 20
+        return 50
+
+    def _split_legacy_text_to_pages(self, item: Dict, max_h: int) -> List[Dict]:
+        """Legacy text splitting logic (Simplified)."""
+        content = item.get("content", "")
+        # Basic paragraph splitting
+        paras = [p for p in content.split('\n') if p.strip()]
+        pages = []
+        current_p = []
+        current_h = 0
+        
+        for p in paras:
+            p_h = len(p) // 40 * 30 + 40 # Rough estimate
+            if current_h + p_h > max_h and current_p:
+               pages.append({"content": "\n".join(current_p), "title": item.get("title")})
+               current_p = []
+               current_h = 0
+            current_p.append(p)
+            current_h += p_h
+            
+        if current_p:
+            pages.append({"content": "\n".join(current_p), "title": item.get("title")})
+        
+        # If empty, return raw
+        if not pages: pages.append(item)
+        return pages
+
+    def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1, active_node: str = "COORDINATOR", audit_status: str = "NOMINAL", integrity_status: str = "OPTIMAL") -> str:
+        """Renders the final image."""
+        if not os.path.exists(self.bg_path):
+            return ""
+
+        try:
+            with Image.open(self.bg_path).convert("RGBA") as canvas:
+                canvas = canvas.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
+                draw = ImageDraw.Draw(canvas)
+                
+                # Render Page Number if needed
+                if total_pages > 1:
+                     f_id = self.get_font("PAGE", 26)
+                     p_text = f"FED-DB // PAGE {page} OF {total_pages}"
+                     draw.text((CANVAS_W - 400, CANVAS_H - 100), p_text, fill=(180, 180, 255, 180), font=f_id)
+
+                target_item = items[0] if items else {}
+                
+                if target_item.get("type") == "blueprint":
+                    self._render_blueprint(canvas, draw, target_item)
+                else:
+                    self._render_legacy(canvas, draw, target_item)
+                
+                # Output
+                buf = BytesIO()
+                canvas.save(buf, format="PNG")
+                return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger.exception("Render failed")
+            return ""
+
+    def _render_blueprint(self, canvas: Image, draw: ImageDraw, item: Dict):
+        """Core JSON Blueprint Rasterizer."""
+        header = item.get("header", {})
+        layout = item.get("layout", [])
+        
+        # 1. Main Header
+        self._draw_main_header(draw, header)
+        
+        # 2. Layout Blocks
+        curr_y = CONTENT_T + 80
+        curr_x = CONTENT_L
+        
+        for block in layout:
+            b_type = block.get("type")
+            
+            if b_type == "kv_grid":
+                curr_y = self._draw_kv_grid(draw, block, curr_x, curr_y)
+            elif b_type == "text_block":
+                curr_y = self._draw_text_block(draw, block, curr_x, curr_y)
+            elif b_type == "section_header":
+                curr_y = self._draw_section_header(draw, block, curr_x, curr_y)
+            elif b_type == "bullet_list":
+                curr_y = self._draw_bullet_list(draw, block, curr_x, curr_y)
+            
+            curr_y += PARA_SPACING
+
+    def _draw_main_header(self, draw: ImageDraw, header: Dict):
+        title_en = header.get("title_en", "UNKNOWN")
+        title_cn = header.get("title_cn", "")
+        
+        # Draw EN Title
+        f_en = self.get_font(title_en, 50)
+        draw.text((360, 50), title_en.upper(), fill=(255, 153, 0), font=f_en)
+        
+        # Draw CN Title
+        if title_cn:
+            f_cn = self.get_font(title_cn, 30)
+            draw.text((360, 105), title_cn, fill=(255, 200, 100), font=f_cn)
+
+    def _draw_kv_grid(self, draw: ImageDraw, block: Dict, x: int, y: int) -> int:
+        cols = block.get("cols", 1)
+        data = block.get("data", [])
+        if not data: return y
+        
+        col_w = (CONTENT_W - (cols-1)*20) // cols
+        row_h = 36
+        
+        total_rows = math.ceil(len(data) / cols)
+        
+        font_k = self.get_font("K", 22)
+        font_v = self.get_font("V", 22)
+        
+        for i, item in enumerate(data):
+            row = i // cols
+            col = i % cols
+            
+            item_x = x + col * (col_w + 20)
+            item_y = y + row * row_h
+            
+            # Zebra Stripe (LCARS Style)
+            if row % 2 == 0:
+                draw.rectangle([item_x, item_y, item_x + col_w, item_y + row_h - 4], fill=(100, 150, 255, 40))
+                
+            # Key
+            k_text = str(item.get("k", "")).upper()
+            draw.text((item_x + 10, item_y + 4), k_text, fill=(153, 204, 255), font=font_k)
+            
+            # Value (Right Aligned)
+            v_text = str(item.get("v", ""))
+            v_w = font_v.getlength(v_text)
+            draw.text((item_x + col_w - v_w - 10, item_y + 4), v_text, fill=(255, 255, 255), font=font_v)
+            
+        return y + (total_rows * row_h) + 10
+
+    def _draw_text_block(self, draw: ImageDraw, block: Dict, x: int, y: int) -> int:
+        content = block.get("content", "")
+        if not content: return y
+        
+        font = self.get_font(content, 26)
+        
+        # Simple wrapping
+        lines = []
+        curr_line = ""
+        for word in content.split():
+            test_line = curr_line + " " + word if curr_line else word
+            if font.getlength(test_line) < CONTENT_W:
+                curr_line = test_line
+            else:
+                lines.append(curr_line)
+                curr_line = word
+        if curr_line: lines.append(curr_line)
+        
+        # Draw
+        lh = 34
+        for line in lines:
+            draw.text((x, y), line, fill=(255, 255, 255), font=font)
+            y += lh
+            
+        return y + 10
+
+    def _draw_section_header(self, draw: ImageDraw, block: Dict, x: int, y: int) -> int:
+        title = block.get("title_en", "").upper()
+        if block.get("title_cn"):
+            title += f" {block.get('title_cn')}"
+            
+        font = self.get_font(title, 32)
+        draw.text((x, y + 10), title, fill=(255, 153, 0), font=font)
+        
+        # Underline/Bar
+        draw.rectangle([x, y + 45, x + 300, y + 48], fill=(255, 153, 0))
+        return y + 60
+
+    def _draw_bullet_list(self, draw: ImageDraw, block: Dict, x: int, y: int) -> int:
+        items = block.get("items", [])
+        font = self.get_font("List", 26)
+        lh = 34
+        
+        for item in items:
+            draw.text((x + 20, y), f"•  {item}", fill=(200, 220, 255), font=font)
+            y += lh
+            
+        return y + 10
+
+    def _render_legacy(self, canvas: Image, draw: ImageDraw, item: Dict):
+        """Fallback for old text-only content."""
+        content = item.get("content", "")
+        lines = content.split('\n')
+        y = CONTENT_T + 50
+        font = self.get_font("Legacy", 24)
+        for line in lines:
+             draw.text((CONTENT_L, y), line, fill=(255, 255, 255), font=font)
+             y += 30
+
+    def _empty_b64(self) -> str:
+        return ""
     def __init__(self, root_path: str = None):
         if not root_path:
             base_dir = os.path.dirname(__file__)
@@ -194,17 +507,17 @@ class LCARS_Renderer:
                     p_text = f"FED-DB // PAGE {page} OF {total_pages}"
                     draw.text((CANVAS_W - 400, CANVAS_H - 100), p_text, fill=(180, 180, 255, 180), font=f_id)
                 
-                # ACTIVE NODE INDICATOR
-                node_text = f"ACTIVE NODE: {active_node.upper()}"
-                draw.text((345, 115), node_text, fill=(255, 150, 50, 180), font=f_id)
+                # ACTIVE NODE INDICATOR - DISABLED FOR CLEANLINESS
+                # node_text = f"ACTIVE NODE: {active_node.upper()}"
+                # draw.text((345, 115), node_text, fill=(255, 150, 50, 180), font=f_id)
                 
-                # SYSTEM INTEGRITY (Phase 4) - Moved left to avoid overlap
-                integrity_color = (0, 255, 255, 180) if integrity_status == "OPTIMAL" else (255, 0, 0, 220)
-                draw.text((CANVAS_W - 650, 115), f"SYS INTEGRITY: {integrity_status}", fill=integrity_color, font=f_id)
+                # SYSTEM INTEGRITY (Phase 4) - DISABLED FOR CLEANLINESS
+                # integrity_color = (0, 255, 255, 180) if integrity_status == "OPTIMAL" else (255, 0, 0, 220)
+                # draw.text((CANVAS_W - 650, 115), f"SYS INTEGRITY: {integrity_status}", fill=integrity_color, font=f_id)
 
-                # SHADOW AUDIT STATUS - Moved right
-                audit_color = (0, 255, 100, 180) if audit_status == "NOMINAL" else (255, 100, 0, 220)
-                draw.text((CANVAS_W - 350, 115), f"AUDIT: {audit_status}", fill=audit_color, font=f_id)
+                # SHADOW AUDIT STATUS - DISABLED FOR CLEANLINESS
+                # audit_color = (0, 255, 100, 180) if audit_status == "NOMINAL" else (255, 100, 0, 220)
+                # draw.text((CANVAS_W - 350, 115), f"AUDIT: {audit_status}", fill=audit_color, font=f_id)
                 
                 display_count = len(items)
                 if display_count == 0: return self._empty_b64()
@@ -388,6 +701,9 @@ class LCARS_Renderer:
             curr_y_per_col = [text_y_start] * num_cols
             for i, para in enumerate(paragraphs):
                 col_idx = i % num_cols
+                
+                # Calculate X position for this column
+                curr_x = pos[0] + 30 + (col_idx * (col_w + col_inner_spacing))
                 
                 # Check for bilingual split: Name (Chinese)
                 match = re.search(r"^(.*?)\s*\((.*?)\)$", para)

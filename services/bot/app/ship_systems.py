@@ -20,7 +20,7 @@ class ShipSystems:
     # Tier mapping for priority logic
     TIER_MAP = {
         "main_reactor": 1, "eps_grid": 1, "auxiliary_power": 1,
-        "shields": 2, "phasers": 2, "torpedoes": 2, "sif": 2,
+        "shields": 2, "phasers": 2, "phase_cannons": 2, "torpedoes": 2, "sif": 2, "weapons": 2,
         "warp_drive": 3, "impulse_engines": 3, "nav_deflector": 3,
         "life_support": 4, "computer_core": 4, "sensors": 4, "comms": 4,
         "transporters": 5, "replicators": 5, "holodecks": 5, "emh": 5
@@ -31,7 +31,9 @@ class ShipSystems:
         "eps_grid": ["main_reactor"],
         "shields": ["eps_grid"],
         "phasers": ["eps_grid"],
+        "phase_cannons": ["eps_grid"],
         "torpedoes": ["eps_grid"],
+        "weapons": ["eps_grid"],
         "sif": ["eps_grid"],
         "warp_drive": ["main_reactor"],
         "impulse_engines": ["eps_grid"],
@@ -133,6 +135,8 @@ class ShipSystems:
                 "weapons": "武器系统",
                 "shields": "护盾系统",
                 "phasers": "相位炮",
+                "phase_cannons": "相位加农炮",
+                "weapons": "武器阵列",
                 "torpedoes": "鱼雷系统",
                 "comms": "通讯系统",
                 "transporters": "传送器",

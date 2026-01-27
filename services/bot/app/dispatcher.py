@@ -201,6 +201,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "shield_status": "get_shield_status",
         "weapon_lock": "weapon_lock_fire",
         "open_fire": "weapon_lock_fire",
+        "phaser_fire": "weapon_lock_fire",
+        "fire_phasers": "weapon_lock_fire",
         "locate_user": "locate_user",
         "replicate": "replicate",
         "report_replicator_status": "get_subsystem_status",
@@ -1066,17 +1068,17 @@ async def handle_event(event: InternalEvent):
     """
     Main entry point for processing incoming events.
     """
-    print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")
-    logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
-    
     # Session ID logic (Group ID takes precedence)
     session_id = event.group_id if event.group_id else f"p_{event.user_id}"
     
     # Check whitelist
     if not is_group_enabled(event.group_id or session_id if "group" in session_id else None):
-        logger.info(f"[Dispatcher] Group {event.group_id} not in whitelist. Dropping event.")
+        # logger.info(f"[Dispatcher] Group {event.group_id} not in whitelist. Dropping event.") # Silenced
         return False
         
+    print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")
+    logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
+    
     try:
         # Skip empty messages
         if not event.text or not event.text.strip():

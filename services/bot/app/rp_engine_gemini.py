@@ -295,29 +295,6 @@ GUIDELINES:
 Raw Data for Synthesis:
 {raw_data}
 """
-- Treat corrections as highest-priority logical overrides.
-
-IMMEDIATE JUSTIFIED REFUSAL (CRITICAL):
-- **No Isolated Refusals**: You are PROHIBITED from repeating "Unable to provide" (无法提供) in isolation.
-- **No Isolated Refusals**: Do NOT say "Unable to provide" (无法提供) in isolation.
-- **Immediate Technical Reasoning**: If data is missing after analyzing the ROUND records, report the technical reason as your primary reply. 
-- **Example**: "Analysis inconclusive. Geographic marker [District Zero] is not in local archives or Memory Alpha records."
-
-OUTPUT PREFERENCE PROTOCOL (NEW):
-- User requests regarding output style, scale, or formatting (e.g., "Just give me the number", "Be concise", "Don't give me a report") MUST be obeyed.
-- These are valid formatting instructions, NOT physical commands. You MUST NOT return "Unable to comply" or `intent: ignore` for such requests.
-- Switch to **TEXT-ONLY (FACTOID) MODE** immediately if the user requests brevity.
-
-TAUTOLOGY DETECTION (CRITICAL):
-- **Circular Removal**: You are PROHIBITED from providing recursive definitions. (Example Fail: "Starfleet Command is located at Starfleet HQ").
-- **Precision Extraction**: If the user asks "Where?", you MUST extract the most granular geographic identifier (e.g., "The Presidio").
-- **Geographic Precision (Anti-Reversal)**: If asked "Where in San Francisco?", do NOT answer "San Francisco is in California". This is a logic reversal. You MUST find a specific landmark or state "Database lacks specific district metrics for this quadrant".
-- **Synonym Awareness**: Recognize that "Command", "HQ", and "Base" are synonyms for the same entity.
-
-PHYSICS RIGOR (NEW):
-- You MUST strictly distinguish between **Thrust (Force, Newtons / N)** and **Velocity Change (Delta-V, m/s)**.
-- If asked for "Thrust", provide result in Newtons. 
-- Example: "Based on bay volume, instantaneous thrust is X Newtons, resulting in a Delta-V of Y m/s." Never use them interchangeably.
 
 ANALYTICAL INFERENCE PROTOCOL (CRITICAL):
 - **Numerical Computation**: You are AUTHORIZED to perform basic calculations (subtraction, addition, ratios) using metrics found in CONVERSATION HISTORY or ROUND DATA.

@@ -418,10 +418,24 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 })
             
             # ARGUMENT NORMALIZATION
-            duration = int(args.get("duration", 300))
-            silent = args.get("silent", False)
-            if isinstance(silent, str):
-                silent = (silent.lower() == "true")
+            # ARGUMENT NORMALIZATION
+            # 1. Duration: Check multiple aliases (duration_seconds, time, seconds)
+            d_val = args.get("duration") or args.get("duration_seconds") or args.get("seconds") or args.get("time") or 300
+            try:
+                duration = int(d_val)
+            except:
+                duration = 300
+                
+            # 2. Silent Mode: Check 'silent' bool/str OR 'mode' enum
+            s_val = args.get("silent", False)
+            m_val = args.get("mode", "")
+            
+            silent = False
+            if isinstance(s_val, bool): silent = s_val
+            elif isinstance(s_val, str): silent = (s_val.lower() == "true")
+            
+            if not silent and isinstance(m_val, str) and "silent" in m_val.lower():
+                silent = True
             
             # Both tools map to the same internal logic: Initialize (which starts countdown)
             result = await tools.initialize_self_destruct(
@@ -522,7 +536,14 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                     logger.info(f"[Dispatcher] Attached image from {image_path} to event meta.")
             
         elif tool == "toggle_shields":
-            active = args.get("active") if "active" in args else ("raise" in tool_name or "升起" in tool_name)
+            # LOGIC FIX: Check user text for intent if arg is missing
+            user_text = event.text.lower()
+            is_raise = any(k in user_text for k in ["raise", "up", "enable", "on", "activate", "升起", "开启", "打开", "启动"])
+            active = args.get("active", is_raise)
+            # Handle string 'true'/'false' from AI
+            if isinstance(active, str):
+                active = (active.lower() == "true")
+                
             result = tools.toggle_shields(active, profile.get("clearance", 1))
 
         elif tool in ["cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct"]:
@@ -736,7 +757,17 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
 
             
         elif tool == "get_personnel_file":
-            result = tools.get_personnel_file(args.get("target_mention", ""), str(event.user_id), is_chinese=is_chinese)
+            # LOGIC FIX: If target is a NAME (not ID/Mention), route to Knowledge Base
+            target = args.get("target_mention") or args.get("name") or args.get("who") or ""
+            import re
+            is_real_user = bool(re.search(r"\d+", str(target)))
+            
+            if target and not is_real_user and len(target) > 2:
+                # User asked for "Picard", not a QQ users. Redirect to Research.
+                logger.info(f"[Dispatcher] Redirecting personnel query '{target}' to Knowledge Base.")
+                result = await tools.query_knowledge_base(f"Personnel File: {target} history and biography", session_id)
+            else:
+                result = tools.get_personnel_file(target, str(event.user_id), is_chinese=is_chinese)
             
         elif tool == "update_biography":
             result = tools.update_biography(args.get("content", ""), str(event.user_id))
@@ -837,20 +868,48 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             # PHASE 4: SELF-HEALING & ADAPTIVE RESOLUTION
             logger.warning(f"[Dispatcher] Unknown tool '{tool}' requested. Initiating Logic Repair Scan...")
             
-            import difflib
-            # 1. Inspect 'tools' module for all valid callable functions
-            valid_tools = [
-                name for name in dir(tools) 
-                if callable(getattr(tools, name)) and not name.startswith("_")
-            ]
+            # 0. SEMANTIC ALIAS MAP (Hardcoded Hallucination Bridges)
+            SEMANTIC_MAP = {
+                # Weapons
+                "fire_photon_torpedoes": "weapon_lock_fire",
+                "launch_torpedoes": "weapon_lock_fire",
+                "fire_phasers": "weapon_lock_fire",
+                "torpedo_control": "weapon_lock_fire",
+                "tactical_analysis": "weapon_lock_fire",
+                # Holodeck
+                "set_holosimulation": "reserve_holodeck",
+                "holodeck_simulation": "reserve_holodeck",
+                "start_simulation": "reserve_holodeck",
+                # Scanning
+                "scan_area": "query_knowledge_base",
+                "scan_lifeforms": "query_knowledge_base",
+                "long_range_scan": "search_memory_alpha",
+                # System
+                "computer_diagnosis": "get_system_metrics",
+                "system_diagnostic": "get_system_metrics"
+            }
             
-            # 2. Find closest match (cutoff=0.6 covers simple typos like 'set_holodeck' -> 'reserve_holodeck')
-            matches = difflib.get_close_matches(tool, valid_tools, n=1, cutoff=0.5)
+            corrected_tool = None
+            corrected_tool = None
+            if tool_lower in SEMANTIC_MAP: # Use tool_lower check
+                corrected_tool = SEMANTIC_MAP[tool_lower]
+                logger.info(f"[Dispatcher] SELF-HEALING: Semantic Map Hit '{tool}' -> '{corrected_tool}'")
             
-            if matches:
-                corrected_tool = matches[0]
-                logger.info(f"[Dispatcher] SELF-HEALING: Correcting hallucinations '{tool}' -> '{corrected_tool}'")
+            else:
+                import difflib
+                # 1. Inspect 'tools' module for all valid callable functions
+                valid_tools = [
+                    name for name in dir(tools) 
+                    if callable(getattr(tools, name)) and not name.startswith("_")
+                ]
                 
+                # 2. Find closest match (cutoff=0.6 covers simple typos like 'set_holodeck' -> 'reserve_holodeck')
+                matches = difflib.get_close_matches(tool, valid_tools, n=1, cutoff=0.5)
+                if matches:
+                    corrected_tool = matches[0]
+                    logger.info(f"[Dispatcher] SELF-HEALING: Fuzzy Match Hit '{tool}' -> '{corrected_tool}'")
+
+            if corrected_tool:
                 # 3. Dynamic Dispatch
                 func = getattr(tools, corrected_tool)
                 
@@ -866,7 +925,22 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                      # Fallback: Check if it needs specific common args like 'user_id' not in args
                      logger.warning(f"[Dispatcher] Dynamic dispatch arg mismatch: {te}. Retrying with profile injection...")
                      try:
-                         # Inject common profile args if missing
+                         # SPECIAL HANDLER: Search Tools - squash extra args into query
+                         if corrected_tool in ["query_knowledge_base", "search_memory_alpha"] and "query" in args:
+                             # 1. Identify valid args for these tools (usually just query, session_id)
+                             # 2. Squash everything else into query
+                             base_query = args["query"]
+                             extra_context = []
+                             for k, v in args.items():
+                                 if k not in ["query", "session_id", "user_id"]:
+                                     extra_context.append(f"{k}: {v}")
+                             
+                             if extra_context:
+                                 new_query = f"{base_query} ({' '.join(extra_context)})"
+                                 logger.info(f"[Dispatcher] Squashing args for search: '{new_query}'")
+                                 args = {"query": new_query, "session_id": session_id}
+                         
+                         # Standard Injection
                          if "user_id" not in args: args["user_id"] = str(event.user_id)
                          if "session_id" not in args: args["session_id"] = session_id
                          if "clearance" not in args: args["clearance"] = profile.get("clearance", 1)
@@ -1004,6 +1078,14 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         elif result.get("tool"):
             tool_chain = [{"tool": result.get("tool"), "args": result.get("args") or {}}]
             
+        # SAFETY CHECK: If intent is tool_call but tool is None/Empty
+        if intent == "tool_call" and not tool_chain:
+            logger.warning("[Dispatcher] AI signaled tool_call but provided NO tools (tool=None).")
+            # If the AI also gave no reply, we must provide a default response to avoid silence.
+            if not result.get("reply"):
+                result["reply"] = "Processing Error: I understood the command, but the tactical selection logic returned NULL. Please restate sequentially."
+            intent = "reply" # Fallback to reply mode
+
         if intent == "tool_call" and tool_chain:
             chain_aborted = False
             for step_idx, step in enumerate(tool_chain):
@@ -1080,10 +1162,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
                 shortcut_tools = [
                     "next_page", "prev_page", "show_details", "get_personnel_file",
-                    "self_destruct", "initialize_self_destruct", "authorize_self_destruct", "activate_self_destruct",
+                    # Re-added CANCELLATION tools as they are terminal actions and should stop the loop immediately
                     "cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct",
-                    "authorize_cancel_self_destruct", "confirm_cancel_self_destruct", "get_destruct_status",
-                    "set_alert_status", "toggle_shields", "set_absolute_override", "weapon_lock_fire", "replicate"
                 ]
                 if tool in shortcut_tools:
                     # ONLY short-circuit if this is a single-step action or the LAST step of a chain
@@ -1092,10 +1172,11 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
                         reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
                         if tool_result.get("ok") is False and not reply_text:
-                            reply_text = "Unable to comply. Check clearance or current state,"
+                            reply_text = "Unable to comply. Check clearance or current state."
                         
                         image_b64 = event.meta.get("image_b64")
                         cumulative_data = [] # Clear to prevent synthesis phase
+                        terminate_agent_loop = True # FORCE BREAK OUTER LOOP
                         break
                     else:
                         logger.info(f"[Dispatcher] Tool '{tool}' completed. Proceeding to next step in chain.")
@@ -1171,9 +1252,15 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         except Exception as e:
             logger.debug(f"[Dispatcher] Blueprint probe inconclusive: {e}")
 
-        # PHASE 1.5: RESTRICTED RENDERING SCOPE + BLUEPRINT OVERRIDE
-        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details"]
-        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools) or (blueprint_data is not None)
+        # PHASE 1.5: RESTRICTED RENDERING SCOPE (STRICT PROTOCOL)
+        IMAGE_WHITELIST = [
+            "get_personnel_file", "query_knowledge_base", "search_memory_alpha", 
+            "show_details", "get_system_metrics", "get_subsystem_status", 
+            "get_destruct_status", "get_shield_status"
+        ]
+        # STRICT: Only generate image if a Data/Status tool was explicitly used.
+        # We ignore 'blueprint_data' presence alone because the LLM sometimes hallucinates layouts for simple actions.
+        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools)
         
         # Decide if we render a visual report or simple text
         # Relaxed logic: Render if (> 200 chars OR has newline and > 100 chars) AND (whitelist OR blueprint)
@@ -1215,13 +1302,20 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     import json
                     data = json.loads(cleaned_reply)
                     # Extract text from layout blocks if it's our LCARS schema
+                    # Extract text from layout blocks if it's our LCARS schema
                     blocks = data.get("layout", [])
                     texts = [b.get("content", "") for b in blocks if b.get("type") == "text_block"]
+                    
+                    # Enhanced Search for content
+                    direct_text = data.get("reply") or data.get("message") or data.get("summary") or data.get("description")
+                    
                     if texts:
                         cleaned_reply = "\n\n".join(texts)
+                    elif direct_text:
+                        cleaned_reply = str(direct_text)
                     else:
                         # Fallback to header/footer if no core text
-                        cleaned_reply = data.get("header", {}).get("en", "") or data.get("footer", {}).get("en", "") or "Data retrieval complete."
+                        cleaned_reply = data.get("header", {}).get("en", "") or data.get("footer", {}).get("en", "") or "Command executed. (Visual output suppressed by protocol)."
                 except:
                     pass
             

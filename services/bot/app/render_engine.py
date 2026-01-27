@@ -150,6 +150,7 @@ class LCARS_Renderer:
                 if current_page_paras:
                     pages.append({
                         "title": combined_title,
+                        "pre_render_cache": {},
                         "content": "\n".join(current_page_paras),
                         "image_b64": item.get("image_b64") if len(pages) == 0 else None,
                         "source": item.get("source", "UNKNOWN")
@@ -213,6 +214,7 @@ class LCARS_Renderer:
         title_en = title_parts[0] if title_parts else "TECHNICAL DATA"
         title_zh = title_parts[1] if len(title_parts) > 1 else ""
         
+        content = item.get("content", "").strip()
         # Header consumption is now handled globally in split_content_to_pages
         
         content = self._normalize_text_flow(content)
@@ -268,6 +270,9 @@ class LCARS_Renderer:
                     canvas.alpha_composite(img, (pos[0] + (img_w - img.width) // 2, pos[1] + (h - img.height) // 2 + 50))
             except Exception as e:
                 logger.warning(f"[Renderer] Hybrid image fail: {e}")
+
+            # FONT INITIALIZATION (Comprehensive scope)
+            f_para_test = self.get_font(content, FONT_SIZE)
 
             text_y = pos[1] + 175 # Jump below massive header
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]

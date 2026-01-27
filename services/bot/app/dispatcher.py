@@ -288,8 +288,11 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                             "items_per_page": 1, # Direct mapping to items
                             "pre_render_cache": {}
                         }
-                        result["items"] = [sub_pages[0]]
-                        logger.info(f"[Dispatcher] Single long result detected. Split into {len(sub_pages)} sub-pages.")
+                        # result["items"] is PRESERVED for AI loop. sub_pages are only for SEARCH_RESULTS.
+                        # RENDER INITIAL PAGE FOR USER
+                        img_b64 = renderer.render_report([sub_pages[0]], page=1, total_pages=len(sub_pages))
+                        event.meta["image_b64"] = img_b64
+                        logger.info(f"[Dispatcher] Long result decoupled: AI sees raw, UI gets Image Page 1/{len(sub_pages)}.")
                     else:
                         ipp = 4
                         total_p = (len(items) + ipp - 1) // ipp
@@ -302,6 +305,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                             "items_per_page": ipp,
                             "pre_render_cache": {}
                         }
+                        # RENDER INITIAL PAGE FOR SEARCH LIST
+                        from .render_engine import get_renderer
+                        renderer = get_renderer()
+                        img_b64 = renderer.render_report(items[:ipp], page=1, total_pages=total_p)
+                        event.meta["image_b64"] = img_b64
+                        logger.info(f"[Dispatcher] Search list decoupled: AI sees full list, UI gets Image Page 1/{total_p}.")
                     # TRIGGER INITIAL PRE-WARM FOR SEARCH
                     _executor.submit(_prefetch_next_pages, session_id, is_chinese)
                 
@@ -324,14 +333,11 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         "has_more": result.get("has_more", False),
                         "pre_render_cache": {} # Initialize cache
                     }
-                    if sub_pages:
-                        # Update result items to the first sub-page for current synthesis/reply
-                        result["items"] = [sub_pages[0]]
-                        
-                        # TRIGGER INITIAL PRE-WARM
-                        _executor.submit(_prefetch_next_pages, session_id, is_chinese)
-                    else:
-                        logger.warning("[Dispatcher] Article/Chunk split resulted in zero pages.")
+                    # result["items"] is PRESERVED (Raw technical stream for AI reasoning)
+                    # RENDER INITIAL PAGE FOR USER
+                    img_b64 = renderer.render_report([sub_pages[0]], page=1, total_pages=len(sub_pages))
+                    event.meta["image_b64"] = img_b64
+                    logger.info(f"[Dispatcher] Article decoupled: AI sees full chunk, UI gets Image Page 1/{len(sub_pages)}.")
 
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]

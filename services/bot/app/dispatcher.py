@@ -850,7 +850,9 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
     try:
         wd = watchdog.get_watchdog()
-    wd.record_heartbeat()
+        wd.record_heartbeat()
+    except Exception as e:
+        logger.warning(f"[Dispatcher] Watchdog heartbeat failed: {e}")
     profile_str = permissions.format_profile_for_ai(user_profile)
     logger.info(f"[Dispatcher] Starting Agentic Loop for session {session_id}")
     

@@ -546,7 +546,14 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
     # Input Normalization for Search (Map Chinese to English for Memory Alpha)
     if "企业号" in query or "进取号" in query:
         query = query.replace("企业号", "Enterprise").replace("进取号", "Enterprise")
-        logger.info(f"[Tools] Normalized input query to: {query}")
+    
+    # PROTOCOL TOKEN STRIPPING: Remove navigational keywords that might confuse the search engine
+    search_query = query
+    for token in ["LIST", "INDEX", "ALL", "FULL", "VERBATIM", "列出", "列表", "所有", "全部"]:
+        # Case-insensitive replacement of whole words/tokens
+        search_query = re.sub(rf'\b{token}\b', '', search_query, flags=re.IGNORECASE).strip()
+    
+    logger.info(f"[Tools] Search normalization: '{query}' -> '{search_query}'")
 
     try:
         client = genai.Client(api_key=api_key)
@@ -558,7 +565,7 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
         
         # Prompt for navigation/fetching with CHUNKING support
         nav_prompt = (
-            f"Navigate to memory-alpha.fandom.com and locate the entry for '{query}'.\n"
+            f"Navigate to memory-alpha.fandom.com and locate the entry for '{search_query}'.\n"
             "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects?\n"
             "STEP 2: Output Logic:\n"
             "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of titles.\n"
@@ -608,10 +615,10 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             content_body = raw_output
             if "TEXT_START" in content_body:
                 content_body = content_body[content_body.find("TEXT_START") + 10:].strip()
-            else:
-                for marker in ["STATUS: FOUND", "IMAGE:", "HAS_MORE:", "TOTAL_CHUNKS:", "CHUNK PROTOCOL:"]:
-                    # Match from start of line to end of line for markers
-                    content_body = re.sub(rf'^{marker}.*$', '', content_body, flags=re.MULTILINE)
+            # AGGRESSIVE CLEANING FALLBACK
+            for marker in ["STATUS: FOUND", "IMAGE:", "HAS_MORE:", "TOTAL_CHUNKS:", "CHUNK PROTOCOL:", "TEXT_START"]:
+                # Match from start of line to end of line for markers
+                content_body = re.sub(rf'^{marker}.*$', '', content_body, flags=re.MULTILINE | re.IGNORECASE)
             content_body = content_body.strip()
             
             # Translate Verbatim

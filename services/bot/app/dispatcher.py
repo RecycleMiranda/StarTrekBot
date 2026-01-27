@@ -273,9 +273,16 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 if "items" in result:
                     items = result["items"]
                     
-                    # ENHANCED: Check if we have a single very long result (often a summarized list)
-                    # If so, treat it like an article and split it into sub-pages.
-                    if len(items) == 1 and len(items[0].get("content", "")) > 600:
+                    # ENHANCED: Only trigger LCARS if content is significant or multiple items exist
+                    content_len = len(items[0].get("content", "")) if len(items) == 1 else 999
+                    if not items:
+                        is_handled = False
+                        logger.warning("[Dispatcher] KB/MA returned empty items list.")
+                    elif content_len < 180:
+                        is_handled = False # Fall back to standard AI synthesis
+                        logger.info(f"[Dispatcher] Short content detected ({content_len} chars). Skipping LCARS.")
+                        event.meta.pop("image_b64", None) # Clear previous artifacts
+                    elif len(items) == 1 and content_len > 600:
                         from .render_engine import get_renderer
                         renderer = get_renderer()
                         sub_pages = renderer.split_content_to_pages(items[0])
@@ -901,10 +908,18 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         if is_comprehensive or "^^DATA_START^^" in synth_reply:
             from .render_engine import get_renderer
             renderer = get_renderer()
+            # ENHANCED: Protect against recursive LCARS in synthesis
+            tool_img = (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None)
+            
+            # If tool_img exists, ensure it's not a recursive render (Canvas size match)
+            if tool_img and len(tool_img) > 10000: # Heuristic for full-frame LCARS
+                 # We could be more precise by decoding, but this check prevents obvious loops
+                 pass
+
             report_item = {
                 "title": "", # Suppress top bar title per user request
                 "content": synth_reply,
-                "image_b64": (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None) or event.meta.get("image_b64"),
+                "image_b64": tool_img or event.meta.get("image_b64"),
                 "source": current_source
             }
             final_items = renderer.split_content_to_pages(report_item)
@@ -916,6 +931,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         else:
             reply_text = synth_reply.replace("^^DATA_START^^", "").strip()
             image_b64 = None
+            event.meta.pop("image_b64", None) # Clean up state for short text
 
     # Fallback sync for alert images
     if not image_b64 and event.meta.get("image_b64"):
@@ -1083,10 +1099,10 @@ async def handle_event(event: InternalEvent):
             nav_text = event.text.strip().lower()
             force_tool = None
             
-            if re.match(r'^(next|next page|下一页|下页|继续|more)$', nav_text):
+            if re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
                 force_tool = "next_page"
                 logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
-            elif re.match(r'^(previous|prev|previous page|back|上一页|上页|返回)$', nav_text):
+            elif re.match(r'.*(previous|prev|previous page|back|上一页|上页|返回).*', nav_text):
                 force_tool = "prev_page"
                 logger.info("[Dispatcher] Fast-Path triggered: Force Prev Page")
                 

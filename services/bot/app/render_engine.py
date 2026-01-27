@@ -196,8 +196,8 @@ class LCARS_Renderer:
                 labels = ["1A", "1B", "2A", "2B"]
                 
                 for i, item in enumerate(items):
-                    curr_y = CONTENT_T + (i * item_h)
-                    self._draw_mega_slot(canvas, item, (CONTENT_L, curr_y), CONTENT_W, item_h - spacing, labels[i], f_title, f_id)
+                    is_list = (display_count > 1)
+                    self._draw_mega_slot(canvas, item, (CONTENT_L, curr_y), CONTENT_W, item_h - spacing, labels[i], f_title, f_id, is_list=is_list)
 
                 buffered = BytesIO()
                 canvas.save(buffered, format="PNG")
@@ -206,7 +206,7 @@ class LCARS_Renderer:
             logger.error(f"[Renderer] Render critical failure: {e}")
             return self._empty_b64()
 
-    def _draw_mega_slot(self, canvas, item, pos, w, h, item_id, f_t, f_id):
+    def _draw_mega_slot(self, canvas, item, pos, w, h, item_id, f_t, f_id, is_list=True):
         draw = ImageDraw.Draw(canvas)
         # DYNAMIC BILINGUAL HEADER
         raw_title = (item.get("title") or "TECHNICAL DATA STREAM").strip()
@@ -285,13 +285,19 @@ class LCARS_Renderer:
             text_y = pos[1] + 165 
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
-                # Render full paragraph as a block
+                # DETECTION: Is this a subheading? (Ends with colon and reasonably short)
+                is_subheading = para.endswith(":") and len(para) < 80
+                
+                if is_subheading:
+                    text_y = self._draw_bilingual_subheading(canvas, draw, para, (text_l, text_y), text_w, is_list)
+                    continue
+
                 f_line = self.get_font(para, FONT_SIZE)
                 lines = self._wrap_text_clean(para, f_line, text_w)
-                
+                # ... check bounds ...
                 if text_y + (len(lines) * LINE_HEIGHT) > pos[1] + h - 10: break
                 
-                color = self._get_color_for_text(para, index=i)
+                color = self._get_color_for_text(para, index=i, is_list=is_list)
                 for line in lines:
                     draw.text((text_l, text_y), line, fill=color, font=f_line)
                     text_y += LINE_HEIGHT 
@@ -368,12 +374,19 @@ class LCARS_Renderer:
                 else:
                     en_text, zh_text = para, ""
                 
-                curr_x = pos[0] + 30 + (col_idx * (col_w + col_inner_spacing))
+                # DETECTION: Subheading in column
+                is_subheading = para.endswith(":") and len(para) < 60
+                
+                if is_subheading:
+                    curr_y_per_col[col_idx] = self._draw_bilingual_subheading(canvas, draw, para, (curr_x, curr_y_per_col[col_idx]), col_w, is_list)
+                    curr_y_per_col[col_idx] += (PARA_SPACING // 4)
+                    continue
+
                 f_en = self.get_font(en_text, best_size)
                 
                 # NARRATIVE WRAPPING (Crucial for text-only mode)
                 wrapped_lines = self._wrap_text_clean(en_text, f_en, col_w)
-                color = self._get_color_for_text(para, index=i)
+                color = self._get_color_for_text(para, index=i, is_list=is_list)
                 
                 for line in wrapped_lines:
                     if curr_y_per_col[col_idx] + best_lh > pos[1] + h - 10: break
@@ -384,7 +397,8 @@ class LCARS_Renderer:
                 if zh_text:
                     if curr_y_per_col[col_idx] + int(best_size * 1.1) <= pos[1] + h - 10:
                         f_zh_sub = self.get_font(zh_text, int(best_size * 0.8))
-                        color_zh = (150, 180, 255, 180) if (i % 2 == 0) else (100, 150, 255, 150)
+                        # Use is_list for subsidiary colors too
+                        color_zh = (150, 180, 255, 180) if (not is_list or i % 2 == 0) else (100, 150, 255, 150)
                         draw.text((curr_x, curr_y_per_col[col_idx]), zh_text, fill=color_zh, font=f_zh_sub)
                         curr_y_per_col[col_idx] += int(best_size * 1.2)
                 
@@ -421,6 +435,31 @@ class LCARS_Renderer:
                 curr = char
         if curr: lines.append(curr)
         return lines
+
+    def _draw_bilingual_subheading(self, canvas, draw, text, pos, w, is_list):
+        """Draws a stacked orange(EN)/cyan(ZH) subheading and returns the new Y position."""
+        # Detect if text contains bilingual parts like "Label: 标签:" or just "Header:"
+        parts = re.split(r'[:：]', text)
+        parts = [p.strip() for p in parts if p.strip()]
+        
+        en_sub = parts[0] if parts else text.replace(":", "")
+        zh_sub = parts[1] if len(parts) > 1 else ""
+
+        f_en = self.get_font(en_sub, 32)
+        f_zh = self.get_font(zh_sub, 22)
+        
+        # Color: Subheader Gold/Orange for EN, Cyan for ZH
+        color_en = (255, 180, 50, 255)
+        color_zh = (150, 180, 255, 200)
+        
+        draw.text(pos, en_sub, fill=color_en, font=f_en)
+        curr_y = pos[1] + 40
+        
+        if zh_sub:
+            draw.text((pos[0], curr_y), zh_sub, fill=color_zh, font=f_zh)
+            curr_y += 35
+        
+        return curr_y + 5 # Return moved Y
 
     def _normalize_text_flow(self, text: str) -> str:
         """
@@ -475,9 +514,9 @@ class LCARS_Renderer:
         result = result.replace("**", "").replace("*", "")
         return result
 
-    def _get_color_for_text(self, text: str, index: int = 0) -> Tuple[int, int, int, int]:
-        """Returns LCARS color based on dominant language and row index for zebra-striping."""
-        is_alt = (index % 2 == 1)
+    def _get_color_for_text(self, text: str, index: int = 0, is_list: bool = True) -> Tuple[int, int, int, int]:
+        """Returns LCARS color based on dominant language. Row-based brightness variance (zebra) ONLY for lists."""
+        is_alt = (index % 2 == 1) and is_list # Suppress alt-color if not a list
         # Detect Chinese characters
         if re.search(r'[\u4e00-\u9fff]', text):
             # LCARS Cyan-Blue for Chinese

@@ -147,6 +147,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "start_countdown": "activate_self_destruct",
         # Status aliases
         "destruct_status": "get_destruct_status",
+        "system_status": "get_status",
+        "status": "get_status",
+        "ship_status": "get_status",
         "check_destruct": "get_destruct_status",
         "destruct_info": "get_destruct_status",
         # Cancel aliases
@@ -231,8 +234,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         return {"ok": False, "message": "权限不足拒绝访问"}
 
     try:
-        if tool == "status":
-            result = tools.get_status()
+        if tool == "get_status":
+            result = tools.get_status(**args)
 
         elif tool == "time":
             result = tools.get_time()

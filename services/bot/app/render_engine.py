@@ -219,62 +219,70 @@ class LCARS_Renderer:
         
         content = self._normalize_text_flow(content)
 
-        # INITIAL FONT ASSIGNMENT (Standard sizes)
-        f_title_en = self.get_font(title_en, 80)
-        f_title_zh = self.get_font(title_zh, 48)
-        f_id_large = self.get_font("ID", 36)
+        # INITIAL FONT ASSIGNMENT (Balanced Sizes for Multi-Page Clarity)
+        f_title_en = self.get_font(title_en, 56) # Reduced from 80
+        f_title_zh = self.get_font(title_zh, 32) # Reduced from 48
+        f_id_large = self.get_font("ID", 32)
+        f_id_small = self.get_font("ID", 20)
 
         # SOURCE BADGE (Verification Layer)
         source = item.get("source", "UNKNOWN")
-        badge_text = f"// VERIFIED SOURCE: {source}"
-        badge_w = draw.textlength(badge_text, font=f_id)
+        badge_text = f"// VERIFIED SOURCE: {source.upper()}"
+        badge_w = draw.textlength(badge_text, font=f_id_small)
         
         # DYNAMIC TITLE SCALING: Shrink title if it would overlap the badge
-        max_title_w = w - badge_w - 120 # Leave buffer
+        max_title_w = w - badge_w - 40
         title_en_w = draw.textlength(title_en, f_title_en)
         
         if title_en_w > max_title_w:
-            # Scale down English title font
             scale_factor = max_title_w / title_en_w
-            new_size = max(30, int(80 * scale_factor)) # Don't go below 30pt
+            new_size = max(24, int(56 * scale_factor))
             f_title_en = self.get_font(title_en, new_size)
             
-        # Draw ID and Leading English Title (Left Aligned)
-        draw.text((pos[0] + 15, pos[1] + 15), item_id, fill=(255, 170, 0, 255), font=f_id_large)
-        # Shifted English title to left
-        draw.text((pos[0] + 80, pos[1] + 10), title_en, fill=(255, 180, 50, 255), font=f_title_en)
-        
-        # Sub-title (Chinese) - Tucked under English
+        # DRAW HEADER BLOCK (Shifted Downward to avoid top frame)
+        header_y = pos[1] + 35
+        # ID Badge
+        draw.text((pos[0] + 15, header_y + 5), item_id, fill=(255, 170, 0, 255), font=f_id_large)
+        # English Title
+        draw.text((pos[0] + 90, header_y), title_en, fill=(255, 180, 50, 255), font=f_title_en)
+        # Chinese Sub-title
         if title_zh:
-            draw.text((pos[0] + 85, pos[1] + 85), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
+            draw.text((pos[0] + 95, header_y + 60), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
-        # DRAW SOURCE BADGE
-        draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
+        # SOURCE BADGE (Top Right Alignment)
+        draw.text((pos[0] + w - badge_w - 20, header_y - 20), badge_text, fill=(0, 255, 120, 150), font=f_id_small)
         
         img_b64 = item.get("image_b64")
         
-        # Lower horizontal line to create absolute distance
-        line_y = pos[1] + 155
-        draw.rectangle([pos[0], line_y, pos[0] + w, line_y + 4], fill=(150, 150, 255, 80))
+        # Horizontal Divider
+        divider_y = pos[1] + 135
+        draw.rectangle([pos[0], divider_y, pos[0] + w, divider_y + 2], fill=(150, 150, 255, 60))
         
         if img_b64 and content:
-            # ... (image remains same, but text_y adjusted)
-            img_w = int(w * 0.45)
-            text_l = pos[0] + img_w + 40
-            text_w = w - img_w - 60
-            self._draw_stretched_brackets(canvas, (pos[0], pos[1]), img_w, h)
+            # HYBRID MODE: Simplified Centered Thumbnail
+            img_w = int(w * 0.42)
+            text_l = pos[0] + img_w + 30
+            text_w = w - img_w - 50
+            
             try:
                 img_data = base64.b64decode(img_b64)
                 with Image.open(BytesIO(img_data)).convert("RGBA") as img:
-                    img.thumbnail((img_w - 80, h - 160), Image.Resampling.LANCZOS)
-                    canvas.alpha_composite(img, (pos[0] + (img_w - img.width) // 2, pos[1] + (h - img.height) // 2 + 50))
+                    # PREVENT RECURSIVE LCARS: If image resolution matches Canvas, it's an internal render. Skip.
+                    if img.width == CANVAS_W and img.height == CANVAS_H:
+                        raise ValueError("Recursive LCARS detected")
+                    
+                    img.thumbnail((img_w - 40, h - 200), Image.Resampling.LANCZOS)
+                    # Simple Border for thumbnail
+                    bx = pos[0] + (img_w - img.width) // 2
+                    by = pos[1] + (h - img.height) // 2 + 65
+                    draw.rectangle([bx-2, by-2, bx+img.width+2, by+img.height+2], outline=(150,150,255,100), width=2)
+                    canvas.alpha_composite(img, (bx, by))
             except Exception as e:
-                logger.warning(f"[Renderer] Hybrid image fail: {e}")
+                logger.warning(f"[Renderer] Simplified hybrid fail: {e}")
+                text_l = pos[0] + 30
+                text_w = w - 60
 
-            # FONT INITIALIZATION (Comprehensive scope)
-            f_para_test = self.get_font(content, FONT_SIZE)
-
-            text_y = pos[1] + 175 # Jump below massive header
+            text_y = pos[1] + 165 
             paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
             for i, para in enumerate(paragraphs):
                 # Render full paragraph as a block
@@ -290,12 +298,17 @@ class LCARS_Renderer:
                 
                 text_y += PARA_SPACING 
         elif img_b64:
-            self._draw_stretched_brackets(canvas, pos, w, h)
+            # FULL IMAGE MODE: Centered with border
             try:
                 img_data = base64.b64decode(img_b64)
                 with Image.open(BytesIO(img_data)).convert("RGBA") as img:
-                    img.thumbnail((w - 120, h - 180), Image.Resampling.LANCZOS)
-                    canvas.alpha_composite(img, (pos[0] + (w - img.width) // 2, pos[1] + (h - img.height) // 2 + 35))
+                    if img.width == CANVAS_W and img.height == CANVAS_H:
+                        raise ValueError("Recursive LCARS in full mode")
+                    img.thumbnail((w - 80, h - 200), Image.Resampling.LANCZOS)
+                    bx = pos[0] + (w - img.width) // 2
+                    by = pos[1] + (h - img.height) // 2 + 50
+                    draw.rectangle([bx-2, by-2, bx+img.width+2, by+img.height+2], outline=(150,150,255,80), width=2)
+                    canvas.alpha_composite(img, (bx, by))
             except: pass
         else:
             text_y_start = pos[1] + 175 

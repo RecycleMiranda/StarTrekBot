@@ -126,14 +126,22 @@ class TemplateRenderer:
         
         # Translation Map for Values
         rank_zh = {
-            "Admiral": "上将", "Captain": "上校", "Commander": "中校", 
+            "Fleet Admiral": "舰队上将",
+            "Admiral": "上将", "Vice Admiral": "中将", "Rear Admiral": "少将",
+            "Commodore": "准将",
+            "Captain": "上校", "Commander": "中校", 
             "Lt. Commander": "少校", "Lieutenant": "上尉", "Lieutenant J.G.": "中尉",
             "Ensign": "少尉", "Crewman": "船员", "Civilian": "平民"
         }
         
-        rank = data.get("rank", "Ensign")
+        raw_rank = data.get("rank", "Ensign")
+        # Normalize to Title Case for robust dictionary matching
+        rank_key = raw_rank.title() if raw_rank else "Ensign"
+        
         if is_chinese:
-            rank = f"{rank} / {rank_zh.get(rank, '未知')}"
+            rank = f"{raw_rank} / {rank_zh.get(rank_key, '未知')}"
+        else:
+            rank = raw_rank
             
         fields = [
             ("NAME / 姓名" if is_chinese else "NAME", data.get("name", "Unknown")),

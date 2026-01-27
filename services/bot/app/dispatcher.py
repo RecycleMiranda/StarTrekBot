@@ -21,6 +21,7 @@ from . import shadow_audit
 from . import watchdog
 from . import emergency_kernel
 from .protocol_manager import get_protocol_manager
+from .ops_registry import OpsRegistry, TaskPriority, TaskState
 
 logger = logging.getLogger(__name__)
 
@@ -838,11 +839,17 @@ def is_group_enabled(group_id: str | None) -> bool:
         
     return str(group_id) in whitelist
 
-async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None):
+async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None):
     """
     STAR EXECUTION LOOP 2.0 (Liquid Agent Matrix with Phase 4 Resilience)
     """
-    wd = watchdog.get_watchdog()
+    from .ops_registry import TaskState, OpsRegistry
+    ops = OpsRegistry.get_instance()
+    if ops_task:
+        await ops.update_state(ops_task.pid, TaskState.RUNNING)
+        
+    try:
+        wd = watchdog.get_watchdog()
     wd.record_heartbeat()
     profile_str = permissions.format_profile_for_ai(user_profile)
     logger.info(f"[Dispatcher] Starting Agentic Loop for session {session_id}")
@@ -1134,10 +1141,13 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         sq = send_queue.SendQueue.get_instance()
         session_key = f"qq:{event.group_id or event.user_id}"
         
+        # Use Priority from Task if available
+        priority_val = ops_task.priority.value if ops_task else 3
+
         await sq.enqueue_send(session_key, reply_text, {
             "group_id": event.group_id, "user_id": event.user_id,
             "reply_to": event.message_id, "image_b64": image_b64
-        })
+        }, priority=priority_val)
         
         # Persistence & History
         if not result.get("needs_escalation"):
@@ -1154,6 +1164,10 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
     
     logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
     return False
+    finally:
+        if ops_task:
+            from .ops_registry import TaskState
+            await ops.update_state(ops_task.pid, TaskState.COMPLETED)
 
 
 async def handle_event(event: InternalEvent):
@@ -1170,6 +1184,62 @@ async def handle_event(event: InternalEvent):
         
     print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")
     logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
+
+    # --- OPS COMMAND INTERCEPT (PRE-AI) ---
+    is_ops_query = False
+    if event.text:
+        text_l = event.text.lower()
+        if text_l.startswith("/ops") or any(kw in text_l for kw in ["后台任务", "进程列表", "任务列表", "显示进程", "查看进程"]):
+            is_ops_query = True
+
+    if is_ops_query:
+        from . import ops_registry
+        ops = ops_registry.OpsRegistry.get_instance()
+        sq = send_queue.SendQueue.get_instance()
+        session_key = f"{event.platform}:{event.group_id or event.user_id}"
+        
+        cmd_parts = event.text.split()
+        # Normalization
+        raw_cmd = cmd_parts[0][4:] if cmd_parts[0].startswith("/ops") and len(cmd_parts[0]) > 4 else "list"
+        if any(kw in event.text for kw in ["终止", "停止", "abort", "cancel"]): raw_cmd = "abort"
+        if any(kw in event.text for kw in ["优先", "置顶", "priority"]): raw_cmd = "priority"
+
+        if raw_cmd == "list":
+            tasks = await ops.get_active_tasks()
+            if not tasks:
+                await sq.enqueue_send(session_key, "OPS: No active background processes.", {"from_computer": True}, priority=1)
+            else:
+                report = "STATUS: ACTIVE PROCESSES\n" + "-"*30 + "\n"
+                for t in tasks:
+                    # Calculate duration
+                    dur = int(time.time() - t.created_at)
+                    report += f"[{t.pid}] {t.priority.name} | {t.state.value} | {dur}s | {t.query[:20]}...\n"
+                await sq.enqueue_send(session_key, report, {"from_computer": True}, priority=1)
+            return True
+        elif raw_cmd == "abort":
+            # Try to find PID in text
+            pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
+            target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
+            
+            if target_pid:
+                success = await ops.abort_task(target_pid)
+                reply = f"OPS: Task {target_pid} terminated." if success else f"OPS: Task {target_pid} not found or already completed."
+            else:
+                reply = "OPS: Specify PID to abort. Use '/ops list' to see active tasks."
+            await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
+            return True
+        elif raw_cmd == "priority":
+            pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
+            target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
+            
+            if target_pid:
+                # Default to ALPHA (1) for manual priority shift
+                success = await ops.set_priority(target_pid, TaskPriority.ALPHA)
+                reply = f"OPS: Task {target_pid} priority shifted to ALPHA." if success else f"OPS: Task {target_pid} focus change failed."
+            else:
+                reply = "OPS: Specify PID for priority shift."
+            await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
+            return True
     
     try:
         # Skip empty messages
@@ -1298,7 +1368,25 @@ async def handle_event(event: InternalEvent):
                 force_tool = "prev_page"
                 logger.info("[Dispatcher] Fast-Path triggered: Force Prev Page")
                 
-            await _execute_ai_logic(event, user_profile, session_id, force_tool=force_tool)
+            # PHASE 8: OPS TASK REGISTRATION & PARALLEL EXECUTION
+            ops = OpsRegistry.get_instance()
+            # Determine Priority
+            priority = TaskPriority.GAMMA
+            if any(kw in event.text.lower() for kw in ["destruct", "自毁", "red alert", "红警", "override"]):
+                priority = TaskPriority.ALPHA
+            
+            task = await ops.register_task(session_id, event.text, priority=priority)
+            
+            # Spawn Background Task
+            async_task = asyncio.create_task(_execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task))
+            task.async_task = async_task
+            
+            # Immediate Acknowledgment if needed (Silent by default unless high-stakes)
+            if priority == TaskPriority.ALPHA:
+                sq = send_queue.SendQueue.get_instance()
+                session_key = f"{event.platform}:{event.group_id or event.user_id}"
+                await sq.enqueue_send(session_key, f"ACK: Critical Priority Task Registered [{task.pid}]. Processing...", {"from_computer": True}, priority=1)
+            
             return True
             
         else:

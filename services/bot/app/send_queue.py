@@ -19,11 +19,12 @@ TICK_MS = int(os.getenv("SENDQ_WORKER_TICK_MS", "100"))
 logger = logging.getLogger(__name__)
 
 class SendItem:
-    def __init__(self, session_key: str, text: str, meta: dict):
+    def __init__(self, session_key: str, text: str, meta: dict, priority: int = 3):
         self.id = str(uuid.uuid4())
         self.session_key = session_key
         self.text = text
         self.meta = meta
+        self.priority = priority # 1: ALPHA, 2: BETA, 3: GAMMA
         self.created_at = time.time()
 
 class SendQueue:
@@ -45,7 +46,7 @@ class SendQueue:
             cls._instance = cls(sender)
         return cls._instance
 
-    async def enqueue_send(self, session_key: str, text: str, meta: dict) -> dict:
+    async def enqueue_send(self, session_key: str, text: str, meta: dict, priority: int = 3) -> dict:
         async with self.lock:
             if session_key not in self.queues:
                 self.queues[session_key] = deque()
@@ -55,11 +56,26 @@ class SendQueue:
                 logger.warning(f"Queue full for session {session_key}, dropping message")
                 return {"error": "queue_full", "session_key": session_key}
             
-            item = SendItem(session_key, text, meta)
-            queue.append(item)
+            item = SendItem(session_key, text, meta, priority=priority)
+            
+            # Insert based on priority (Surgical placement)
+            if priority < 3:
+                # Find the first index where priority is higher and insert before it
+                inserted = False
+                for i in range(len(queue)):
+                    if queue[i].priority > priority:
+                        queue.insert(i, item)
+                        inserted = True
+                        break
+                if not inserted:
+                    queue.append(item)
+            else:
+                queue.append(item)
+                
             return {
                 "id": item.id,
                 "session_key": session_key,
+                "priority": priority,
                 "queue_len": len(queue)
             }
 
@@ -73,7 +89,7 @@ class SendQueue:
         }
 
     async def worker_loop(self):
-        logger.info("SendQueue worker started")
+        logger.info("SendQueue worker started with Priority Awareness (1: ALPHA, 2: BETA, 3: GAMMA)")
         global_interval = 1.0 / GLOBAL_RPS
         
         while not self.stop_event.is_set():
@@ -81,26 +97,30 @@ class SendQueue:
             item_to_send = None
 
             async with self.lock:
-                # Simple round-robin: iterate through sessions
-                # Note: dict order is insertion order in modern Python
+                # 1. SCAN FOR ALPHA (Priority 1) across ALL sessions first
                 for session_key, queue in list(self.queues.items()):
-                    if not queue:
-                        continue
-                    
-                    # Check session cooldown
-                    last_sent = self.last_sent_at.get(session_key, 0.0)
-                    if (now - last_sent) * 1000 < SESSION_COOLDOWN_MS:
-                        continue
+                    if queue and queue[0].priority == 1:
+                        # Check global rate limit only (ALPHA bypasses session cooldown if critical?)
+                        # Actually keep session cooldown to prevent flood but prioritize ALPHA
+                        if (now - self.global_last_sent_at) >= global_interval:
+                            item_to_send = queue.popleft()
+                            self.last_sent_at[session_key] = now
+                            self.global_last_sent_at = now
+                            break
+                
+                if not item_to_send:
+                    # 2. STANDARD ROUND-ROBIN for BETA/GAMMA
+                    for session_key, queue in list(self.queues.items()):
+                        if not queue: continue
                         
-                    # Check global rate limit
-                    if (now - self.global_last_sent_at) < global_interval:
-                        continue
-                    
-                    # Conditions met, take item
-                    item_to_send = queue.popleft()
-                    self.last_sent_at[session_key] = now
-                    self.global_last_sent_at = now
-                    break
+                        last_sent = self.last_sent_at.get(session_key, 0.0)
+                        if (now - last_sent) * 1000 < SESSION_COOLDOWN_MS: continue
+                        if (now - self.global_last_sent_at) < global_interval: continue
+                        
+                        item_to_send = queue.popleft()
+                        self.last_sent_at[session_key] = now
+                        self.global_last_sent_at = now
+                        break
             
             if item_to_send:
                 await self._process_send(item_to_send)

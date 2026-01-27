@@ -553,15 +553,18 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False, 
         logger.error(f"KB Query failed: {e}")
         return {"ok": False, "message": f"Archive query error: {e}"}
 
-def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, max_words: int = 500, continuation_hint: str = None) -> dict:
+def search_memory_alpha(query: str | list[str], session_id: str, is_chinese: bool = False, max_words: int = 500, continuation_hint: str = None) -> dict:
     """
     Uses Google Search (via Gemini Grounding) to query Memory Alpha.
     Fallback for when local KB is insufficient.
+    
+    SUPPORTS PARALLELISM: If 'query' is a LIST of strings, it executes them CONCURRENTLY.
     """
     from .config_manager import ConfigManager
     from google import genai
     from google.genai import types
     from .rp_engine_gemini import strip_conversational_filler
+    import concurrent.futures
     
     config = ConfigManager.get_instance()
     api_key = config.get("gemini_api_key", "")
@@ -570,94 +573,124 @@ def search_memory_alpha(query: str, session_id: str, is_chinese: bool = False, m
     if not api_key:
          logger.warning("[Tools] External search offline: API Key missing")
          return {"ok": False, "message": "External search offline (API Key missing)."}
-         
-    try:
-        # Safety Hard Cap: Never exceed 3000 words in standard agents
-        if max_words > 3000:
-            logger.warning(f"[Tools] MaxWords {max_words} exceeded safety threshold. Capping to 3000.")
-            max_words = 3000
+
+    # --- WORKER FUNCTION FOR SINGLE QUERY ---
+    def _search_worker(single_query: str) -> dict:
+        try:
+            # Safety Hard Cap: Never exceed 3000 words in standard agents
+            effective_max = min(max_words, 3000)
+                
+            client = genai.Client(api_key=api_key)
             
-        client = genai.Client(api_key=api_key)
-        
-        # Upgraded Search Prompt: Deep Factification & Archetype Protocol
-        lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
-        
-        hint_text = f"\nCONTINUATION HINT: {continuation_hint}. USE THIS TO SKIP ALREADY FOUND ITEMS AND FOCUS ON REMAINING DATA." if continuation_hint else ""
-        
-        # Domain Restriction: Strictly Memory Alpha
-        search_prompt = (
-            f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {query}.{hint_text}\n"
-            "TASK: Locate specific technical metrics, counts, and variables.\n"
-            "MANDATORY: You MUST start your output with '^^DATA_START^^' before the actual content.\n"
-            "ARCHETYPE PROTOCOL: ONLY apply if '{query}' is a broad, un-quantified technology. "
-            "If '{query}' is a specific entity (e.g., 'Starfleet Command', 'Tal Shiar'), FOCUS EXCLUSIVELY ON THAT ENTITY. "
-            "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
-            "INSTRUCTIONS:\n"
-            "1. Scan for primary entity definitions and historical metrics.\n"
-            f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions, dates, and minor details. Only output the Name and Registry (if available) to maximize the count within the output buffer. Capacity is expanded up to {max_words} words.\n"
-            "   - NOMENCLATURE: Use '[Name] class' format (e.g., 'Galaxy class'). DO NOT use hyphens '-' between Name and class.\n"
-            "   - LANGUAGE: English is the PRIMARY language. Format entries as: [English Name] ([Chinese Name]) (e.g., 'Constitution class (宪法级)').\n"
-            "3. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
-            "4. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
-            f"5. Return a high-density technical summary (standard: under 500 words, lists: up to {max_words} words),{lang_ext}.\n"
-            "6. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
-            "7. NEGATIVE CONSTRAINT: Do NOT use conversational intros like 'Here is a list:'. Start directly with the first item.\n"
-        )
-        
-        # Enable Google Search Tool 
-        google_search_tool = types.Tool(
-            google_search=types.GoogleSearch()
-        )
-        
-        # Calculate dynamic output tokens (1 word ~ 1.5 tokens for safe margin)
-        safe_tokens = min(8192, max_words * 2)
-
-        response = client.models.generate_content(
-            model="gemini-2.0-flash", 
-            contents=search_prompt,
-            config=types.GenerateContentConfig(
-                tools=[google_search_tool],
-                temperature=0.1,
-                max_output_tokens=safe_tokens
+            # Upgraded Search Prompt: Deep Factification & Archetype Protocol
+            lang_ext = " produce result in SYNCHRONIZED BILINGUAL format (Interleaved English and Chinese lines, NO [EN]/[ZH] prefixes)" if is_chinese else ""
+            
+            hint_text = f"\nCONTINUATION HINT: {continuation_hint}. USE THIS TO SKIP ALREADY FOUND ITEMS AND FOCUS ON REMAINING DATA." if continuation_hint else ""
+            
+            # Domain Restriction: Strictly Memory Alpha
+            search_prompt = (
+                f"Using site:memory-alpha.fandom.com, perform a DEEP SCAN for the query: {single_query}.{hint_text}\n"
+                "TASK: Locate specific technical metrics, counts, and variables.\n"
+                "MANDATORY: You MUST start your output with '^^DATA_START^^' before the actual content.\n"
+                "ARCHETYPE PROTOCOL: ONLY apply if '{single_query}' is a broad, un-quantified technology. "
+                "If '{single_query}' is a specific entity (e.g., 'Starfleet Command', 'Tal Shiar'), FOCUS EXCLUSIVELY ON THAT ENTITY. "
+                "Do NOT hallucinate or pivot to 'Galaxy-class' unless it is directly being compared in the text.\n"
+                "INSTRUCTIONS:\n"
+                "1. Scan for primary entity definitions and historical metrics.\n"
+                f"2. ENUMERATION PROTOCOL: If query asks for a LIST or ENUMERATION (e.g., 'List all classes'), you MUST provide a comprehensive index of NAMES found. In list mode, PRIORITIZE QUANTITY OF ITEMS over character depth. Strip all descriptions, dates, and minor details. Only output the Name and Registry (if available) to maximize the count within the output buffer. Capacity is expanded up to {effective_max} words.\n"
+                "   - NOMENCLATURE: Use '[Name] class' format (e.g., 'Galaxy class'). DO NOT use hyphens '-' between Name and class.\n"
+                "   - LANGUAGE: English is the PRIMARY language. Format entries as: [English Name] ([Chinese Name]) (e.g., 'Constitution class (宪法级)').\n"
+                "3. LOCATION PROTOCOL: If query targets a location (Where is...?), FOCUS on specific landmarks, neighborhoods, or facilities (e.g., 'The Presidio' instead of just 'San Francisco').\n"
+                "4. NO RECURSION: Do NOT answer that an entity is located at itself (e.g., Starfleet Command is at Starfleet Command).\n"
+                f"5. Return a high-density technical summary (standard: under 500 words, lists: up to {effective_max} words),{lang_ext}.\n"
+                "6. Extract the DIRECT URL of the primary illustrative image from static.wikia.nocookie.net.\n"
+                "7. NEGATIVE CONSTRAINT: Do NOT use conversational intros like 'Here is a list:'. Start directly with the first item.\n"
             )
-        )
-        
-        text_content = response.text if response.text else "Subspace interference detected. No textual records found."
-        logger.info(f"[Tools] search_memory_alpha returned {len(text_content)} chars.")
-        
-        # Image Extraction Logic
-        import re
-        img_url = None
-        # Look for Wikia/Fandom static image URLs in the response text
-        match = re.search(r'https?://static\.wikia\.nocookie\.net/memoryalpha/images/[^ \n]+', text_content)
-        if match:
-            img_url = match.group(0).rstrip('.)')
-            # Clean technical response of the URL if it was included in the text
-            text_content = text_content.replace(img_url, "").strip()
-        
-        # Strip conversational filler at the harvest source
-        text_content = strip_conversational_filler(text_content)
-        
-        # Return structured list for the render engine
-        return {
-            "ok": True,
-            "items": [
-                {
-                    "id": "1A",
-                    "type": "hybrid",
-                    "content": text_content,
-                    "title": f"RECORD: {query.upper()}",
-                    "image_url": img_url,
-                    "source": "MEMORY ALPHA"
-                }
-            ],
-            "message": f"EXTERNAL DATABASE (MEMORY ALPHA) RESULT:\n{text_content}",
-            "source": "MEMORY ALPHA"
-        }
+            
+            # Enable Google Search Tool 
+            google_search_tool = types.Tool(
+                google_search=types.GoogleSearch()
+            )
+            
+            # Calculate dynamic output tokens (1 word ~ 1.5 tokens for safe margin)
+            safe_tokens = min(8192, effective_max * 2)
 
-    except Exception as e:
-        logger.error(f"Memory Alpha search failed: {e}")
-        return {"ok": False, "message": f"Subspace communication error: {e}"}
+            response = client.models.generate_content(
+                model="gemini-2.0-flash", 
+                contents=search_prompt,
+                config=types.GenerateContentConfig(
+                    tools=[google_search_tool],
+                    temperature=0.1,
+                    max_output_tokens=safe_tokens
+                )
+            )
+            
+            text_content = response.text if response.text else "Subspace interference detected. No textual records found."
+            logger.info(f"[Tools] Worker for '{single_query}' returned {len(text_content)} chars.")
+            
+            # Image Extraction Logic
+            import re
+            img_url = None
+            match = re.search(r'https?://static\.wikia\.nocookie\.net/memoryalpha/images/[^ \n]+', text_content)
+            if match:
+                img_url = match.group(0).rstrip('.)')
+                text_content = text_content.replace(img_url, "").strip()
+            
+            text_content = strip_conversational_filler(text_content)
+            
+            return {
+                "ok": True,
+                "content": text_content,
+                "title": f"RECORD: {single_query.upper()}",
+                "image_url": img_url
+            }
+        except Exception as e:
+            logger.error(f"Worker failed for '{single_query}': {e}")
+            return {"ok": False, "error": str(e)}
+
+    # --- PARALLEL DISPATCH LOGIC ---
+    
+    # Normalize input to list
+    queries = query if isinstance(query, list) else [query]
+    
+    # Execute in parallel
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_query = {executor.submit(_search_worker, q): q for q in queries}
+        for future in concurrent.futures.as_completed(future_to_query):
+            q = future_to_query[future]
+            try:
+                data = future.result()
+                results.append(data)
+            except Exception as exc:
+                logger.error(f"Query {q} generated an exception: {exc}")
+                results.append({"ok": False, "error": str(exc)})
+    
+    # Aggregate Rules
+    final_items = []
+    aggregated_message = "EXTERNAL DATABASE (MEMORY ALPHA) PARALLEL SCAN RESULT:\n"
+    
+    for i, res in enumerate(results):
+        if res.get("ok"):
+            item_id = f"{i+1}A"
+            final_items.append({
+                "id": item_id,
+                "type": "hybrid",
+                "content": res["content"],
+                "title": res["title"],
+                "image_url": res["image_url"],
+                "source": "MEMORY ALPHA"
+            })
+            aggregated_message += f"\n--- [{res['title']}] ---\n{res['content']}\n"
+        else:
+             aggregated_message += f"\n--- [ERROR] ---\n{res.get('error')}\n"
+
+    return {
+        "ok": True,
+        "items": final_items,
+        "message": aggregated_message,
+        "source": "MEMORY ALPHA"
+    }
 
 def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = False, chunk_index: int = 0) -> dict:
     """

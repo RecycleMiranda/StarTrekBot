@@ -246,7 +246,7 @@ ENTITY ANCHORING PROTOCOL (CRITICAL):
 - **Subject Locking**: The report title and all content MUST center on the user's current query entity. 
 - **Drift Prevention**: If the 'ROUND' data contains information about a different entity (e.g., from a previous session turn like 'Galaxy-class' when the current query is 'Starfleet Command'), you MUST DISCARD the irrelevant data. 
 - **Context Isolation**: Chat history is for conversation flow; `CUMULATIVE DATA/ACTION` is for technical simulation. The NEW query entity always overrides previous entities.
-- **Verification**: Perform a mental verification: 'Is this content about [Current Query]?' If not, retry tool call or report insufficient data. **CRITICAL: DO NOT output this question or its result to the user.**\n" +
+- **Verification**: Perform a mental verification: 'Is this content about [Current Query]?' If not, retry tool call or report insufficient data. **CRITICAL: DO NOT output this question or its result to the user.**
 
 BILINGUAL HEADER PROTOCOL (CRITICAL):
 - **Formatting**: ALWAYS start the technical report with a bilingual header on the FIRST LINE.

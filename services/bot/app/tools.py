@@ -562,9 +562,12 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects?\n"
             "STEP 2: Output Logic:\n"
             "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of titles.\n"
-            "- IF UNIQUE MATCH: Output 'STATUS: FOUND' followed by 'TOTAL_CHUNKS: [num]' and 'HAS_MORE: [TRUE/FALSE]'.\n"
-            f"- CHUNK PROTOCOL: Current request is for CHUNK {chunk_index} (index starts at 0). Each chunk should be ~2000-2500 words of VERBATIM text (Intro + Specs + History).\n"
-            "- IMAGE: Output 'IMAGE: [URL]' for the main infobox image (only on Chunk 0).\n"
+            "- IF UNIQUE MATCH:\n"
+            "  1. Output 'STATUS: FOUND'\n"
+            "  2. Output 'TOTAL_CHUNKS: [num]' and 'HAS_MORE: [TRUE/FALSE]'\n"
+            "  3. Output 'IMAGE: [URL]' for the main infobox image (only on Chunk 0)\n"
+            "  4. Output 'TEXT_START' then immediately provide the VERBATIM technical text of the entry.\n"
+            f"- CHUNK PROTOCOL: Current request is for CHUNK {chunk_index} (index starts at 0). Provide ~2000 words starting from the beginning of the article or the appropriate offset.\n"
         )
         
         response = client.models.generate_content(
@@ -601,10 +604,14 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             total_chunks_match = re.search(r'TOTAL_CHUNKS: (\d+)', raw_output)
             total_chunks = int(total_chunks_match.group(1)) if total_chunks_match else 1
             
-            # Clean content body
+            # Clean content body: Remove metadata lines but keep the rest
             content_body = raw_output
-            for marker in ["STATUS: FOUND", "IMAGE:", "HAS_MORE:", "TOTAL_CHUNKS:", "CHUNK PROTOCOL:"]:
-                content_body = re.sub(f'{marker}.*', '', content_body)
+            if "TEXT_START" in content_body:
+                content_body = content_body[content_body.find("TEXT_START") + 10:].strip()
+            else:
+                for marker in ["STATUS: FOUND", "IMAGE:", "HAS_MORE:", "TOTAL_CHUNKS:", "CHUNK PROTOCOL:"]:
+                    # Match from start of line to end of line for markers
+                    content_body = re.sub(rf'^{marker}.*$', '', content_body, flags=re.MULTILINE)
             content_body = content_body.strip()
             
             # Translate Verbatim
@@ -614,6 +621,11 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             # Checking rp_engine_gemini.py... NeuralEngine.__init__ calls ConfigManager.get_instance(). Correct.
             
             translated_content = engine.translate_memory_alpha_content(content_body, is_chinese)
+            
+            # Include a generous snippet (or whole content) in 'message' 
+            # so the AI loop agent and synthesist see the actual data.
+            # 4000 chars is ~1000-1500 tokens, which is safe for the context.
+            display_snippet = (translated_content[:4000] + "...") if len(translated_content) > 4000 else translated_content
             
             return {
                 "ok": True,
@@ -631,7 +643,7 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
                         "source": "MEMORY ALPHA"
                     }
                 ],
-                "message": f"FEDERATION DATABASE RECORD: {query.upper()} (CHUNK {chunk_index+1}/{total_chunks})",
+                "message": f"FEDERATION DATABASE RECORD: {query.upper()} (CHUNK {chunk_index+1}/{total_chunks})\n\nDATA_PREVIEW:\n{display_snippet}",
                 "source": "MEMORY ALPHA"
             }
         else:

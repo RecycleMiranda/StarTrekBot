@@ -267,8 +267,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 result = tools.access_memory_alpha_direct(args.get("query"), session_id, is_chinese=is_chinese, chunk_index=chunk_index)
             
             # Universal Pre-rendering/Pagination state setup
+            is_handled = False
             if result.get("ok") and tool != "access_memory_alpha_direct":
-                # For search results, dispatcher logic usually sets SEARCH_RESULTS elsewhere or we set it here
+                is_handled = True
                 if "items" in result:
                     items = result["items"]
                     
@@ -304,8 +305,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                     # TRIGGER INITIAL PRE-WARM FOR SEARCH
                     _executor.submit(_prefetch_next_pages, session_id, is_chinese)
                 
-                # Store and chunk article content for paging
-                if result.get("ok"):
+                # Store and chunk article content for paging (Skip if already handled by search/long-hit logic)
+                if result.get("ok") and not is_handled:
                     from .render_engine import get_renderer
                     renderer = get_renderer()
                     article_item = result.get("items", [])[0]
@@ -323,11 +324,14 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         "has_more": result.get("has_more", False),
                         "pre_render_cache": {} # Initialize cache
                     }
-                    # Update result items to the first sub-page for current synthesis/reply
-                    result["items"] = [sub_pages[0]]
-                    
-                    # TRIGGER INITIAL PRE-WARM
-                    _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                    if sub_pages:
+                        # Update result items to the first sub-page for current synthesis/reply
+                        result["items"] = [sub_pages[0]]
+                        
+                        # TRIGGER INITIAL PRE-WARM
+                        _executor.submit(_prefetch_next_pages, session_id, is_chinese)
+                    else:
+                        logger.warning("[Dispatcher] Article/Chunk split resulted in zero pages.")
 
             if result.get("ok") and "items" in result:
                 raw_items = result["items"]

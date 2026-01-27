@@ -220,6 +220,11 @@ class LCARS_Renderer:
         
         content = self._normalize_text_flow(content)
 
+        # INITIAL FONT ASSIGNMENT (Standard sizes)
+        f_title_en = self.get_font(title_en, 80)
+        f_title_zh = self.get_font(title_zh, 48)
+        f_id_large = self.get_font("ID", 36)
+
         # SOURCE BADGE (Verification Layer)
         source = item.get("source", "UNKNOWN")
         badge_text = f"// VERIFIED SOURCE: {source}"
@@ -227,7 +232,7 @@ class LCARS_Renderer:
         
         # DYNAMIC TITLE SCALING: Shrink title if it would overlap the badge
         max_title_w = w - badge_w - 120 # Leave buffer
-        title_en_w = draw.textlength(title_en, font=f_title_en)
+        title_en_w = draw.textlength(title_en, f_title_en)
         
         if title_en_w > max_title_w:
             # Scale down English title font
@@ -244,10 +249,8 @@ class LCARS_Renderer:
         if title_zh:
             draw.text((pos[0] + 85, pos[1] + 85), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
-        # SOURCE BADGE (Verification Layer)
-        source = item.get("source", "UNKNOWN")
-        badge_text = f"// VERIFIED SOURCE: {source}"
         badge_w = draw.textlength(badge_text, font=f_id)
+        draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
         draw.text((pos[0] + w - badge_w - 30, pos[1] + 5), badge_text, fill=(0, 255, 100, 150), font=f_id)
 
         # Lower horizontal line to create absolute distance

@@ -283,8 +283,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 if "items" in result:
                     items = result["items"]
                     
+
                     # ENHANCED: Only trigger LCARS if content is significant or multiple items exist
-                    content_len = len(items[0].get("content", "")) if len(items) == 1 else 999
+                    content_len = len(items[0].get("content", "")) if items and len(items) == 1 else 999
                     if not items:
                         is_handled = False
                         logger.warning("[Dispatcher] KB/MA returned empty items list.")

@@ -24,7 +24,9 @@ def get_status() -> dict:
 
 def get_subsystem_status(name: str) -> dict:
     """
-    Returns the status of a specific subsystem.
+    Returns the REAL-TIME status of a specific subsystem on THIS SHIP.
+    Use this for queries like "Phaser status", "Shield status", "Engine status".
+    Do not use `query_knowledge_base` for these inquiries.
     """
     from .ship_systems import get_ship_systems
     ss = get_ship_systems()
@@ -329,7 +331,11 @@ def get_ship_schematic(ship_name: str, clearance: int = 1) -> dict:
 
 def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False, max_words: int = 500) -> dict:
     """
-    Searches the extensive local MSD Knowledge Base (Mega-Scale).
+    Searches the extensive local MSD Knowledge Base (Mega-Scale) for HISTORICAL, TECHNICAL, or ENCYCLOPEDIC data.
+    
+    CRITICAL: DO NOT use this tool for requesting CURRENT STATUS of the ship (e.g. "Shield status", "Phaser status").
+    For current ship status, use `get_subsystem_status` or `get_status` instead.
+    
     Scans the markdown files in the msd_knowledge_base directory.
     """
     import os

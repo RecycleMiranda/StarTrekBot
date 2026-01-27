@@ -46,9 +46,10 @@ class LCARS_Renderer:
         
         # Fallback fonts
         font_candidates = [
-            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-            "/Library/Fonts/Arial Unicode.ttf",
-            "arial.ttf"
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "arial.ttf",
+             self.lcars_font
         ]
         self.fallback_font = next((f for f in font_candidates if os.path.exists(f)), "arial.ttf")
 
@@ -357,9 +358,10 @@ class LCARS_Renderer:
         
         # Fallback fonts
         font_candidates = [
-            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-            "/Library/Fonts/Arial Unicode.ttf",
-            "arial.ttf"
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "arial.ttf",
+             self.lcars_font
         ]
         self.fallback_font = next((f for f in font_candidates if os.path.exists(f)), "arial.ttf")
 

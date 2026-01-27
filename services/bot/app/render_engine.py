@@ -492,12 +492,14 @@ class LCARS_Renderer:
 
     def render_report(self, items: List[Dict], page: int = 1, total_pages: int = 1, active_node: str = "COORDINATOR", audit_status: str = "NOMINAL", integrity_status: str = "OPTIMAL") -> str:
         """Renders items using a Dynamic Vertical List to maximize UI space."""
-        if not os.path.exists(self.bg_path):
-            logger.error(f"[Renderer] Background not found: {self.bg_path}")
-            return self._empty_b64()
-
         try:
-            with Image.open(self.bg_path).convert("RGBA") as canvas:
+            if os.path.exists(self.bg_path):
+                bg_img = Image.open(self.bg_path).convert("RGBA")
+            else:
+                logger.warning(f"[Renderer] Background not found, using safety fallback: {self.bg_path}")
+                bg_img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (5, 5, 25, 255)) # LCARS Deep Blue
+                
+            with bg_img as canvas:
                 canvas = canvas.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
                 draw = ImageDraw.Draw(canvas)
                 

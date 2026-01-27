@@ -841,6 +841,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
     active_node = "COORDINATOR"
     last_audit_status = "NOMINAL"
     image_b64 = None
+    last_tool_call = None
+    executed_tools = [] # Track tools for rendering authorization
     
     while iteration < max_iterations:
         iteration += 1
@@ -905,8 +907,15 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         intent = result.get("intent")
         if intent == "tool_call":
             tool = result.get("tool")
-            args = result.get("args") or {}
             is_chinese = result.get("is_chinese", False)
+            
+            # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop
+            current_call = f"{tool}:{args}"
+            if last_tool_call == current_call:
+                logger.warning(f"[Dispatcher] Recursive tool loop detected: {tool}. Forcing final report.")
+                cumulative_data.append("SYSTEM NOTE: You have already tried this tool with these arguments. DO NOT repeat it. You MUST provide a final summary based on available data now.")
+                iteration += 1 # Consume an extra iteration to squeeze it out
+            last_tool_call = current_call
             
             # --- SHADOW AUDIT (Phase 3) ---
             auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
@@ -925,6 +934,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 continue # Recurse with Security Auditor context
                 
             logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
+            executed_tools.append(tool)
             tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
             last_tool_result = tool_result
             
@@ -1008,10 +1018,14 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         
         current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
         
+        # PHASE 1.5: RESTRICTED RENDERING SCOPE (User request: Only Bio/Search info as images)
+        IMAGE_WHITELIST = ["get_personnel_file", "query_knowledge_base", "search_memory_alpha", "show_details"]
+        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools)
+        
         # Decide if we render a visual report or simple text
-        # Relaxed logic: Render if > 200 chars OR has newline and > 100 chars
+        # Relaxed logic: Render if (> 200 chars OR has newline and > 100 chars) AND tool is in whitelist
         is_comprehensive = len(synth_reply) > 200 or ("\n" in synth_reply and len(synth_reply) > 100)
-        if is_comprehensive or "^^DATA_START^^" in synth_reply:
+        if (is_comprehensive or "^^DATA_START^^" in synth_reply) and allow_image:
             from .render_engine import get_renderer
             renderer = get_renderer()
             # ENHANCED: Protect against recursive LCARS in synthesis

@@ -104,7 +104,7 @@ def _get_system_prompt() -> str:
         "   - MEDICAL/ENGINEERING PRIORITY: For localized emergencies (e.g., 'Sickbay casualty', 'EPS fluctuation'), prioritize specific subsystem commands (e.g., `set_subsystem_state('emh', 'ONLINE')`) over general ship-wide alerts (`set_alert_status`), unless a general threat is explicitly stated.\n" +
         "   - PROACTIVE POST-ACTION: After completing a primary task, suggest logical next steps (e.g., 'Diagnostic complete. I recommend recalibrating the EPS relay now').\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
-        "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?}\n\n" +
+        "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?, \"tool_chain\": [{\"tool\": \"string\", \"args\": {}}]?}\n\n" +
         "FINAL MANDATE:\n" +
         "You MUST strictly apply the 'STYLE/LANGUAGE RULES' from the DYNAMIC PROTOCOLS section to the 'reply' value.\n\n" +
         "TECHNICAL LEXICON:\n" + get_lexicon_prompt()

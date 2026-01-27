@@ -525,6 +525,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "toggle_shields":
             active = args.get("active") if "active" in args else ("raise" in tool_name or "升起" in tool_name)
             result = tools.toggle_shields(active, profile.get("clearance", 1))
+
+        elif tool in ["cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct"]:
+            result = tools.abort_self_destruct(profile.get("user_id"), profile.get("clearance", 1), session_id)
             
         elif tool == "next_page" or tool == "prev_page":
             session_data = SEARCH_RESULTS.get(session_id)
@@ -936,68 +939,82 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             continue # Force another iteration with the new node context
 
         intent = result.get("intent")
-        if intent == "tool_call":
-            tool = result.get("tool")
-            args = result.get("args") or {}
-            is_chinese = result.get("is_chinese", False)
+        
+        # 1.8 UNIVERSAL CHAINING PROTOCOL: Normalize single tool vs chain
+        tool_chain = []
+        if result.get("tool_chain"):
+            tool_chain = result.get("tool_chain")
+        elif result.get("tool"):
+            tool_chain = [{"tool": result.get("tool"), "args": result.get("args") or {}}]
             
-            # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop
-            current_call = f"{tool}:{args}"
-            if last_tool_call == current_call:
-                logger.warning(f"[Dispatcher] Recursive tool loop detected: {tool}. Forcing final report.")
-                cumulative_data.append("SYSTEM NOTE: You have already tried this tool with these arguments. DO NOT repeat it. You MUST provide a final summary based on available data now.")
-                iteration += 1 # Consume an extra iteration to squeeze it out
-            last_tool_call = current_call
-            
-            # --- SHADOW AUDIT (Phase 3) ---
-            auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
-            audit_report = auditor.audit_intent(tool, args)
-            last_audit_status = audit_report.get("status", "NOMINAL")
-            
-            if audit_report.get("status") == "REJECTED":
-                logger.warning(f"[Dispatcher] Shadow Audit REJECTED tool '{tool}': {audit_report.get('message')}")
-                reply_text = f"Unable to comply. SHADOW AUDIT REJECTION: {audit_report.get('message')}"
-                break
-            
-            if audit_report.get("status") == "CAUTION" and active_node != "SECURITY_AUDITOR":
-                logger.info(f"[Dispatcher] Shadow Audit flagged CAUTION for '{tool}'. Spawning SECURITY_AUDITOR.")
-                active_node = "SECURITY_AUDITOR"
-                cumulative_data.append(f"SHADOW AUDIT CAUTION: {audit_report.get('warnings')}")
-                continue # Recurse with Security Auditor context
+        if intent == "tool_call" and tool_chain:
+            chain_aborted = False
+            for step_idx, step in enumerate(tool_chain):
+                if chain_aborted: break
                 
-            logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
-            executed_tools.append(tool)
-            tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
-            last_tool_result = tool_result
-            
-            if tool_result.get("ok"):
-                # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
-                msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
+                tool = step.get("tool")
+                args = step.get("args") or {}
+                is_chinese = result.get("is_chinese", False)
                 
-                # --- BINARY IMAGE HANDLING (Phase 7) ---
-                if "image_io" in tool_result:
-                    import base64
-                    img_io = tool_result["image_io"]
-                    img_io.seek(0)
-                    img_b64 = base64.b64encode(img_io.read()).decode("utf-8")
-                    event.meta["image_b64"] = img_b64
-                    logger.info(f"[Dispatcher] Tool '{tool}' returned binary image. Attached to event meta.")
+                # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop
+                current_call = f"{tool}:{args}"
+                if last_tool_call == current_call:
+                    logger.warning(f"[Dispatcher] Recursive tool loop detected: {tool}. Forcing final report.")
+                    cumulative_data.append("SYSTEM NOTE: You have already tried this tool with these arguments. DO NOT repeat it. You MUST provide a final summary based on available data now.")
+                    iteration += 1 # Consume an extra iteration to squeeze it out
+                last_tool_call = current_call
                 
-                # CONTEXT COMPACTION (Phase 4 Optimization)
-                if len(msg) > 2500:
-                    msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
+                # --- SHADOW AUDIT (Phase 3) ---
+                auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
+                audit_report = auditor.audit_intent(tool, args)
+                last_audit_status = audit_report.get("status", "NOMINAL")
                 
-                cumulative_data.append(f"ROUND {iteration} ACTION ({tool}) @ NODE ({active_node}):\nResult: {msg}")
+                if audit_report.get("status") == "REJECTED":
+                    logger.warning(f"[Dispatcher] Shadow Audit REJECTED tool '{tool}': {audit_report.get('message')}")
+                    # If part of a chain fails, we might need to abort the rest or report partial failure
+                    cumulative_data.append(f"EXECUTION HALTED: Step {step_idx+1} ({tool}) rejected by Safety Protocols. Reason: {audit_report.get('message')}")
+                    chain_aborted = True # Stop chain
+                    break
                 
-                # DYNAMIC NODE SHIFT: Logic can decide to switch node after a tool
-                if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
-                    active_node = "RESEARCHER"
-                    logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
-                elif active_node == "COORDINATOR" and tool in ["get_system_metrics", "ask_about_code"]:
-                    active_node = "ENGINEER"
-                    logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
+                if audit_report.get("status") == "CAUTION" and active_node != "SECURITY_AUDITOR":
+                    logger.info(f"[Dispatcher] Shadow Audit flagged CAUTION for '{tool}'. Spawning SECURITY_AUDITOR.")
+                    active_node = "SECURITY_AUDITOR"
+                    cumulative_data.append(f"SHADOW AUDIT CAUTION: {audit_report.get('warnings')}")
+                    continue # Recurse with Security Auditor context
+                    
+                logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
+                executed_tools.append(tool)
+                tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
+                last_tool_result = tool_result
                 
-                # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
+                if tool_result.get("ok"):
+                    # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
+                    msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
+                    
+                    # --- BINARY IMAGE HANDLING (Phase 7) ---
+                    if "image_io" in tool_result:
+                        import base64
+                        img_io = tool_result["image_io"]
+                        img_io.seek(0)
+                        img_b64 = base64.b64encode(img_io.read()).decode("utf-8")
+                        event.meta["image_b64"] = img_b64
+                        logger.info(f"[Dispatcher] Tool '{tool}' returned binary image. Attached to event meta.")
+                    
+                    # CONTEXT COMPACTION (Phase 4 Optimization)
+                    if len(msg) > 2500:
+                        msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
+                    
+                    cumulative_data.append(f"ROUND {iteration} ACTION ({tool}) @ NODE ({active_node}):\nResult: {msg}")
+                    
+                    # DYNAMIC NODE SHIFT: Logic can decide to switch node after a tool
+                    if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
+                        active_node = "RESEARCHER"
+                        logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
+                    elif active_node == "COORDINATOR" and tool in ["get_system_metrics", "ask_about_code"]:
+                        active_node = "ENGINEER"
+                        logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
+                    
+                    # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
                 shortcut_tools = [
                     "next_page", "prev_page", "show_details", "get_personnel_file",
                     "self_destruct", "initialize_self_destruct", "authorize_self_destruct", "activate_self_destruct",
@@ -1006,14 +1023,20 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     "set_alert_status", "toggle_shields", "set_absolute_override", "weapon_lock_fire", "replicate"
                 ]
                 if tool in shortcut_tools:
-                    logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
-                    reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
-                    if tool_result.get("ok") is False and not reply_text:
-                        reply_text = "Unable to comply. Check clearance or current state,"
-                    
-                    image_b64 = event.meta.get("image_b64")
-                    cumulative_data = [] # Clear to prevent synthesis phase
-                    break
+                    # ONLY short-circuit if this is a single-step action or the LAST step of a chain
+                    is_last_step = (step_idx == len(tool_chain) - 1)
+                    if is_last_step:
+                        logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
+                        reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
+                        if tool_result.get("ok") is False and not reply_text:
+                            reply_text = "Unable to comply. Check clearance or current state,"
+                        
+                        image_b64 = event.meta.get("image_b64")
+                        cumulative_data = [] # Clear to prevent synthesis phase
+                        break
+                    else:
+                        logger.info(f"[Dispatcher] Tool '{tool}' completed. Proceeding to next step in chain.")
+                        continue
                     
                 continue # RECURSE to AI for potential follow-up actions
             else:

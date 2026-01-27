@@ -208,7 +208,7 @@ class LCARS_Renderer:
                 labels = ["1A", "1B", "2A", "2B"]
                 
                 # Start Y position
-                curr_y = CONTENT_TOP 
+                curr_y = CONTENT_T 
                 
                 for i, item in enumerate(items):
                     is_list = (display_count > 1)

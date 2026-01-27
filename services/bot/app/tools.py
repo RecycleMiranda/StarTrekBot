@@ -563,18 +563,16 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             google_search=types.GoogleSearch()
         )
         
-        # Prompt for navigation/fetching with CHUNKING support
+        # Prompt for navigation/fetching with CHUNKING support - DECISIVE SELECTION PROTOCOL
         nav_prompt = (
-            f"Navigate to memory-alpha.fandom.com and locate the entry for '{search_query}'.\n"
-            "STEP 1: Check for Ambiguity. Are there multiple distinct major subjects?\n"
-            "STEP 2: Output Logic:\n"
-            "- IF AMBIGUOUS: Output 'STATUS: AMBIGUOUS' followed by a list of titles.\n"
-            "- IF UNIQUE MATCH:\n"
-            "  1. Output 'STATUS: FOUND'\n"
-            "  2. Output 'TOTAL_CHUNKS: [num]' and 'HAS_MORE: [TRUE/FALSE]'\n"
-            "  3. Output 'IMAGE: [URL]' for the main infobox image (only on Chunk 0)\n"
-            "  4. Output 'TEXT_START' then immediately provide the VERBATIM technical text of the entry.\n"
-            f"- CHUNK PROTOCOL: Current request is for CHUNK {chunk_index} (index starts at 0). Provide ~2000 words starting from the beginning of the article or the appropriate offset.\n"
+            f"Navigate to memory-alpha.fandom.com and locate the technical entry for '{search_query}'.\n"
+            "TASK: Locate the primary technical database entry. If multiple versions exist (Prime, Mirror, Alternate Universe), YOU MUST AUTO-SELECT the Prime Universe version or the most comprehensive list page.\n"
+            "OUTPUT FORMAT (STRICT):\n"
+            "1. Output 'STATUS: FOUND'\n"
+            "2. Output 'TOTAL_CHUNKS: [num]' and 'HAS_MORE: [TRUE/FALSE]'\n"
+            "3. Output 'IMAGE: [URL]' for the main infobox image (only on Chunk 0)\n"
+            "4. Output 'TEXT_START' then provide the VERBATIM technical text of the entry.\n"
+            f"- CHUNK PROTOCOL: Current request is for CHUNK {chunk_index}. Ensure you are fetching from the single most relevant page identified.\n"
         )
         
         response = client.models.generate_content(
@@ -582,7 +580,7 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
             contents=nav_prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
-                temperature=0.1,
+                temperature=0.0,
                 max_output_tokens=8192
             )
         )

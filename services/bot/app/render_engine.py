@@ -220,19 +220,27 @@ class LCARS_Renderer:
         
         content = self._normalize_text_flow(content)
 
-        # RE-CALCULATE FONTS after potential promotion
-        f_title_en = self.get_font(title_en, 80)
-        f_title_zh = self.get_font(title_zh, 48)
-        f_id_large = self.get_font("ID", 36)
-
-        img_b64 = item.get("image_b64")
+        # SOURCE BADGE (Verification Layer)
+        source = item.get("source", "UNKNOWN")
+        badge_text = f"// VERIFIED SOURCE: {source}"
+        badge_w = draw.textlength(badge_text, font=f_id)
         
+        # DYNAMIC TITLE SCALING: Shrink title if it would overlap the badge
+        max_title_w = w - badge_w - 120 # Leave buffer
+        title_en_w = draw.textlength(title_en, font=f_title_en)
+        
+        if title_en_w > max_title_w:
+            # Scale down English title font
+            scale_factor = max_title_w / title_en_w
+            new_size = max(30, int(80 * scale_factor)) # Don't go below 30pt
+            f_title_en = self.get_font(title_en, new_size)
+            
         # Draw ID and Leading English Title (Left Aligned)
         draw.text((pos[0] + 15, pos[1] + 15), item_id, fill=(255, 170, 0, 255), font=f_id_large)
-        # Shifted English title to left, massive size
-        draw.text((pos[0] + 80, pos[1] + 0), title_en, fill=(255, 180, 50, 255), font=f_title_en)
+        # Shifted English title to left
+        draw.text((pos[0] + 80, pos[1] + 10), title_en, fill=(255, 180, 50, 255), font=f_title_en)
         
-        # Sub-title (Chinese) with color differentiation - Tucked under English
+        # Sub-title (Chinese) - Tucked under English
         if title_zh:
             draw.text((pos[0] + 85, pos[1] + 85), title_zh, fill=(180, 180, 255, 200), font=f_title_zh)
         
@@ -310,53 +318,58 @@ class LCARS_Renderer:
                 lh = int(size * 1.15)
                 f_test = self.get_font(content, size)
                 
-                # Estimate height with columns (Double-line height for EN+ZH)
-                lines_per_col = (len(paragraphs) + num_cols - 1) // num_cols
-                est_h = (lines_per_col * (lh * 1.8)) + (lines_per_col * PARA_SPACING // 4)
+                total_estimated_h = 0
+                if num_cols == 1:
+                    # NARRATIVE WRAPPING ESTIMATION
+                    for para in paragraphs:
+                        wrapped_lines = self._wrap_text_clean(para, f_test, col_w)
+                        total_estimated_h += (len(wrapped_lines) * lh) + PARA_SPACING
+                else:
+                    # COLUMNAR WRAPPING ESTIMATION (Simplified as blocks)
+                    lines_per_col = (len(paragraphs) + num_cols - 1) // num_cols
+                    total_estimated_h = (lines_per_col * (lh * 1.8)) + (lines_per_col * PARA_SPACING // 4)
                 
-                if est_h <= (h - 130):
+                if total_estimated_h <= (h - 130):
                     best_size = size
                     best_lh = lh
                     break
             
             f_final = self.get_font(content, best_size)
-            f_sub = self.get_font(content, int(best_size * 0.75)) # Smaller font for Chinese sub-line
+            f_sub = self.get_font(content, int(best_size * 0.75))
             
             # Render across columns
+            curr_y_per_col = [text_y_start] * num_cols
             for i, para in enumerate(paragraphs):
                 col_idx = i % num_cols
-                row_idx = i // num_cols # Zebra by row
                 
                 # Check for bilingual split: Name (Chinese)
                 match = re.search(r"^(.*?)\s*\((.*?)\)$", para)
                 if match and num_cols > 1:
                     en_text, zh_text = match.groups()
-                    sub_lh = int(best_lh * 0.8) # Spacing for sub-line
                 else:
                     en_text, zh_text = para, ""
-                    sub_lh = 0
                 
                 curr_x = pos[0] + 30 + (col_idx * (col_w + col_inner_spacing))
-                # Total height per item: best_lh (English) + sub_lh (Chinese)
-                item_full_h = best_lh + sub_lh + (PARA_SPACING // 4)
-                curr_y = text_y_start + (row_idx * item_full_h)
-                
-                if curr_y + item_full_h > pos[1] + h - 10: break
-                
-                color_en = self._get_color_for_text(en_text, index=row_idx)
-                
-                # FONT ENFORCEMENT: Explicitly get font for English text to ensure LCARS
-                # (Previous logic used f_final derived from whole content, which likely defaulted to Chinese font)
                 f_en = self.get_font(en_text, best_size)
                 
-                # Render Primary (English)
-                draw.text((curr_x, curr_y), en_text, fill=color_en, font=f_en)
+                # NARRATIVE WRAPPING (Crucial for text-only mode)
+                wrapped_lines = self._wrap_text_clean(en_text, f_en, col_w)
+                color = self._get_color_for_text(para, index=i)
                 
-                # Render Subsidiary (Chinese) below English, left aligned
+                for line in wrapped_lines:
+                    if curr_y_per_col[col_idx] + best_lh > pos[1] + h - 10: break
+                    draw.text((curr_x, curr_y_per_col[col_idx]), line, fill=color, font=f_en)
+                    curr_y_per_col[col_idx] += best_lh
+                
+                # Subsidiary Chinese line (if applicable)
                 if zh_text:
-                    color_zh = (150, 180, 255, 180) if (row_idx % 2 == 0) else (100, 150, 255, 150)
-                    # Tighten spacing: distinct visual grouping
-                    draw.text((curr_x, curr_y + int(best_size * 1.1)), zh_text, fill=color_zh, font=f_sub)
+                    if curr_y_per_col[col_idx] + int(best_size * 1.1) <= pos[1] + h - 10:
+                        f_zh_sub = self.get_font(zh_text, int(best_size * 0.8))
+                        color_zh = (150, 180, 255, 180) if (i % 2 == 0) else (100, 150, 255, 150)
+                        draw.text((curr_x, curr_y_per_col[col_idx]), zh_text, fill=color_zh, font=f_zh_sub)
+                        curr_y_per_col[col_idx] += int(best_size * 1.2)
+                
+                curr_y_per_col[col_idx] += (PARA_SPACING // 4)
 
     def _split_sentences(self, text):
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]

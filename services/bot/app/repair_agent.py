@@ -228,33 +228,61 @@ class RepairAgent:
                 "reply": f"❌ 应用失败: {write_result.get('message')}"
             }
     
+        return None
+
     def _extract_module_name(self, message: str) -> Optional[str]:
-        """Extract module name from a message."""
+        """Extract module name from a message with fuzzy matching."""
         from . import repair_tools
         
-        # Check for any whitelisted module names
+        message_lower = message.lower()
+        
+        # 1. Direct Whitelist Check
         for module in repair_tools.MODIFIABLE_MODULES:
-            base_name = module.replace(".py", "")
-            if module in message or base_name in message:
+            if module in message:
                 return module
         
-        # Infer from context keywords
-        keyword_to_module = {
-            "自毁": "self_destruct.py",
-            "destruct": "self_destruct.py",
-            "授权": "auth_system.py",
-            "auth": "auth_system.py",
-            "权限": "permissions.py",
-            "permission": "permissions.py",
-            "工具": "tools.py",
+        # 2. File Basename Check (e.g. "dispatcher" -> "dispatcher.py")
+        for module in repair_tools.MODIFIABLE_MODULES:
+            base = module.replace(".py", "")
+            if base in message_lower:
+                return module
+                
+        # 3. Domain Concept Mapping (Semantic Router)
+        concept_map = {
+            "warp core": "ship_systems.py", # Warp core logic is likely here
+            "warp": "ship_systems.py",
+            "shield": "ship_systems.py",
+            "phaser": "ship_systems.py",
+            "sensor": "ship_systems.py",
+            "system": "ship_systems.py",
+            
+            "logic": "dispatcher.py",      # Core logic
+            "brain": "dispatcher.py",
+            "ai": "dispatcher.py",
+            
+            "audit": "shadow_audit.py",    # Audit logic
+            "shadow": "shadow_audit.py",
+            
+            "render": "render_engine.py",
+            "display": "render_engine.py",
+            "ui": "render_engine.py",
+            
             "tool": "tools.py",
+            "command": "tools.py",
+            
+            "repair": "repair_agent.py",
+            
+            "web": "main.py",
+            "server": "main.py",
+            "api": "main.py"
         }
         
-        message_lower = message.lower()
-        for keyword, module in keyword_to_module.items():
+        for keyword, module in concept_map.items():
             if keyword in message_lower:
-                return module
-        
+                # Validate that the mapped module is actually modifiable
+                if module in repair_tools.MODIFIABLE_MODULES:
+                    return module
+                    
         return None
     
     def _build_qa_context(self, session: RepairSession, current_message: str, language: str = "en") -> str:

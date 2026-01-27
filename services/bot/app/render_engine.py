@@ -90,24 +90,30 @@ class LCARS_Renderer:
                 content_lines.pop(0)
                 continue
                 
-            is_header_like = len(first_line) < 60 and (not first_line.endswith(".") or first_line.endswith(":"))
-            cleaned = first_line.lower().replace(" ", "")
-            is_known_pattern = any(x in cleaned for x in ["list", "captain", "class", "starship", "列表", "级别", "舰长", "summary"])
+            # Check 1: Header-like structure
+            is_header_like = len(first_line) < 80 and (not first_line.endswith(".") or first_line.endswith(":"))
             
-            if is_header_like or is_known_pattern:
+            # Check 2: Known Pattern
+            cleaned = first_line.lower().replace(" ", "")
+            is_known_pattern = any(x in cleaned for x in ["list", "captain", "class", "starship", "列表", "级别", "舰长", "summary", "accord", "treaty"])
+            
+            # Check 3: Identity Match (Prevent "Khitomer Accords" showing up as title AND line 1)
+            # If the line is extremely similar to the existing base title, consume it.
+            base_cleaned = item.get("title", "").lower().replace(" ", "")
+            is_identity_match = (cleaned in base_cleaned) or (base_cleaned in cleaned and len(cleaned) < 50)
+
+            if is_header_like or is_known_pattern or is_identity_match:
                 promoted = first_line.replace(":", "").replace("：", "").strip()
-                is_chinese = bool(re.search(r'[\u4e00-\u9fff]', promoted))
+                is_chinese_line = bool(re.search(r'[\u4e00-\u9fff]', promoted))
                 
-                if is_chinese and not extracted_zh:
-                    if not extracted_zh: extracted_zh = promoted
-                    content_lines.pop(0)
-                    consumed_count += 1
-                elif not is_chinese and not extracted_en:
+                if is_chinese_line and not extracted_zh:
+                    extracted_zh = promoted
+                elif not is_chinese_line and not extracted_en:
                     extracted_en = promoted
-                    content_lines.pop(0)
-                    consumed_count += 1
-                else:
-                    break
+                    
+                # Always consume duplicate headers at the top
+                content_lines.pop(0)
+                consumed_count += 1
             else:
                 break
         
@@ -192,13 +198,13 @@ class LCARS_Renderer:
                 node_text = f"ACTIVE NODE: {active_node.upper()}"
                 draw.text((345, 115), node_text, fill=(255, 150, 50, 180), font=f_id)
                 
-                # SHADOW AUDIT STATUS
-                audit_color = (0, 255, 100, 180) if audit_status == "NOMINAL" else (255, 100, 0, 220)
-                draw.text((CANVAS_W - 400, 115), f"SHADOW AUDIT: {audit_status}", fill=audit_color, font=f_id)
-                
-                # SYSTEM INTEGRITY (Phase 4)
+                # SYSTEM INTEGRITY (Phase 4) - Moved left to avoid overlap
                 integrity_color = (0, 255, 255, 180) if integrity_status == "OPTIMAL" else (255, 0, 0, 220)
-                draw.text((CANVAS_W - 400, 80), f"SYSTEM INTEGRITY: {integrity_status}", fill=integrity_color, font=f_id)
+                draw.text((CANVAS_W - 650, 115), f"SYS INTEGRITY: {integrity_status}", fill=integrity_color, font=f_id)
+
+                # SHADOW AUDIT STATUS - Moved right
+                audit_color = (0, 255, 100, 180) if audit_status == "NOMINAL" else (255, 100, 0, 220)
+                draw.text((CANVAS_W - 350, 115), f"AUDIT: {audit_status}", fill=audit_color, font=f_id)
                 
                 display_count = len(items)
                 if display_count == 0: return self._empty_b64()
@@ -465,17 +471,20 @@ class LCARS_Renderer:
         f_zh = self.get_font(zh_sub, 22)
         
         # Color: Subheader Gold/Orange for EN, Cyan for ZH
+        # Color: Subheader Gold/Orange for EN, Cyan for ZH
         color_en = (255, 180, 50, 255)
         color_zh = (150, 180, 255, 200)
         
         draw.text(pos, en_sub, fill=color_en, font=f_en)
-        curr_y = pos[1] + 40
+        
+        # Calculate next Y position accurately
+        next_y = pos[1] + 40
         
         if zh_sub:
-            draw.text((pos[0], curr_y), zh_sub, fill=color_zh, font=f_zh)
-            curr_y += 35
+            draw.text((pos[0], next_y), zh_sub, fill=color_zh, font=f_zh)
+            next_y += 35
         
-        return curr_y + 5 # Return moved Y
+        return next_y + 5 # Return moved Y
 
     def _normalize_text_flow(self, text: str) -> str:
         """

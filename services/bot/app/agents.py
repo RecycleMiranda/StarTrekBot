@@ -39,7 +39,7 @@ def resolve_specialized_node(intent: str, query: str) -> str:
     """Intelligently determines which node to 'spawn' based on intent/query."""
     query_lower = query.lower()
     
-    if any(k in query_lower for k in ["code", "bug", "modify", "patch", "fix", "implementation"]):
+    if any(k in query_lower for k in ["code", "bug", "modify", "patch", "fix", "implementation", "cpu", "memory", "ram", "disk", "usage", "resource"]):
         return "ENGINEER"
     elif any(k in query_lower for k in ["search", "who is", "what is", "data", "metrics", "history"]):
         return "RESEARCHER"

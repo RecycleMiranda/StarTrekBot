@@ -213,6 +213,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
 
 
 
+    original_tool = tool # Default to current tool name
+    
     if tool in tool_aliases:
         original_tool = tool
         tool = tool_aliases[tool]
@@ -538,7 +540,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         
                         # Note: we use _run_async to call the tool since we are in a sync dispatcher wrapper usually
                         result = tools.access_memory_alpha_direct(session_data["query"], session_id, is_chinese=is_chinese, chunk_index=new_chunk)
-                        if result.get("ok"):
+                        if result.get("ok") and result.get("items"):
                             article_item = result.get("items", [])[0]
                             from .render_engine import get_renderer
                             renderer = get_renderer()
@@ -566,7 +568,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                         result = {"ok": False, "message": "NO FURTHER RECORDS FOUND."}
                 else:
                     # STANDARD SEARCH LIST PAGING
-                    items = session_data["items"]
+                    items = session_data.get("items", [])
                     current_page = session_data["page"]
                     total_pages = session_data["total_pages"]
                     
@@ -601,7 +603,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             if not session_data or not target_id:
                 result = {"ok": False, "message": "无法完成：请指定有效的检索编号（例如：1A）。"}
             else:
-                target_item = next((i for i in session_data["items"] if i["id"] == target_id), None)
+                target_item = next((i for i in session_data.get("items", []) if i["id"] == target_id), None)
                 if target_item:
                     # If it's a detail request, we can send the full text or high-res image
                     msg = f"--- 详细记录检索: {target_id} ---\n\n{target_item.get('content', '该条目无详细文本说明。')}"
@@ -937,6 +939,9 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
                     active_node = "RESEARCHER"
                     logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
+                elif active_node == "COORDINATOR" and tool in ["get_system_metrics", "ask_about_code"]:
+                    active_node = "ENGINEER"
+                    logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
                 
                 # UI NAVIGATION SHORT-CIRCUIT: Prevent redundant synthesis for simple UI tools
                 if tool in ["next_page", "prev_page", "show_details"]:
@@ -1061,6 +1066,7 @@ async def handle_event(event: InternalEvent):
     """
     Main entry point for processing incoming events.
     """
+    print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")
     logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
     
     # Session ID logic (Group ID takes precedence)

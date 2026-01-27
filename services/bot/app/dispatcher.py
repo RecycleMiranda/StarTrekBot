@@ -864,12 +864,25 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
 
             # Normal AI generation in thread pool
             start_t = time.time()
-            future = _executor.submit(
-                rp_engine_gemini.generate_computer_reply,
-                event.text, router.get_session_context(session_id), extra_meta
-            )
-            result = future.result(timeout=20) 
-            wd.update_latency(time.time() - start_t)
+            try:
+                future = _executor.submit(
+                    rp_engine_gemini.generate_computer_reply,
+                    event.text, router.get_session_context(session_id), extra_meta
+                )
+                result = future.result(timeout=20) 
+                wd.update_latency(time.time() - start_t)
+            except Exception as e:
+                logger.error(f"[Dispatcher] AI Core Failure: {e}")
+                wd.record_error(severity="critical")
+                
+                # Emergency Kernel
+                logger.warning("[Dispatcher] Activating Phase 4 Emergency Bypass Protocol.")
+                kernel = emergency_kernel.get_emergency_kernel()
+                emerg_result = kernel.execute_static_command(event.text)
+                reply_text = emerg_result["reply"]
+                image_b64 = None
+                cumulative_data = [] # Bypass synthesis
+                break
         
         logger.info(f"[Dispatcher] AI iteration {iteration} result: {result}")
         if not result or not result.get("ok"): break
@@ -963,18 +976,6 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 reply_text = f"Generating visual report... (Intent: {intent} | Node: {active_node})"
             break
         
-    except Exception as e:
-        logger.error(f"[Dispatcher] Critical Loop Failure: {e}", exc_info=True)
-        # wd might not be initialized if error happens at the very start, but we initialize it now
-        wd = watchdog.get_watchdog()
-        wd.record_error(severity="critical")
-        
-        # --- PHASE 4 BYPASS: Emergency Kernel Takeover ---
-        logger.warning("[Dispatcher] Activating Phase 4 Emergency Bypass Protocol.")
-        kernel = emergency_kernel.get_emergency_kernel()
-        result = kernel.execute_static_command(event.text)
-        reply_text = result["reply"]
-        image_b64 = None
     
     # --- PHASE 2: SYNTHESIS & RENDERING ---
     if cumulative_data:

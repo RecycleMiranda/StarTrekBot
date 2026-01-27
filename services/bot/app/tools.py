@@ -373,8 +373,15 @@ def query_knowledge_base(query: str, session_id: str, is_chinese: bool = False, 
         
         if not top_hits:
             logger.info(f"[KB] No high-confidence local hits for '{query}' (Top score: {hits[0]['score'] if hits else 0}). Auto-falling back to Memory Alpha.")
+            
             # Auto-fallback to Memory Alpha (Polymath Logic)
-            return search_memory_alpha(query, session_id, is_chinese, max_words=max_words)
+            # ROUTING LOGIC: If query asks for a LIST, use DIRECT ACCESS (Chunking) to avoid truncation.
+            is_explicit_list = any(k in query.lower() for k in ["list", "enumerate", "all", "列表", "名单", "所有"])
+            if is_explicit_list:
+                logger.info("[KB] Detected List Query -> Routing to Direct Chunking Protocol")
+                return access_memory_alpha_direct(query, session_id, is_chinese)
+            else:
+                return search_memory_alpha(query, session_id, is_chinese, max_words=max_words)
             
         # Construct structured items for rendering
         results = []

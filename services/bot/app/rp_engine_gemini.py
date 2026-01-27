@@ -401,12 +401,12 @@ class NeuralEngine:
                 "TERMINOLOGY DIRECTIVES:\n"
                 "- 'Enterprise' MUST be translated as '进取号' ONLY in relevant Chinese translation blocks. NEVER modify or translate 'Enterprise' in original English text.\n"
                 "- DO NOT use '企业号'.\n"
-                "FORMAT: BILINGUAL PARAGRAPH BLOCKS (Full Blocks Only)\n"
-                "For each source paragraph:\n"
-                "1. Output the FULL original English paragraph block.\n"
-                "2. Output the FULL Chinese translation block on the next line.\n"
-                "3. Use a double newline between blocks.\n\n"
-                f"RAW INPUT:\n{raw_content[:8000]}\n\n"
+                "FORMAT: INTERLEAVED BILINGUAL ENTRIES\n"
+                "1. For each entry (name, class, etc.), output as: [English] ([Chinese])\n"
+                "2. NO separate English and Chinese blocks. Merge them into a single high-density list.\n"
+                "3. Use a single newline between list items.\n"
+                "4. For narrative paragraphs, keep them concise and translated in-place.\n\n"
+                f"RAW INPUT:\n{raw_content[:12000]}\n\n"
                 "TRANSLATED OUTPUT (Start immediately with ^^DATA_START^^ then Full-Paragraph Bilingual Blocks):"
             )
 

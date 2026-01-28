@@ -3,6 +3,7 @@ import time
 import logging
 import re
 import base64
+import inspect
 import asyncio
 import threading
 from typing import Optional
@@ -1037,10 +1038,17 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                                  logger.info(f"[Dispatcher] Squashing args for search: '{new_query}'")
                                  args = {"query": new_query, "session_id": session_id}
                          
-                         # Standard Injection
-                         if "user_id" not in args: args["user_id"] = str(event.user_id)
-                         if "session_id" not in args: args["session_id"] = session_id
-                         if "clearance" not in args: args["clearance"] = profile.get("clearance", 1)
+                         # Standard Injection (Signature Aware)
+                         standard_args = {
+                             "user_id": str(event.user_id),
+                             "session_id": session_id,
+                             "clearance": profile.get("clearance", 1)
+                         }
+                         
+                         sig = inspect.signature(func)
+                         for k, v in standard_args.items():
+                             if k in sig.parameters and k not in args:
+                                 args[k] = v
                          
                          result = func(**args)
                          result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}

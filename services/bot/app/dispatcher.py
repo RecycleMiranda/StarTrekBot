@@ -222,6 +222,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "fault_audit": "audit_clear_fault",
         "clear_fault": "audit_clear_fault",
         "archive_fault": "audit_clear_fault",
+        "start_ads_diagnostic": "trigger_ads_test",
     }
 
 
@@ -1026,7 +1027,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                          result = func(**args)
                          result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
                      except Exception as e2:
-                         return {"ok": False, "message": f"Self-repair failed for '{corrected_tool}': {e2}", "error": "repair_execution_failed"}
+                         # CRITICAL: Re-raise so this bubbles up to the Dispatcher's ADS fault reporter
+                         raise e2
             else:
                 return {"ok": False, "message": f"Unknown tool: {tool} (No matching protocol found)", "error": "unknown_tool"}
             

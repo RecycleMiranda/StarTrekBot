@@ -1391,9 +1391,8 @@ async def handle_event(event: InternalEvent):
                 
                 task = await ops.register_task(session_id, event.text, priority=priority)
                 
-                # Spawn Background Task
-                async_task = asyncio.create_task(_execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task))
-                task.async_task = async_task
+                # Await in background: Lock now persists for the ENTIRE agentic loop
+                await _execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task)
                 
                 # Immediate Acknowledgment if needed (Silent by default unless high-stakes)
                 if priority == TaskPriority.ALPHA:

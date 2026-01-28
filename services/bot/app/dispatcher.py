@@ -1384,7 +1384,6 @@ async def handle_event(event: InternalEvent):
         
         # LCARS Error Reply
         try:
-            from . import send_queue
             sq = send_queue.SendQueue.get_instance()
             session_key = f"qq:{event.group_id or event.user_id}"
             is_ch = any('\u4e00' <= char <= '\u9fff' for char in event.text)

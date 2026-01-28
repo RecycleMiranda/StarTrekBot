@@ -69,7 +69,8 @@
             "IDLE",
             "CHARGING",
             "ACTIVE",
-            "VENTING"
+            "VENTING",
+            "QUANTUM_SLIPSTREAM_STANDBY"
           ],
           "default_state": "IDLE",
           "metrics": {
@@ -525,6 +526,12 @@
       "system": "shields",
       "change": "Added metric: graviton_load (mC)",
       "justification": "Metaphasic shielding requirement."
+    },
+    {
+      "timestamp": 1769592004.379097,
+      "system": "warp_drive",
+      "change": "Added state: QUANTUM_SLIPSTREAM_STANDBY",
+      "justification": "Experimental drive upgrade."
     }
   ]
 }

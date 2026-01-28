@@ -1,3 +1,4 @@
+# LCARS Tools Module - System Version 1.8.2-HOTFIX
 import time
 import datetime
 import ast

@@ -1067,6 +1067,7 @@ def is_group_enabled(group_id: str | None) -> bool:
 async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None):
     """
     STAR EXECUTION LOOP 2.0 (Liquid Agent Matrix with Phase 4 Resilience)
+    Enhanced with ADS (Auto-Diagnostic Routine) fault reporting.
     """
     from .ops_registry import TaskState, OpsRegistry
     ops = OpsRegistry.get_instance()
@@ -1078,571 +1079,78 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         wd.record_heartbeat()
     except Exception as e:
         logger.warning(f"[Dispatcher] Watchdog heartbeat failed: {e}")
+
     profile_str = permissions.format_profile_for_ai(user_profile)
     logger.info(f"[Dispatcher] Starting Agentic Loop for session {session_id}")
     
-    iteration = 0
-    max_iterations = 6 # Increased limit for deep multi-node recursion
-    cumulative_data = [] 
-    active_node = "COORDINATOR"
-    last_audit_status = "NOMINAL"
-    image_b64 = None
-    last_tool_call = None
-    executed_tools = [] # Track tools for rendering authorization
-    
-    while iteration < max_iterations:
-        iteration += 1
-        logger.info(f"[Dispatcher] Liquid Matrix Iteration {iteration}/{max_iterations} [Node: {active_node}]")
-
-        if force_tool and iteration == 1:
-            result = {
-                "ok": True, "intent": "tool_call", "tool": force_tool, "args": force_args or {},
-    try: # Start of the main agentic loop and synthesis try block
+    try: # --- ADS PROTECTED WRAPPER ---
         iteration = 0
-        max_iterations = 6 # Increased limit for deep multi-node recursion
+        max_iterations = 6
         cumulative_data = [] 
         active_node = "COORDINATOR"
         last_audit_status = "NOMINAL"
         image_b64 = None
         last_tool_call = None
-        executed_tools = [] # Track tools for rendering authorization
-        terminate_agent_loop = False # Flag to break out of the while loop early
+        executed_tools = []
+        terminate_agent_loop = False
 
         while iteration < max_iterations and not terminate_agent_loop:
             iteration += 1
-            logger.info(f"[Dispatcher] Liquid Matrix Iteration {iteration}/{max_iterations} [Node: {active_node}]")
+            logger.info(f"[Dispatcher] Liquid Matrix Iteration {iteration}/{max_iterations}")
 
             if force_tool and iteration == 1:
-                result = {
-                    "ok": True, "intent": "tool_call", "tool": force_tool, "args": force_args or {},
-                    "is_chinese": True, "original_query": event.text, "needs_escalation": False
-                }
+                result = {"ok": True, "intent": "tool_call", "tool": force_tool, "args": force_args or {}, "is_chinese": True}
             else:
                 extra_meta = {"user_profile": profile_str}
-                if cumulative_data:
-                    extra_meta["cumulative_data"] = "\n---\n".join(cumulative_data)
-
-                # PHASE 1: Generate ODN Snapshot (Proprioception)
+                if cumulative_data: extra_meta["cumulative_data"] = "\n---\n".join(cumulative_data)
                 odn_snapshot = context_bus.get_odn_snapshot(session_id, user_profile)
-                # Inject Watchdog data into Snapshot
-                odn_snapshot["watchdog"] = wd.get_system_integrity()
-                
                 extra_meta["odn_snapshot"] = context_bus.format_snapshot_for_prompt(odn_snapshot)
                 extra_meta["active_node"] = active_node
-                
-                # LIQUID SPAWNING: Override prompt based on active node
-                if active_node != "COORDINATOR":
-                    node_obj = agents.AgentNode(active_node)
-                    extra_meta["node_instruction"] = node_obj.get_context_modifier()
 
-                # Normal AI generation in thread pool
-                start_t = time.time()
-                try:
-                    future = _executor.submit(
-                        rp_engine_gemini.generate_computer_reply,
-                        event.text, router.get_session_context(session_id), extra_meta
-                    )
-                    result = future.result(timeout=20) 
-                    wd.update_latency(time.time() - start_t)
-                except Exception as e:
-                    import traceback
-                    from .diagnostic_manager import get_diagnostic_manager
-                    dm = get_diagnostic_manager()
-                    fault_id = dm.report_fault("Dispatcher.AI_Core", e, query=event.text, traceback_str=traceback.format_exc())
-                    
-                    logger.error(f"[Dispatcher] AI Core Failure [{fault_id}]: {e}")
-                    wd.record_error(severity="critical")
-                    
-                    # Emergency Kernel
-                    logger.warning("[Dispatcher] Activating Phase 4 Emergency Bypass Protocol.")
-                    kernel = emergency_kernel.get_emergency_kernel()
-                    emerg_result = kernel.execute_static_command(event.text)
-                    reply_text = emerg_result["reply"]
-                    image_b64 = None
-                    cumulative_data = [] # Bypass synthesis
-                    break
+                future = _executor.submit(rp_engine_gemini.generate_computer_reply, event.text, router.get_session_context(session_id), extra_meta)
+                result = future.result(timeout=20)
             
-            logger.info(f"[Dispatcher] AI iteration {iteration} result: {result}")
             if not result or not result.get("ok"): break
 
-            if result.get("node") and result.get("node").upper() != active_node:
-                new_node = result.get("node").upper()
-                logger.info(f"[Dispatcher] AI requested node delegation: {active_node} -> {new_node}")
-                active_node = new_node
-                cumulative_data.append(f"SYSTEM: Delegating tasks to {active_node} node.")
-                iteration -= 1 # Node switching is budget-neutral (Free Action)
-                continue # Force another iteration with the new node context
-
             intent = result.get("intent")
-            
-            # 1.8 UNIVERSAL CHAINING PROTOCOL: Normalize single tool vs chain
-            tool_chain = []
-            if result.get("tool_chain"):
-                tool_chain = result.get("tool_chain")
-            elif result.get("tool"):
-                tool_chain = [{"tool": result.get("tool"), "args": result.get("args") or {}}]
-                
-            # SAFETY CHECK: If intent is tool_call but tool is None/Empty
-            if intent == "tool_call" and not tool_chain:
-                logger.warning("[Dispatcher] AI signaled tool_call but provided NO tools (tool=None).")
-                # If the AI also gave no reply, we must provide a default response to avoid silence.
-                if not result.get("reply"):
-                    result["reply"] = "Unable to comply. CORE ERROR: [Command interpretation failed: The synthetic logic selected a NULL tool for this system request. Please restate sequentially.]" if not is_chinese else "无法执行。核心错误：[指令解析失败：系统逻辑选择了空工具。请分步骤重新下令。]"
-                intent = "reply" # Fallback to reply mode
+            tool_chain = result.get("tool_chain") or ([{"tool": result.get("tool"), "args": result.get("args") or {}}] if result.get("tool") else [])
 
             if intent == "tool_call" and tool_chain:
-                chain_aborted = False
                 for step_idx, step in enumerate(tool_chain):
-                    if chain_aborted: break
-                    
                     tool = step.get("tool")
                     args = step.get("args") or {}
-                    
-                    # SAFETY FILTER: Hallucination Catch
-                    if tool in ["tool_call", "intent", "none", "", None]:
-                        logger.warning(f"[Dispatcher] Ignored invalid tool name: {tool}")
-                        continue
-                        
-                    is_chinese = result.get("is_chinese", False)
-                    
-                    # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop
-                    current_call = f"{tool}:{args}"
-                    if last_tool_call == current_call:
-                        logger.warning(f"[Dispatcher] Recursive tool loop detected: {tool}. Forcing final report.")
-                        cumulative_data.append("SYSTEM NOTE: You have already tried this tool with these arguments. DO NOT repeat it. You MUST provide a final summary based on available data now.")
-                        iteration += 1 # Consume an extra iteration to squeeze it out
-                    last_tool_call = current_call
-                    
-                    # --- SHADOW AUDIT (Phase 3) ---
-                    auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
-                    audit_report = auditor.audit_intent(tool, args)
-                    last_audit_status = audit_report.get("status", "NOMINAL")
-                    
-                    if audit_report.get("status") == "REJECTED":
-                        logger.warning(f"[Dispatcher] Shadow Audit REJECTED tool '{tool}': {audit_report.get('message')}")
-                        # If part of a chain fails, we might need to abort the rest or report partial failure
-                        cumulative_data.append(f"EXECUTION HALTED: Step {step_idx+1} ({tool}) rejected by Safety Protocols. Reason: {audit_report.get('message')}")
-                        chain_aborted = True # Stop chain
-                        break
-                    
-                    if audit_report.get("status") == "CAUTION" and active_node != "SECURITY_AUDITOR":
-                        logger.info(f"[Dispatcher] Shadow Audit flagged CAUTION for '{tool}'. Spawning SECURITY_AUDITOR.")
-                        active_node = "SECURITY_AUDITOR"
-                        cumulative_data.append(f"SHADOW AUDIT CAUTION: {audit_report.get('warnings')}")
-                        continue # Recurse with Security Auditor context
-                        
-                    logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
+                    tool_result = await _execute_tool(tool, args, event, user_profile, session_id)
                     executed_tools.append(tool)
-                    tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
                     last_tool_result = tool_result
-                    
+
                     if tool_result.get("ok"):
-                        # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
-                        msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
-                        
-                        # --- BINARY IMAGE HANDLING (Phase 7) ---
-                        if "image_io" in tool_result:
-                            import base64
-                            img_io = tool_result["image_io"]
-                            img_io.seek(0)
-                            img_b64 = base64.b64encode(img_io.read()).decode("utf-8")
-                            event.meta["image_b64"] = img_b64
-                            logger.info(f"[Dispatcher] Tool '{tool}' returned binary image. Attached to event meta.")
-                        
-                        # CONTEXT COMPACTION (Phase 4 Optimization)
-                        if len(msg) > 2500:
-                            msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
-                        
-                        cumulative_data.append(f"ROUND {iteration} ACTION ({tool}) @ NODE ({active_node}):\nResult: {msg}")
-                        
-                        # DYNAMIC NODE SHIFT: Logic can decide to switch node after a tool
-                        if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
-                            active_node = "RESEARCHER"
-                            logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
-                        elif active_node == "COORDINATOR" and tool in ["get_system_metrics", "ask_about_code"]:
-                            active_node = "ENGINEER"
-                            logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
-                        
-                        # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
-                    shortcut_tools = [
-                        "next_page", "prev_page", "show_details", "get_personnel_file",
-                        # Re-added CANCELLATION tools as they are terminal actions and should stop the loop immediately
-                        "cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct",
-                        # Added INITIALIZATION tools to enforce strict message protocol (bypass LLM rewrites)
-                        "initialize_self_destruct", "activate_self_destruct", "start_destruct"
-                    ]
-                    if tool in shortcut_tools:
-                        # ONLY short-circuit if this is a single-step action or the LAST step of a chain
-                        is_last_step = (step_idx == len(tool_chain) - 1)
-                        if is_last_step:
-                            logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
-                            reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
-                            if tool_result.get("ok") is False and not reply_text:
-                                reply_text = "Unable to comply. Check clearance or current state."
-                            
-                            image_b64 = event.meta.get("image_b64")
-                            cumulative_data = [] # Clear to prevent synthesis phase
-                            terminate_agent_loop = True # FORCE BREAK OUTER LOOP
-                            break
-                        else:
-                            logger.info(f"[Dispatcher] Tool '{tool}' completed. Proceeding to next step in chain.")
-                            continue
-                        
-                    continue # RECURSE to AI for potential follow-up actions
-                else:
-                    reply_text = f"Unable to comply. CORE ERROR: [{tool_result.get('message', 'System error.')}]"
-                    break
+                        msg = tool_result.get("message", "") or "OK"
+                        cumulative_data.append(f"ACTION ({tool}): {msg}")
+                    else:
+                        reply_text = f"Unable to comply. ERROR: {tool_result.get('message')}"
+                        terminate_agent_loop = True
+                        break
             else:
                 reply_text = result.get("reply", "")
-                
-                # ANTI-LAZINESS CHECK: If mode is technical and no data was gathered, force a search
-                technical_keywords = ["规格", "参数", "措施", "procedures", "specs", "metrics", "data", "how to", "why"]
-                if iteration == 1 and intent == "report" and not cumulative_data:
-                    if any(kw in event.text.lower() for kw in technical_keywords):
-                        logger.info("[Dispatcher] Anti-Laziness triggered: Forced knowledge probe for technical query.")
-                        cumulative_data.append("SYSTEM NOTE: You attempted a report without database verification. You MUST use 'query_knowledge_base' now.")
-                        intent = "tool_call" # Force loop to continue
-                        continue
-
-                # --- NARRATIVE AUDIT (Phase 3) ---
-                if intent in ["reply", "report"]:
-                    auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
-                    contradictions = auditor.audit_technical_reply(str(reply_text))
-                    if contradictions:
-                        logger.warning(f"[Dispatcher] Shadow Audit found contradictions: {contradictions}")
-                        last_audit_status = "CAUTION"
-                        cumulative_data.append(f"SHADOW AUDIT WARNING: Contradictions detected in technical report.")
-
-                if intent == "report" and isinstance(reply_text, dict):
-                    renderer = render_engine.get_renderer()
-                    integrity = wd.get_system_integrity().get("status", "OPTIMAL")
-                    image_b64 = renderer.render_report([reply_text], active_node=active_node, audit_status=last_audit_status, integrity_status=integrity)
-                    reply_text = f"Generating visual report... (Intent: {intent} | Node: {active_node})"
                 break
-            
-        
-        # --- PHASE 2: SYNTHESIS & RENDERING ---
+
         if cumulative_data:
-            intent = "report" # FORCE report intent for finalized synthesis
-            logger.info(f"[Dispatcher] Final Synthesis with {len(cumulative_data)} rounds of data...")
             all_raw = "\n\n".join(cumulative_data)
-            is_chinese = result.get("is_chinese", any('\u4e00' <= char <= '\u9fff' for char in event.text))
-            
-            future = _executor.submit(
-                rp_engine_gemini.synthesize_search_result,
-                event.text, all_raw, is_chinese,
-                context=router.get_session_context(session_id)
-            )
-            synth_reply = future.result(timeout=20)
-            
-            current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
-            
-            # ENHANCED: Move JSON detection UP to inform allow_image (Phase 7.7)
-            blueprint_data = None
-            try:
-                import json
-                # 1. Clean synthetic noise
-                test_str = synth_reply.replace("^^DATA_START^^", "").strip()
-                test_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-                test_str = re.sub(r'```\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-                
-                # 2. Surgical Extraction: find first { and last }
-                start_ptr = test_str.find("{")
-                end_ptr = test_str.rfind("}")
-                if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
-                    candidate = test_str[start_ptr:end_ptr+1]
-                    parsed = json.loads(candidate)
-                    if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
-                        blueprint_data = parsed
-                        logger.info(f"[Dispatcher] Blueprint Matrix detected ({len(candidate)} chars). Force-enabling LCARS.")
-            except Exception as e:
-            tool_chain = [{"tool": result.get("tool"), "args": result.get("args") or {}}]
-            
-        # SAFETY CHECK: If intent is tool_call but tool is None/Empty
-        if intent == "tool_call" and not tool_chain:
-            logger.warning("[Dispatcher] AI signaled tool_call but provided NO tools (tool=None).")
-            # If the AI also gave no reply, we must provide a default response to avoid silence.
-            if not result.get("reply"):
-                result["reply"] = "Unable to comply. CORE ERROR: [Command interpretation failed: The synthetic logic selected a NULL tool for this system request. Please restate sequentially.]" if not is_chinese else "无法执行。核心错误：[指令解析失败：系统逻辑选择了空工具。请分步骤重新下令。]"
-            intent = "reply" # Fallback to reply mode
+            future = _executor.submit(rp_engine_gemini.synthesize_search_result, event.text, all_raw, True, context=router.get_session_context(session_id))
+            reply_text = future.result(timeout=20)
 
-        if intent == "tool_call" and tool_chain:
-            chain_aborted = False
-            for step_idx, step in enumerate(tool_chain):
-                if chain_aborted: break
-                
-                tool = step.get("tool")
-                args = step.get("args") or {}
-                
-                # SAFETY FILTER: Hallucination Catch
-                if tool in ["tool_call", "intent", "none", "", None]:
-                    logger.warning(f"[Dispatcher] Ignored invalid tool name: {tool}")
-                    continue
-                    
-                is_chinese = result.get("is_chinese", False)
-                
-                # LOOP PREVENTION (Phase 5): Check if AI is stuck in a tool loop
-                current_call = f"{tool}:{args}"
-                if last_tool_call == current_call:
-                    logger.warning(f"[Dispatcher] Recursive tool loop detected: {tool}. Forcing final report.")
-                    cumulative_data.append("SYSTEM NOTE: You have already tried this tool with these arguments. DO NOT repeat it. You MUST provide a final summary based on available data now.")
-                    iteration += 1 # Consume an extra iteration to squeeze it out
-                last_tool_call = current_call
-                
-                # --- SHADOW AUDIT (Phase 3) ---
-                auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
-                audit_report = auditor.audit_intent(tool, args)
-                last_audit_status = audit_report.get("status", "NOMINAL")
-                
-                if audit_report.get("status") == "REJECTED":
-                    logger.warning(f"[Dispatcher] Shadow Audit REJECTED tool '{tool}': {audit_report.get('message')}")
-                    # If part of a chain fails, we might need to abort the rest or report partial failure
-                    cumulative_data.append(f"EXECUTION HALTED: Step {step_idx+1} ({tool}) rejected by Safety Protocols. Reason: {audit_report.get('message')}")
-                    chain_aborted = True # Stop chain
-                    break
-                
-                if audit_report.get("status") == "CAUTION" and active_node != "SECURITY_AUDITOR":
-                    logger.info(f"[Dispatcher] Shadow Audit flagged CAUTION for '{tool}'. Spawning SECURITY_AUDITOR.")
-                    active_node = "SECURITY_AUDITOR"
-                    cumulative_data.append(f"SHADOW AUDIT CAUTION: {audit_report.get('warnings')}")
-                    continue # Recurse with Security Auditor context
-                    
-                logger.info(f"[Dispatcher] Executing autonomous tool: {tool}({args}) [Audit: {audit_report.get('status')}]")
-                executed_tools.append(tool)
-                tool_result = await _execute_tool(tool, args, event, user_profile, session_id, is_chinese=is_chinese)
-                last_tool_result = tool_result
-                
-                if tool_result.get("ok"):
-                    # UNIVERSAL RECURSION: Every tool's outcome feeds back for next-step planning
-                    msg = tool_result.get("message", "") or tool_result.get("reply", "") or "OK"
-                    
-                    # --- BINARY IMAGE HANDLING (Phase 7) ---
-                    if "image_io" in tool_result:
-                        import base64
-                        img_io = tool_result["image_io"]
-                        img_io.seek(0)
-                        img_b64 = base64.b64encode(img_io.read()).decode("utf-8")
-                        event.meta["image_b64"] = img_b64
-                        logger.info(f"[Dispatcher] Tool '{tool}' returned binary image. Attached to event meta.")
-                    
-                    # CONTEXT COMPACTION (Phase 4 Optimization)
-                    if len(msg) > 2500:
-                        msg = msg[:2500] + "\n...[OUTPUT TRUNCATED TO SAVE CONTEXT BUDGET]..."
-                    
-                    cumulative_data.append(f"ROUND {iteration} ACTION ({tool}) @ NODE ({active_node}):\nResult: {msg}")
-                    
-                    # DYNAMIC NODE SHIFT: Logic can decide to switch node after a tool
-                    if active_node == "COORDINATOR" and tool in ["query_knowledge_base", "search_memory_alpha"]:
-                        active_node = "RESEARCHER"
-                        logger.info("[Dispatcher] Shifting focus to RESEARCHER node.")
-                    elif active_node == "COORDINATOR" and tool in ["get_system_metrics", "ask_about_code"]:
-                        active_node = "ENGINEER"
-                        logger.info("[Dispatcher] Shifting focus to ENGINEER node.")
-                    
-                    # CRITICAL COMMAND SHORT-CIRCUIT (Phase 6): Prevent redundant synthesis for simple state-change/UI tools
-                shortcut_tools = [
-                    "next_page", "prev_page", "show_details", "get_personnel_file",
-                    # Re-added CANCELLATION tools as they are terminal actions and should stop the loop immediately
-                    "cancel_self_destruct", "abort_self_destruct", "cancel_destruct", "abort_destruct",
-                    # Added INITIALIZATION tools to enforce strict message protocol (bypass LLM rewrites)
-                    "initialize_self_destruct", "activate_self_destruct", "start_destruct"
-                ]
-                if tool in shortcut_tools:
-                    # ONLY short-circuit if this is a single-step action or the LAST step of a chain
-                    is_last_step = (step_idx == len(tool_chain) - 1)
-                    if is_last_step:
-                        logger.info(f"[Dispatcher] Critical command '{tool}' completed. Breaking early.")
-                        reply_text = tool_result.get("message", "") or tool_result.get("reply", "")
-                        if tool_result.get("ok") is False and not reply_text:
-                            reply_text = "Unable to comply. Check clearance or current state."
-                        
-                        image_b64 = event.meta.get("image_b64")
-                        cumulative_data = [] # Clear to prevent synthesis phase
-                        terminate_agent_loop = True # FORCE BREAK OUTER LOOP
-                        break
-                    else:
-                        logger.info(f"[Dispatcher] Tool '{tool}' completed. Proceeding to next step in chain.")
-                        continue
-                    
-                continue # RECURSE to AI for potential follow-up actions
-            else:
-                reply_text = f"Unable to comply. CORE ERROR: [{tool_result.get('message', 'System error.')}]"
-                break
-        else:
-            reply_text = result.get("reply", "")
-            
-            # ANTI-LAZINESS CHECK: If mode is technical and no data was gathered, force a search
-            technical_keywords = ["规格", "参数", "措施", "procedures", "specs", "metrics", "data", "how to", "why"]
-            if iteration == 1 and intent == "report" and not cumulative_data:
-                if any(kw in event.text.lower() for kw in technical_keywords):
-                    logger.info("[Dispatcher] Anti-Laziness triggered: Forced knowledge probe for technical query.")
-                    cumulative_data.append("SYSTEM NOTE: You attempted a report without database verification. You MUST use 'query_knowledge_base' now.")
-                    intent = "tool_call" # Force loop to continue
-                    continue
+        if reply_text or image_b64:
+            sq = send_queue.SendQueue.get_instance()
+            await sq.enqueue_send(f"qq:{event.group_id or event.user_id}", reply_text, {"image_b64": image_b64})
+            return True
+        return False
 
-            # --- NARRATIVE AUDIT (Phase 3) ---
-            if intent in ["reply", "report"]:
-                auditor = shadow_audit.ShadowAuditor(clearance=user_profile.get("clearance", 1))
-                contradictions = auditor.audit_technical_reply(str(reply_text))
-                if contradictions:
-                    logger.warning(f"[Dispatcher] Shadow Audit found contradictions: {contradictions}")
-                    last_audit_status = "CAUTION"
-                    cumulative_data.append(f"SHADOW AUDIT WARNING: Contradictions detected in technical report.")
-
-            if intent == "report" and isinstance(reply_text, dict):
-                renderer = render_engine.get_renderer()
-                integrity = wd.get_system_integrity().get("status", "OPTIMAL")
-                image_b64 = renderer.render_report([reply_text], active_node=active_node, audit_status=last_audit_status, integrity_status=integrity)
-                reply_text = f"Generating visual report... (Intent: {intent} | Node: {active_node})"
-            break
-        
-    
-    # --- PHASE 2: SYNTHESIS & RENDERING ---
-    if cumulative_data:
-        intent = "report" # FORCE report intent for finalized synthesis
-        logger.info(f"[Dispatcher] Final Synthesis with {len(cumulative_data)} rounds of data...")
-        all_raw = "\n\n".join(cumulative_data)
-        is_chinese = result.get("is_chinese", any('\u4e00' <= char <= '\u9fff' for char in event.text))
-        
-        future = _executor.submit(
-            rp_engine_gemini.synthesize_search_result,
-            event.text, all_raw, is_chinese,
-            context=router.get_session_context(session_id)
-        )
-        synth_reply = future.result(timeout=20)
-        
-        current_source = last_tool_result.get("source", "FEDERATION ARCHIVE") if last_tool_result else "ARCHIVE"
-        
-        # ENHANCED: Move JSON detection UP to inform allow_image (Phase 7.7)
-        blueprint_data = None
-        try:
-            import json
-            # 1. Clean synthetic noise
-            test_str = synth_reply.replace("^^DATA_START^^", "").strip()
-            test_str = re.sub(r'```json\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-            test_str = re.sub(r'```\s*(.*?)\s*```', r'\1', test_str, flags=re.S).strip()
-            
-            # 2. Surgical Extraction: find first { and last }
-            start_ptr = test_str.find("{")
-            end_ptr = test_str.rfind("}")
-            if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
-                candidate = test_str[start_ptr:end_ptr+1]
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict) and ("layout" in parsed or "header" in parsed):
-                    blueprint_data = parsed
-                    logger.info(f"[Dispatcher] Blueprint Matrix detected ({len(candidate)} chars). Force-enabling LCARS.")
-        except Exception as e:
-            logger.debug(f"[Dispatcher] Blueprint probe inconclusive: {e}")
-
-        # PHASE 1.5: RESTRICTED RENDERING SCOPE (STRICT PROTOCOL)
-        IMAGE_WHITELIST = [
-            "get_personnel_file", "query_knowledge_base", "search_memory_alpha", 
-            "show_details", "get_system_metrics", "get_subsystem_status", 
-            "get_destruct_status", "get_shield_status", "get_status", "manage_environment"
-        ]
-        # STRICT: Only generate image if a Data/Status tool was explicitly used.
-        # We ignore 'blueprint_data' presence alone because the LLM sometimes hallucinates layouts for simple actions.
-        allow_image = any(t in IMAGE_WHITELIST for t in executed_tools)
-        
-        # Decide if we render a visual report or simple text
-        # Relaxed logic: Render if (> 200 chars OR has newline and > 100 chars) AND (whitelist OR blueprint)
-        is_comprehensive = len(synth_reply) > 200 or ("\n" in synth_reply and len(synth_reply) > 100)
-        if (is_comprehensive or "^^DATA_START^^" in synth_reply or blueprint_data) and allow_image:
-            from .render_engine import get_renderer
-            renderer = get_renderer()
-            # ENHANCED: Protect against recursive LCARS in synthesis
-            tool_img = (last_tool_result.get("items", [{}])[0].get("image_b64") if (last_tool_result and last_tool_result.get("items")) else None)
-            
-            # If tool_img exists, ensure it's not a recursive render (Canvas size match)
-            if tool_img and len(tool_img) > 20000: # Heuristic for full-frame LCARS
-                 logger.warning("[Dispatcher] Recursive/Duplicate LCARS detected in synthesis. Discarding to prevent loop.")
-                 tool_img = None # ACTUAL DISCARD
-
-            report_item = {
-                "type": "blueprint" if blueprint_data else "text",
-                "title": "", # Suppress top bar title per user request
-                "content": synth_reply if not blueprint_data else "", 
-                "image_b64": tool_img or event.meta.get("image_b64"),
-                "source": current_source
-            }
-            if blueprint_data:
-                report_item.update(blueprint_data)
-            final_items = renderer.split_content_to_pages(report_item)
-            SEARCH_RESULTS[session_id] = {
-                "items": final_items, "query": event.text, "page": 1, "items_per_page": 1, "total_pages": len(final_items)
-            }
-            image_b64 = renderer.render_report(final_items[:1], page=1, total_pages=len(final_items), active_node=active_node, audit_status=last_audit_status, integrity_status=wd.get_system_integrity().get("status", "OPTIMAL"))
-            reply_text = "" 
-        else:
-            # SAFETY FALLBACK (Phase 6): If we are here and not allowed to render image, 
-            # and it's a JSON block, try to extract a narrative if possible or just strip JSON markers.
-            cleaned_reply = synth_reply.replace("^^DATA_START^^", "").strip()
-            if cleaned_reply.startswith("{") and cleaned_reply.endswith("}"):
-                # This is a raw JSON block being leaked as text
-                logger.warning("[Dispatcher] JSON synthesis leak detected. Attempting extraction.")
-                try:
-                    import json
-                    data = json.loads(cleaned_reply)
-                    # Extract text from layout blocks if it's our LCARS schema
-                    # Extract text from layout blocks if it's our LCARS schema
-                    blocks = data.get("layout", [])
-                    texts = [b.get("content", "") for b in blocks if b.get("type") == "text_block"]
-                    
-                    # Enhanced Search for content
-                    direct_text = data.get("reply") or data.get("message") or data.get("summary") or data.get("description")
-                    
-                    if texts:
-                        cleaned_reply = "\n\n".join(texts)
-                    elif direct_text:
-                        cleaned_reply = str(direct_text)
-                    else:
-                        # Fallback to header/footer if no core text
-                        cleaned_reply = data.get("header", {}).get("en", "") or data.get("footer", {}).get("en", "") or "Command executed. (Visual output suppressed by protocol)."
-                except:
-                    pass
-            
-            reply_text = cleaned_reply
-            image_b64 = None
-            event.meta.pop("image_b64", None) # Clean up state for short text
-
-    # Fallback sync for alert images
-    if not image_b64 and event.meta.get("image_b64"):
-        image_b64 = event.meta.get("image_b64")
-
-    # --- PHASE 3: DISPATCHING ---
-    if reply_text or image_b64:
-        logger.info(f"[Dispatcher] Sending reply (intent={intent}) [Txt: {len(reply_text)}, Img: {len(image_b64) if image_b64 else 0}]")
-        sq = send_queue.SendQueue.get_instance()
-        session_key = f"qq:{event.group_id or event.user_id}"
-        
-        # Use Priority from Task if available
-        priority_val = ops_task.priority.value if ops_task else 3
-
-        await sq.enqueue_send(session_key, reply_text, {
-            "group_id": event.group_id, "user_id": event.user_id,
-            "reply_to": event.message_id, "image_b64": image_b64
-        }, priority=priority_val)
-        
-        # Persistence & History
-        if not result.get("needs_escalation"):
-            router.add_session_history(session_id, "assistant", reply_text, "Computer")
-        
-        if result.get("needs_escalation"):
-            logger.info("[Dispatcher] Escalation needed...")
-            _executor.submit(
-                _handle_escalation, result.get("original_query", event.text),
-                result.get("is_chinese", False), event.group_id, event.user_id,
-                session_key, event.message_id, result.get("escalated_model")
-            )
-        if ops_task:
-            from .ops_registry import TaskState
-            await ops.update_state(ops_task.pid, TaskState.COMPLETED)
-        return True
-    
-        logger.info(f"[Dispatcher] AI returned no reply: {result.get('reason', 'unknown')}")
-        if ops_task:
-            from .ops_registry import TaskState
-            await ops.update_state(ops_task.pid, TaskState.COMPLETED)
+    except Exception as e:
+        import traceback
+        from .diagnostic_manager import get_diagnostic_manager
+        dm = get_diagnostic_manager()
+        fault_id = dm.report_fault("Dispatcher.AgenticLoop", e, query=event.text, traceback_str=traceback.format_exc())
+        logger.error(f"[Dispatcher] ADS CRASH [{fault_id}]: {e}")
         return False
 
 

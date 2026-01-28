@@ -1436,7 +1436,12 @@ async def handle_event(event: InternalEvent):
                 initial_cumulative_data = []
                 
                 # Semantic Fast-Path: Status Reports / Scans (Direct Pre-fetch)
-                if any(kw in nav_text for kw in ["报告", "状态", "status", "report", "扫描", "scan"]):
+                # Semantic Fast-Path: Status Reports / Scans (Direct Pre-fetch)
+                # ADS 2.5 Tune: Reduce sensitivity. Only trigger if EXPLICITLY asking for status AND NOT an action command.
+                is_status_query = any(kw in nav_text for kw in ["报告", "状态", "status", "report", "扫描", "scan"])
+                is_command_action = any(kw in nav_text for kw in ["execute", "activate", "initiate", "enable", "disable", "启动", "执行", "开启", "关闭", "set", "change"])
+                
+                if is_status_query and not is_command_action:
                      logger.info("[Dispatcher] Super Fast-Path triggered: Pre-fetching get_status")
                      status_res = await _execute_tool("get_status", {}, event, user_profile, session_id)
                      if status_res.get("ok"):

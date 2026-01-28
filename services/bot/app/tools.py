@@ -12,6 +12,19 @@ from .sentinel import SentinelRegistry
 
 logger = logging.getLogger(__name__)
 
+def check_protocol_compliance(action_type: str, params: dict, user_context: dict = None) -> dict:
+    """Helper to consult the Protocol Engine."""
+    try:
+        from .protocol_engine import get_protocol_engine
+        engine = get_protocol_engine()
+        return engine.evaluate_action(action_type, params, user_context)
+    except Exception as e:
+        logger.error(f"Protocol Engine Check Failed: {e}")
+        # Fail safe (Open) or Fail secure (Closed)? 
+        # For now, log warning and match "Fail Safe" (allow) to avoid bricking if engine breaks.
+        return {"allowed": True, "warnings": ["Protocol Engine Offline"], "violations": []}
+
+
 def get_status(**kwargs) -> dict:
     """
     Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
@@ -170,36 +183,16 @@ def set_metric(system: str, metric: str, value: float) -> dict:
     ss = get_ship_systems()
     system = normalize_subsystem_name(system)
     
-    comp = ss.get_component(system)
-    if not comp:
-        return {"ok": False, "message": f"System '{system}' not found."}
-        
-    metrics = comp.get("metrics", {})
-    if metric not in metrics:
-        return {"ok": False, "message": f"Metric '{metric}' not found on system '{system}'. Valid: {list(metrics.keys())}"}
-        
-    # Update logic
-    # Check bounds if max/min defined (omitted for brevity)
-    metrics[metric]["current_value"] = value
+    # Proxy to Kernel Logic
+    result_msg = ss.set_metric_value(system, metric, value)
     
+    if "not found" in result_msg.lower():
+        return {"ok": False, "message": result_msg}
+        
     return {
         "ok": True,
-        "message": f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+        "message": result_msg
     }
-    if "light" in target_key or "亮度" in target_key:
-        if "bridge" in target_key or "舰桥" in target_key: target_key = "bridge_lighting"
-        elif "engineering" in target_key or "轮机室" in target_key: target_key = "engineering_lighting"
-    
-    if target_key in ss.auxiliary_state:
-        val = ss.auxiliary_state[target_key]
-        return {
-            "ok": True,
-            "name": target_key,
-            "state": val,
-            "message": f"探测到环境指标 {original_name} 设定值为：{val}，"
-        }
-
-    return {"ok": False, "message": f"找不到子系统或环境指标：{original_name}，建议尝试：{', '.join(list(ss.subsystems.keys()) + list(ss.auxiliary_state.keys()))}"}
 
 def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     """
@@ -213,6 +206,11 @@ def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     ss = get_ship_systems()
     ss.set_subsystem("main_reactor", SubsystemState.OFFLINE)
     
+    # Protocol Check
+    proto_res = check_protocol_compliance("MANUAL_COMMAND", {"keyword": "EJECT WARP CORE", "target": "MAIN_REACTOR"}, {"clearance": clearance})
+    if not proto_res["allowed"]:
+        return {"ok": False, "message": f"ACCESS DENIED (PROTOCOL LOCK): {', '.join(proto_res['violations'])}"}
+
     # Also trigger Red Alert if not already active
     ss.set_alert("RED")
     

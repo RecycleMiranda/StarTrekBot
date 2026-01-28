@@ -1,0 +1,51 @@
+# Starfleet General Orders (Core)
+# Source: star_trek_protocols_research.md
+
+- id: "GO_01"
+  name: "Prime Directive"
+  category: "PRIME"
+  priority: 999
+  description: "No interference with the normal development of any alien life or society."
+  trigger:
+    - type: "SENSOR_CONTACT"
+      condition: "TARGET.TechLevel < WARP_CAPABLE"
+  actions:
+    on_trigger:
+      - "BLOCK_TRANSPORTER"
+      - "BLOCK_WEAPONS"
+      - "WARN_USER(Non-Interference Protocol Active)"
+  overrides:
+    - protocol_id: "GO_156" # Omega Directive (Priority 1000)
+
+- id: "GO_07"
+  name: "Talos IV Quarantine"
+  category: "RESTRICTED"
+  priority: 900
+  description: "No contact with Talos IV. Violation carries death penalty."
+  trigger:
+    - type: "NAVIGATION_SET"
+      target: "TALOS_IV"
+    - type: "NAVIGATION_SET"
+      target: "SECTOR_006"
+  actions:
+    on_trigger:
+      - "HARD_LOCK_HELM"
+      - "ALERT_SECURITY"
+      - "DISPLAY_WARNING(GENERAL ORDER 7 VIOLATION)"
+
+- id: "GO_24"
+  name: "Orbital Bombardment"
+  category: "TACTICAL"
+  priority: 950
+  description: "Destruction of all life on a planet's surface."
+  trigger:
+    - type: "MANUAL_COMMAND"
+      keyword: "EXECUTE GENERAL ORDER 24"
+  conditions:
+    - "AUTH_LEVEL >= CAPTAIN"
+    - "SECOND_AUTH_REQUIRED == TRUE"
+    - "BIO_SCAN(Duress) == FALSE"
+  actions:
+    on_active:
+      - "UNLOCK_WMD_ARSENAL"
+      - "TARGET_PLANETARY_SURFACE"

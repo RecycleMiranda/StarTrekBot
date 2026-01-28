@@ -1,0 +1,51 @@
+# Tactical Alert Protocols
+# Source: star_trek_protocols_research.md
+
+- id: "TAC_RED_ALERT"
+  name: "Red Alert"
+  category: "TACTICAL"
+  priority: 100
+  description: "Maximum readiness state for combat or imminent danger."
+  trigger:
+    - type: "ALERT_CHANGE"
+      value: "RED"
+  actions:
+    cascade:
+      - system: "shields"
+        state: "UP"
+      - system: "weapons"
+        state: "STANDBY"
+      - system: "turbolifts"
+        mode: "RESTRICTED"
+      - system: "blast_doors"
+        mode: "SEALED"
+
+- id: "TAC_YELLOW_ALERT"
+  name: "Yellow Alert"
+  category: "TACTICAL"
+  priority: 50
+  description: "Increased readiness state for potential danger."
+  trigger:
+    - type: "ALERT_CHANGE"
+      value: "YELLOW"
+  actions:
+    cascade:
+      - system: "shields"
+        state: "STANDBY"
+      - system: "sensors"
+        mode: "FULL_SCAN"
+
+- id: "TAC_BLUE_ALERT"
+  name: "Blue Alert"
+  category: "ENVIRONMENTAL"
+  priority: 50
+  description: "Landing operations or cloaking device active (Defiant-class)."
+  trigger:
+    - type: "ALERT_CHANGE"
+      value: "BLUE"
+  actions:
+    cascade:
+      - system: "inertial_dampeners"
+        mode: "MAXIMUM"
+      - system: "gravity"
+        mode: "ADJUSTED"

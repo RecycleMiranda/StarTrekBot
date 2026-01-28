@@ -119,6 +119,25 @@ class ShipSystems:
         if not comp:
             return f"找不到组件: {name} (Component not found in MSD)."
             
+        if isinstance(state_val, (int, float)) or (isinstance(state_val, str) and state_val.replace(".", "", 1).isdigit()):
+            # [ADS 3.5] Smart Redirect: Detected numeric input for state -> Redirect to Metric Adjustment
+            val = float(state_val)
+            
+            # Heuristic: Find primary metric
+            target_metric = "output" # Default
+            if "shield" in name: target_metric = "integrity"
+            elif "impulse" in name: target_metric = "thrust"
+            elif "deflector" in name: target_metric = "particle_dispersion"
+            elif "phaser" in name: target_metric = "yield_setting"
+            elif "battery" in name or "cell" in name: target_metric = "charge_level"
+            
+            # Check if metric actually exists, otherwise grab the first one
+            metrics = comp.get("metrics", {})
+            if target_metric not in metrics and metrics:
+                target_metric = list(metrics.keys())[0]
+                
+            return self.set_metric_value(name, target_metric, val)
+
         # Normalize state
         target_state = state_val
         if isinstance(state_val, Enum):
@@ -169,6 +188,29 @@ class ShipSystems:
             msg += f" 联动指标调整: {', '.join(mapped_changes)}。"
             
         return msg
+
+    def set_metric_value(self, system: str, metric: str, value: float) -> str:
+        """
+        [ADS 3.5] Internal handler for metric updates. 
+        Updates the value and returns a confirmation string.
+        """
+        comp = self.get_component(system)
+        if not comp: return f"System '{system}' not found."
+        
+        metrics = comp.get("metrics", {})
+        if metric not in metrics:
+             return f"Metric '{metric}' not found on system '{system}'."
+             
+        # Update
+        metrics[metric]["current_value"] = value
+        
+        # Reverse Cascade: If setting output > 0, ensure system is NOT OFFLINE
+        if value > 0 and comp.get("current_state") == "OFFLINE":
+             if comp.get("default_state"):
+                 comp["current_state"] = comp.get("default_state")
+                 return f"Confirmed. {comp.get('name')} {metric} set to {value}. [AUTO-START] System brought ONLINE to support non-zero output."
+        
+        return f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
 
     def get_metric(self, system: str, metric: str) -> str:
         comp = self.get_component(system)

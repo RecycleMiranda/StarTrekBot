@@ -1141,7 +1141,12 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
 
         if reply_text or image_b64:
             sq = send_queue.SendQueue.get_instance()
-            await sq.enqueue_send(f"qq:{event.group_id or event.user_id}", reply_text, {"image_b64": image_b64})
+            await sq.enqueue_send(f"qq:{event.group_id or event.user_id}", reply_text, {
+                "group_id": event.group_id,
+                "user_id": event.user_id,
+                "reply_to": event.message_id,
+                "image_b64": image_b64
+            })
             return True
         return False
 

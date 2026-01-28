@@ -151,6 +151,20 @@ class SendQueue:
             error_msg = str(e)
             logger.error(f"Failed to send message {item.id} via {type(self.sender).__name__}: {error_msg}")
             
+            # TRIGGER ADS: Broadcast fault to diagnostic subspace
+            try:
+                import traceback
+                from .diagnostic_manager import get_diagnostic_manager
+                dm = get_diagnostic_manager()
+                dm.report_fault(
+                    f"SendQueue.{type(self.sender).__name__}", 
+                    e, 
+                    query=item.text[:200], 
+                    traceback_str=traceback.format_exc()
+                )
+            except Exception as ads_e:
+                logger.warning(f"ADS Link Failure within SendQueue: {ads_e}")
+
             # Log error to send_log.jsonl (using a side-effect log)
             from .sender_mock import SEND_LOG_PATH, DATA_DIR
             error_entry = {

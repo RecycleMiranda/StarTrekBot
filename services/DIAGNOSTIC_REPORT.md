@@ -16,6 +16,12 @@
 - **根因**: 函数作用域内存在重复的局部 `from . import send_queue` 语句，导致 Python 在全局导入生效前将其标记为未绑定变量。
 - **措施**: 已移除冗余的局部导入语句，统一使用顶层模块引用。
 
+### [RESOLVED] ERR-0x7F2A | SendQueue.QQSender
+- **日期**: 2026-01-28
+- **现象**: `NO_GROUP_ID_IN_META` 发送失败。
+- **根因**: 分发器重构后丢失了消息路由所需的 `group_id`。
+- **措施**: 已在 `_execute_ai_logic` 中恢复元数据完整透传，并为 `SendQueue` 接入了 ADS 异常上报钩子。
+
 ### [RESOLVED] ERR-0xB47D | Dispatcher.AgenticLoop
 - **日期**: 2026-01-28
 - **现象**: 模拟的“二锂舱破裂”故障触发。

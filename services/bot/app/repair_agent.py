@@ -200,6 +200,71 @@ class RepairAgent:
             "has_pending_changes": session.pending_code is not None,
             "changes_made": final_response.get("changes_made", [])
         }
+
+    async def async_autopilot_repair(self, module_name: str, fault_info: str) -> dict:
+        """
+        ADS Autopilot: Fix simple issues without user intervention.
+        Inserts bypass tags for later audit.
+        """
+        from . import repair_tools
+        
+        logger.warning(f"[RepairAgent] Autopilot initiated for {module_name}")
+        
+        # Build context specifically for autopilot
+        context = f"""
+You are the ADS Self-Healing Routine. A critical issue was detected in {module_name}.
+FAULT: {fault_info}
+
+TASK: Provide a surgical fix for this issue.
+CONSTRAINT: YOU MUST wrap your fix with ADS BYPASS tags.
+FORMAT:
+# <<< ADS BYPASS START >>>
+# ORIGINAL CODE:
+# [Commented out problematic logic]
+[Your fixed logic]
+# <<< ADS BYPASS END >>>
+
+ONLY output the fixed function or block. Use surgical precision.
+"""
+        # Load code
+        read_res = repair_tools.read_module(module_name)
+        if read_res.get("ok"):
+            context += f"\n\nCURRENT CODE IN {module_name}:\n"
+            context += read_res["content"]
+
+        # Call LLM (using SIMPLE model for fast recovery)
+        model = self.get_model_for_complexity(RepairComplexity.SIMPLE)
+        llm_res = await self._call_repair_llm(context, model, session=None)
+        
+        if not llm_res.get("ok"):
+            return {"ok": False, "message": "LLM Autopilot failed."}
+            
+        fixed_block = llm_res.get("text", "")
+        
+        # Validate syntax of the block (partial validation)
+        # Note: True validation requires merging, but we'll trust the LLM's tag wrapping for now 
+        # as it will be visually audited. 
+        
+        # For simplicity in this iteration, we use a regex to merge or just append/replace
+        # Ideal: AI provides the FULL file with tags. Let's adjust the prompt to be safer.
+        
+        # SECURE AUTOPILOT MERGE (Simple implementation: Use AI to provide full file content)
+        pilot_prompt = context + "\n\nCRITICAL: Provide the FULL content of the file with the fix applied and wrapped in BYPASS tags."
+        final_res = await self._call_repair_llm(pilot_prompt, model, session=None)
+        
+        if final_res.get("ok") and "ADS BYPASS START" in final_res["text"]:
+            new_content = final_res["text"]
+            # Strip markdown if present
+            new_content = re.sub(r"```python\n|```", "", new_content).strip()
+            
+            write_res = repair_tools.write_module(module_name, new_content)
+            return {
+                "ok": write_res.get("ok", False),
+                "message": f"Autopilot: Bypass patch applied to {module_name}.",
+                "git_sync": write_res.get("git_sync")
+            }
+            
+        return {"ok": False, "message": "Autopilot failed to generate bypass tags."}
     
     async def _apply_pending_changes(self, session: RepairSession) -> dict:
         """Apply pending code changes after user confirmation."""

@@ -95,9 +95,51 @@ class DiagnosticManager:
             # Sync to GitHub
             pm = get_protocol_manager()
             pm.git_sync(f"ADS: Diagnosed fault {entry.id}", extra_files=[DIAGNOSTIC_REPORT_PATH])
-            
+
+            # --- AUTO-HEALING TRIGGER ---
+            recoverable_keywords = ["SyntaxError", "UnboundLocalError", "AttributeError", "ModuleNotFoundError", "ImportError"]
+            if any(kw in entry.error_msg for kw in recoverable_keywords):
+                logger.info(f"[ADS] Fault {entry.id} is potentially recoverable. Launching Autopilot.")
+                
+                # Identify module
+                module = entry.component.split(".")[0].lower() + ".py"
+                if "dispatcher" in module: module = "dispatcher.py" # Normalization
+                
+                from . import repair_agent
+                ra = repair_agent.RepairAgent.get_instance()
+                
+                # Run Autopilot
+                import asyncio
+                # We need a loop if we are in a thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                repair_res = loop.run_until_complete(ra.async_autopilot_repair(module, entry.error_msg))
+                
+                if repair_res.get("ok"):
+                    logger.info(f"[ADS] Autopilot successfully applied bypass to {module}")
+                    entry.status = "BYPASS_ACTIVE"
+                    self._write_report()
+                    self._register_bypass(entry, module)
+                else:
+                    logger.warning(f"[ADS] Autopilot failed for {entry.id}: {repair_res.get('message')}")
+
         except Exception as e:
             logger.error(f"[ADS] AI Diagnosis failed for {entry.id}: {e}")
+
+    def _register_bypass(self, entry: DiagnosticEntry, module: str):
+        """Registers the bypass in BYPASS_REGISTRY.md"""
+        registry_path = os.path.join(REPO_ROOT, "BYPASS_REGISTRY.md")
+        line = f"| {entry.id} | {module} | {time.strftime('%Y-%m-%d %H:%M:%S')} | [ACTIVE] |\n"
+        
+        if not os.path.exists(registry_path):
+            with open(registry_path, "w", encoding="utf-8") as f:
+                f.write("# LCARS 子空间旁路注册表 (Bypass Registry)\n\n| Fault ID | Module | timestamp | Status |\n|---|---|---|---|\n")
+        
+        with open(registry_path, "a", encoding="utf-8") as f:
+            f.write(line)
+        
+        pm = get_protocol_manager()
+        pm.git_sync(f"ADS: Registered subspace bypass for {entry.id}", extra_files=[registry_path])
 
     def _write_report(self):
         content = "# LCARS 自动诊断报告 (Auto-Diagnostic Report)\n\n"

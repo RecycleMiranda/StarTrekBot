@@ -59,7 +59,8 @@ def get_status(**kwargs) -> dict:
         "message": f"SYSTEM STATUS REPORT: {report.get('alert')}\nMSD Data Loaded.",
         "msd_manifest": report.get("msd_manifest"),
         # Legacy fallback keys for existing frontend (optional, can be phased out)
-        "eps_energy_grid": ss.get_power_status(),
+        # Legacy fallback keys for existing frontend (optional, can be phased out)
+        "eps_energy_grid": report.get("msd_manifest", {}).get("eps_grid", {}),
         "sentinel_core": {
             "active_count": len(SentinelRegistry.get_instance().get_active_triggers()),
             "status": "MONITORING" if SentinelRegistry.get_instance().get_active_triggers() else "STANDBY"

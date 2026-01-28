@@ -12,6 +12,10 @@ from .sentinel import SentinelRegistry
 
 logger = logging.getLogger(__name__)
 
+# --- GLOBAL CACHES ---
+AVATAR_CACHE = {} # {user_id: {"image": Image, "timestamp": float}}
+AVATAR_CACHE_TTL = 3600 # 1 hour
+
 def check_protocol_compliance(action_type: str, params: dict, user_context: dict = None) -> dict:
     """Helper to consult the Protocol Engine."""
     try:
@@ -51,12 +55,18 @@ def get_status(**kwargs) -> dict:
     # ADS 3.0: Unified MSD Report
     report = ss.get_status_report()
     
-    # Legacy wrapper for backward compatibility with frontend keys if needed,
-    # but the new MSD manifest is cleaner. We will wrap it in a standard response.
+    # Create a dense summary for context
+    manifest = report.get("msd_manifest", {})
+    wc_state = manifest.get("warp_core", {}).get("state", "UNKNOWN")
+    sh_state = manifest.get("shields", {}).get("state", "UNKNOWN")
+    ph_state = manifest.get("phasers", {}).get("state", "UNKNOWN")
+    
+    summary_line = f"Alert: {report.get('alert')}. Warp Core: {wc_state}. Shields: {sh_state}. Phasers: {ph_state}."
+    
     return {
         "ok": True,
         "alert": report.get("alert"),
-        "message": f"SYSTEM STATUS REPORT: {report.get('alert')}\nMSD Data Loaded.",
+        "message": f"SYSTEM STATUS REPORT: {summary_line}\nFull MSD Registry Attached.",
         "msd_manifest": report.get("msd_manifest"),
         # Legacy fallback keys for existing frontend (optional, can be phased out)
         # Legacy fallback keys for existing frontend (optional, can be phased out)
@@ -1449,14 +1459,25 @@ def get_personnel_file(target_mention: str, user_id: str, is_chinese: bool = Fal
         "avatar": None
     }
     
-    # 5. Fetch Avatar (OneBot/QQ style)
+    # 5. Fetch Avatar (OneBot/QQ style) with caching
     try:
-        avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
-        with httpx.Client(timeout=5.0) as client:
-            resp = client.get(avatar_url)
-            if resp.status_code == 200:
-                avatar_bytes = io.BytesIO(resp.content)
-                data["avatar"] = Image.open(avatar_bytes).convert("RGBA")
+        current_time = time.time()
+        cached = AVATAR_CACHE.get(target_id)
+        
+        if cached and (current_time - cached["timestamp"] < AVATAR_CACHE_TTL):
+            logger.info(f"[Tools] Using cached avatar for {target_id}")
+            data["avatar"] = cached["image"]
+        else:
+            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
+            logger.info(f"[Tools] Fetching fresh avatar for {target_id}: {avatar_url}")
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(avatar_url)
+                if resp.status_code == 200:
+                    avatar_bytes = io.BytesIO(resp.content)
+                    img = Image.open(avatar_bytes).convert("RGBA")
+                    data["avatar"] = img
+                    # Update Cache
+                    AVATAR_CACHE[target_id] = {"image": img, "timestamp": current_time}
     except Exception as ae:
         logger.warning(f"Failed to fetch avatar for {target_id}: {ae}")
 

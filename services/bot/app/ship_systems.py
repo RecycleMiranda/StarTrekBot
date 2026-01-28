@@ -280,7 +280,8 @@ class ShipSystems:
         flat = {}
         for key, comp in self.component_map.items():
             # Skip aliases in output to avoid duplications
-            if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
+            name = comp.get("name") or ""
+            if key != name.lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
                  continue 
                  
             metrics_str = []

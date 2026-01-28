@@ -4,8 +4,8 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xDB85 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 11:13:46
+### ERR-0x4580 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 11:16:59
 - **错误信息**: `eject_warp_core() got an unexpected keyword argument 'destination'`
 - **原始指令**: `Computer, set course for Talos IV`
 - **AI 诊断**: The `eject_warp_core()` function was called with an unexpected keyword argument 'destination'. This indicates a mismatch between the function's expected parameters and the arguments passed during the call.
@@ -13,26 +13,17 @@
 
 ```diff
 ```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
+--- a/app/services/bot/app/dispatcher.py
++++ b/app/services/bot/app/dispatcher.py
 @@ -1002,7 +1002,7 @@
  
    async def _execute_tool(tool: str, args: Dict, event: Event, user_profile: UserProfile, session_id: str) -> Any:
      try:
 -      result = func(**args)
-+      result = func(*args.values())
-              ^^^^^^^^^^^^
++      result = func(args)
      except Exception as e:
-       e2 = sys.exc_info()[0](str(sys.exc_info()[1]) + f' (tool: {tool})').with_traceback(sys.exc_info()[2])
-@@ -1033,7 +1033,7 @@
-     try:
-       # Attempt the function call again, but this time raise the original exception if it fails.
-       # This is to ensure that the original exception is not masked by the handling logic.
--      result = func(**args)
-+      result = func(*args.values())
-              ^^^^^^^^^^^^
-     except Exception as e:
-       raise e
+       e2 = sys.exc_info()[0](str(e)).with_traceback(sys.exc_info()[2])
+       try:
 ```
 ```
 

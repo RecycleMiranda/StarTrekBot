@@ -20,8 +20,8 @@ SILENCE_THRESHOLD = 1800 # 30 minutes silence before clearing history on fresh w
 RE_MANUAL_ENTER = re.compile(r"(进入计算机模式|计算机模式|computer on|enter computer mode)", re.I)
 RE_MANUAL_EXIT = re.compile(r"(退出计算机模式|退出电脑模式|computer off|exit computer mode|停止计算机)", re.I)
 
-# Wake word: "computer" or "计算机" or "电脑" at start, followed by punctuation, space, or end of line
-RE_WAKE_WORD = re.compile(r"^\s*(computer|计算机|电脑)([\s,，:：]|$)", re.I)
+# Wake word: "computer" or "计算机" or "电脑" at start
+RE_WAKE_WORD = re.compile(r"^\s*(computer|计算机|电脑)", re.I)
 
 # Command verbs at start
 COMMAND_VERBS = ["报告", "查询", "设定", "锁定", "扫描", "显示", "确认", "执行", "计算", "诊断", "导航", "同步"]
@@ -109,8 +109,10 @@ def route_event(session_id: str, text: str, meta: Optional[dict] = None) -> dict
         state["last_activity"] = now
         _session_states[session_id] = state
         
-        # Check if it's ONLY the wake word
-        is_wake_only = not text_clean[match.end():].strip()
+        # Check if it's ONLY the wake word (ignoring trailing punctuation/space)
+        remaining = text_clean[match.end():].strip()
+        is_wake_only = not remaining or all(c in ".,，。!！?？:：" for c in remaining)
+        
         result = _build_result(state, MODE_COMPUTER, 0.95, "wake_word")
         if is_wake_only:
             result["is_wake_only"] = True

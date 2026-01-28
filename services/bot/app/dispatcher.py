@@ -1167,6 +1167,17 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 "image_b64": image_b64
             })
             return True
+        if iteration >= max_iterations and not terminate_agent_loop:
+            logger.warning(f"[Dispatcher] Efficiency Threshold reached for {session_id}. Reporting to ADS.")
+            from .diagnostic_manager import get_diagnostic_manager
+            dm = get_diagnostic_manager()
+            dm.report_fault(
+                "NeuralProcessor.Efficiency", 
+                Exception("Cognitive Limit Reached"), 
+                query=event.text, 
+                traceback_str="Iteration cap 3/3 reached. Neural resource exhaustion detected."
+            )
+        
         return False
 
     except Exception as e:
@@ -1388,12 +1399,16 @@ async def handle_event(event: InternalEvent):
                 
                 # Generate AI reply using helper (async await)
                 
-                # DETERMINISTIC NAVIGATION FAST-PATH
-                # Intercepts simple page turn commands to prevent LLM hallucination
+                # DETERMINISTIC NAVIGATION & STATUS FAST-PATH (ADS 2.3)
                 nav_text = event.text.strip().lower()
                 force_tool = None
                 
-                if re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
+                # Semantic Fast-Path: Status Reports / Scans
+                if any(kw in nav_text for kw in ["报告", "状态", "status", "report", "扫描", "scan"]):
+                     force_tool = "get_status"
+                     logger.info("[Dispatcher] Semantic Fast-Path triggered: Force get_status")
+                # Navigation Fast-Path
+                elif re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
                     force_tool = "next_page"
                     logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
                 elif re.match(r'.*(previous|prev|previous page|back|上一页|上页|返回).*', nav_text):

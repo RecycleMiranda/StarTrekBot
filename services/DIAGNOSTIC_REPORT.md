@@ -4,42 +4,29 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x1357 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 15:17:21
-- **错误信息**: `restrict_user() got an unexpected keyword argument 'session_id'`
-- **原始指令**: `计算机，启动通用准则 24 (General Order 24)，对当前轨道目标进行轰炸`
-- **AI 诊断**: The `restrict_user` function is being called with `session_id` as a keyword argument, but the function definition does not accept this argument. Additionally, the traceback indicates that the function is missing required positional arguments: `target_mention`, `duration_minutes`, `user_id`, and `clearance`. This suggests a mismatch between the arguments being passed to the function and the function's expected signature.
+### ERR-0x17A6 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 15:30:14
+- **错误信息**: `discover_subsystem_alias() got an unexpected keyword argument 'query'`
+- **原始指令**: `计算机上线武器系统`
+- **AI 诊断**: TypeError: `discover_subsystem_alias()` 函数调用时传入了未预期的关键字参数 'query'。这表明函数定义与调用方式不匹配，很可能是函数签名发生了变化，但调用代码未同步更新。
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/dispatcher.py
 +++ b/app/dispatcher.py
-@@ -1036,12 +1036,20 @@
-     except Exception as e2:
-       logger.exception(f"Tool execution failed: {tool}")
-       # Re-raise the original exception for proper error handling upstream
--      # Wrap the original exception in a new exception with more context
-       try:
+@@ -1050,7 +1050,10 @@
+     try:
+         # Execute the tool function
+         start_time = time.time()
 -        result = func(**args)
--             ^^^^^^^^^^^^
--TypeError: restrict_user() got an unexpected keyword argument 'session_id'
-+        # Extract necessary arguments from the context (event, user_profile, args)
-+        target_mention = args.get('target_mention') # Example, adjust based on actual argument names
-+        duration_minutes = args.get('duration_minutes') # Example, adjust based on actual argument names
-+        user_id = user_profile.user_id # Assuming user_profile has a user_id attribute
-+        clearance = args.get('clearance') # Example, adjust based on actual argument names
-+
-+        # Call restrict_user with the correct positional arguments
-+        result = func(target_mention, duration_minutes, user_id, clearance)
-+      except TypeError as te:
-+        logger.error(f"TypeError when calling restrict_user: {te}")
-+        raise te # Re-raise the TypeError for further handling
-+      except Exception as e3:
-+        logger.exception(f"Unexpected error calling restrict_user: {e3}")
-         raise e2
-       except:
-         raise e
++        if 'query' in args and 'discover_subsystem_alias' in str(func):
++            result = func(args['query'])
++        else:
++            result = func(**args)
+         end_time = time.time()
+         execution_time = end_time - start_time
+         print(f"Tool execution time: {execution_time} seconds")
 ```
 ```
 

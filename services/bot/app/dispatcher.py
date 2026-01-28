@@ -808,7 +808,7 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
              result = tools.audit_clear_fault(args.get("fault_id"), profile.get("clearance", 1))
 
         elif tool == "trigger_ads_test":
-             result = tools.trigger_ads_test(args.get("security_code", ""), profile.get("clearance", 1))
+             result = tools.trigger_ads_test(profile.get("clearance", 1), **args)
 
         elif tool == "update_biography":
             result = tools.update_biography(args.get("content", ""), str(event.user_id))

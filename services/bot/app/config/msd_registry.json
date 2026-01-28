@@ -1,0 +1,520 @@
+{
+  "engineering": {
+    "warp_propulsion": {
+      "display_name_en": "Warp Propulsion System",
+      "display_name_cn": "\u66f2\u901f\u63a8\u8fdb\u7cfb\u7edf",
+      "description": "Primary FTL propulsion system utilizing matter/antimatter reaction.",
+      "components": {
+        "warp_core": {
+          "name": "Warp Core (M/AM Reactor)",
+          "aliases": [
+            "main_reactor",
+            "intermix_chamber",
+            "core"
+          ],
+          "states": [
+            "OFFLINE",
+            "STANDBY",
+            "ONLINE",
+            "WARP_1",
+            "WARP_6",
+            "WARP_9",
+            "BREACH_IMMINENT",
+            "WARP_9.975"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "output": {
+              "unit": "%",
+              "default": 98.4,
+              "nominal": 100.0,
+              "linked_to_state": {
+                "OFFLINE": 0.0,
+                "STANDBY": 15.0,
+                "BREACH_IMMINENT": 250.0
+              }
+            },
+            "temperature": {
+              "unit": "K",
+              "default": 4500000,
+              "nominal": 4500000,
+              "critical": 8000000
+            },
+            "matter_antimatter_ratio": {
+              "unit": "ratio",
+              "default": "1:1",
+              "nominal": "1:1"
+            },
+            "plasma_injection_frequency": {
+              "unit": "Hz",
+              "default": 240,
+              "nominal": 250
+            }
+          },
+          "dependencies": [
+            "eps_grid",
+            "deuterium_supply",
+            "antimatter_containment"
+          ]
+        },
+        "nacelles": {
+          "name_en": "Warp Nacelles",
+          "name_cn": "\u66f2\u901f\u5176\u8231",
+          "aliases": [
+            "warp_coils",
+            "warp_drive"
+          ],
+          "states": [
+            "OFFLINE",
+            "IDLE",
+            "CHARGING",
+            "ACTIVE",
+            "VENTING"
+          ],
+          "default_state": "IDLE",
+          "metrics": {
+            "cochrane_distortion": {
+              "unit": "millicochranes",
+              "default": 0,
+              "linked_to_state": {
+                "OFFLINE": 0,
+                "ACTIVE": 25000
+              }
+            },
+            "plasma_flow": {
+              "unit": "%",
+              "default": 0,
+              "linked_to_state": {
+                "OFFLINE": 0,
+                "ACTIVE": 100
+              }
+            }
+          },
+          "dependencies": [
+            "warp_core",
+            "eps_grid"
+          ]
+        }
+      }
+    },
+    "impulse_propulsion": {
+      "display_name_en": "Impulse Propulsion",
+      "display_name_cn": "\u8109\u51b2\u63a8\u8fdb\u7cfb\u7edf",
+      "components": {
+        "impulse_engines": {
+          "name": "Main Impulse Engines",
+          "states": [
+            "OFFLINE",
+            "ONLINE",
+            "FULL_IMPULSE",
+            "REVERSE"
+          ],
+          "metrics": {
+            "thrust": {
+              "unit": "%",
+              "default": 0,
+              "linked_to_state": {
+                "OFFLINE": 0,
+                "ONLINE": 25,
+                "FULL_IMPULSE": 100
+              }
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        }
+      }
+    },
+    "power_distribution": {
+      "display_name_en": "Power Distribution",
+      "display_name_cn": "\u80fd\u6e90\u5206\u914d\u7cfb\u7edf",
+      "components": {
+        "eps_grid": {
+          "name": "Electro-Plasma System (EPS) Grid",
+          "aliases": [
+            "power_grid",
+            "eps_conduits"
+          ],
+          "states": [
+            "OFFLINE",
+            "STABLE",
+            "FLUCTUATING",
+            "OVERLOADED"
+          ],
+          "default_state": "STABLE",
+          "metrics": {
+            "load_balance": {
+              "unit": "%",
+              "default": 85.0
+            },
+            "efficiency": {
+              "unit": "%",
+              "default": 99.2
+            }
+          }
+        },
+        "batteries": {
+          "name": "Auxiliary Fusion Batteries",
+          "states": [
+            "STANDBY",
+            "DISCHARGING",
+            "CHARGING",
+            "DEPLETED"
+          ],
+          "metrics": {
+            "charge_level": {
+              "unit": "%",
+              "default": 100.0
+            }
+          }
+        }
+      }
+    },
+    "structural": {
+      "display_name_en": "Structural Systems",
+      "display_name_cn": "\u7ed3\u6784\u7cfb\u7edf",
+      "components": {
+        "sif": {
+          "name": "Structural Integrity Field (SIF)",
+          "states": [
+            "OFFLINE",
+            "LOW",
+            "NOMINAL",
+            "REINFORCED"
+          ],
+          "default_state": "NOMINAL",
+          "metrics": {
+            "field_density": {
+              "unit": "%",
+              "default": 100.0
+            },
+            "hull_stress": {
+              "unit": "kpa",
+              "default": 0.0
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        },
+        "idf": {
+          "name": "Inertial Damping Field (IDF)",
+          "states": [
+            "OFFLINE",
+            "ONLINE"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "compensation": {
+              "unit": "%",
+              "default": 100.0
+            }
+          }
+        }
+      }
+    }
+  },
+  "tactical": {
+    "defense": {
+      "display_name_en": "Defensive Systems",
+      "display_name_cn": "\u9632\u5fa1\u7cfb\u7edf",
+      "components": {
+        "shields": {
+          "name": "Deflector Shields",
+          "states": [
+            "OFFLINE",
+            "UP",
+            "MODULATING",
+            "FAILING"
+          ],
+          "default_state": "OFFLINE",
+          "metrics": {
+            "integrity": {
+              "unit": "%",
+              "default": 100.0,
+              "linked_to_state": {
+                "OFFLINE": 0.0
+              }
+            },
+            "frequency": {
+              "unit": "MHz",
+              "default": 257.4
+            },
+            "nutation": {
+              "unit": "GHz",
+              "default": 1.2
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        },
+        "nav_deflector": {
+          "name": "Navigational Deflector",
+          "states": [
+            "OFFLINE",
+            "ONLINE",
+            "HIGH_POWER"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "particle_dispersion": {
+              "unit": "%",
+              "default": 100.0
+            }
+          },
+          "dependencies": [
+            "main_reactor"
+          ]
+        }
+      }
+    },
+    "offense": {
+      "display_name_en": "Offensive Systems",
+      "display_name_cn": "\u6b66\u5668\u7cfb\u7edf",
+      "components": {
+        "phasers": {
+          "name": "Phaser Banks (Type X)",
+          "states": [
+            "OFFLINE",
+            "CHARGING",
+            "LOCKED",
+            "FIRING"
+          ],
+          "default_state": "OFFLINE",
+          "metrics": {
+            "capacitor_charge": {
+              "unit": "%",
+              "default": 100.0
+            },
+            "yield_setting": {
+              "unit": "level",
+              "default": 1,
+              "max": 16
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        },
+        "torpedoes": {
+          "name": "Photon Torpedo Launchers",
+          "states": [
+            "OFFLINE",
+            "LOADED",
+            "FIRING",
+            "EMPTY"
+          ],
+          "default_state": "OFFLINE",
+          "metrics": {
+            "inventory_photon": {
+              "unit": "count",
+              "default": 250
+            },
+            "inventory_quantum": {
+              "unit": "count",
+              "default": 50
+            }
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "communications": {
+      "display_name_en": "Communications",
+      "display_name_cn": "\u901a\u8baf\u7cfb\u7edf",
+      "components": {
+        "comms": {
+          "name": "Subspace Transceiver Array",
+          "states": [
+            "OFFLINE",
+            "RECEIVING",
+            "TRANSMITTING",
+            "JAMMED"
+          ],
+          "default_state": "RECEIVING",
+          "metrics": {
+            "signal_strength": {
+              "unit": "%",
+              "default": 99.0
+            },
+            "channel_frequency": {
+              "unit": "subspace_band",
+              "default": 47.2
+            }
+          }
+        },
+        "universal_translator": {
+          "name": "Universal Translator",
+          "states": [
+            "OFFLINE",
+            "ONLINE"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "matrix_complexity": {
+              "unit": "%",
+              "default": 94.0
+            }
+          }
+        }
+      }
+    },
+    "environmental": {
+      "display_name_en": "Environmental Systems",
+      "display_name_cn": "\u73af\u5883\u63a7\u5236",
+      "components": {
+        "life_support": {
+          "name": "Life Support Systems",
+          "states": [
+            "OFFLINE",
+            "NOMINAL",
+            "CRITICAL"
+          ],
+          "default_state": "NOMINAL",
+          "metrics": {
+            "oxygen_level": {
+              "unit": "%",
+              "default": 21.0
+            },
+            "gravity": {
+              "unit": "g",
+              "default": 1.0
+            },
+            "temperature": {
+              "unit": "C",
+              "default": 23.0
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        }
+      }
+    },
+    "transporters": {
+      "display_name_en": "Transporter Systems",
+      "display_name_cn": "\u4f20\u9001\u7cfb\u7edf",
+      "components": {
+        "transporters": {
+          "name": "Transporter Rooms (1-4)",
+          "states": [
+            "OFFLINE",
+            "STANDBY",
+            "ENERGIZING",
+            "LOCKED"
+          ],
+          "default_state": "STANDBY",
+          "metrics": {
+            "pattern_buffer_integrity": {
+              "unit": "%",
+              "default": 100.0
+            },
+            "bio_filter_status": {
+              "unit": "boolean",
+              "default": 1
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        }
+      }
+    },
+    "sensors": {
+      "display_name_en": "Sensor Arrays",
+      "display_name_cn": "\u4f20\u611f\u5668\u9635\u5217",
+      "components": {
+        "lrs": {
+          "name": "Long Range Sensors",
+          "states": [
+            "OFFLINE",
+            "ONLINE",
+            "SCANNING"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "scan_resolution": {
+              "unit": "ly",
+              "default": 15.0
+            }
+          }
+        },
+        "srs": {
+          "name": "Short Range / Lateral Sensors",
+          "states": [
+            "OFFLINE",
+            "ONLINE",
+            "Targeting"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "scan_radius": {
+              "unit": "km",
+              "default": 500000
+            }
+          }
+        }
+      }
+    }
+  },
+  "computer": {
+    "core": {
+      "display_name_en": "Computer Systems",
+      "display_name_cn": "\u8ba1\u7b97\u673a\u7cfb\u7edf",
+      "components": {
+        "main_core": {
+          "name": "Main Computer Core (Isolinear)",
+          "states": [
+            "OFFLINE",
+            "ONLINE",
+            "REBOOTING",
+            "LOCKED"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "cpu_usage": {
+              "unit": "%",
+              "default": 2.4
+            },
+            "memory_usage": {
+              "unit": "PB",
+              "default": 45.2
+            },
+            "efficiency": {
+              "unit": "%",
+              "default": 99.9
+            }
+          },
+          "dependencies": [
+            "eps_grid"
+          ]
+        },
+        "odn": {
+          "name": "Optical Data Network (ODN)",
+          "states": [
+            "ONLINE",
+            "REROUTING",
+            "SEVERED"
+          ],
+          "metrics": {
+            "throughput": {
+              "unit": "Tbps",
+              "default": 8500
+            }
+          }
+        }
+      }
+    }
+  },
+  "_evolution_log": [
+    {
+      "timestamp": 1769591505.063243,
+      "system": "main_reactor",
+      "change": "Added state: WARP_9.975",
+      "justification": "Intrepid-class sustained cruise upgrade."
+    }
+  ]
+}

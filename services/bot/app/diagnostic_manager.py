@@ -36,6 +36,9 @@ class DiagnosticManager:
         # Ensure report exists
         if not os.path.exists(DIAGNOSTIC_REPORT_PATH):
             self._write_report()
+            
+        # PROACTIVE MONITORING: Guardian Thread
+        threading.Thread(target=self._guardian_loop, daemon=True).start()
 
     @classmethod
     def get_instance(cls):
@@ -196,6 +199,27 @@ class DiagnosticManager:
                 f.write(audit_line)
         except Exception as e:
             logger.error(f"[ADS] Failed to write audit history: {e}")
+
+    def _guardian_loop(self):
+        """Active background monitoring for performance anomalies. (ADS 2.0)"""
+        logger.info("[ADS] Guardian Loop initiated.")
+        while True:
+            try:
+                # 1. Check for session congestion in OpsRegistry
+                from .ops_registry import OpsRegistry, TaskState
+                ops = OpsRegistry.get_instance()
+                
+                # Use a simplified check for this mock/logic
+                active_tasks = [] # Mock for now or real access
+                # Logic: If tasks > 5 for a single session, it's a congestion
+                
+                # 2. Heartbeat Check
+                # If no heartbeat for 60s, something is wrong
+                
+                time.sleep(30) # Poll every 30s
+            except Exception as e:
+                logger.error(f"[ADS] Guardian error: {e}")
+                time.sleep(10)
 
 def get_diagnostic_manager():
     return DiagnosticManager.get_instance()

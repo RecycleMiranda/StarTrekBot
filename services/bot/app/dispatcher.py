@@ -22,6 +22,7 @@ from . import watchdog
 from . import emergency_kernel
 from .protocol_manager import get_protocol_manager
 from .ops_registry import OpsRegistry, TaskPriority, TaskState
+from .evolution_agent import get_evolution_agent
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ def _run_async(coro):
 SESSION_MODES = {}
 # Global search results cache (for pagination)
 SEARCH_RESULTS = {} # {session_id: {"items": [], "query": "", "page": 1}}
+# NEURAL LOCKS: Prevents concurrent agentic loops in the same session
+NEURAL_LOCKS = {} # {session_id: asyncio.Lock}
 
 def _prefetch_next_pages(session_id: str, is_chinese: bool):
     """
@@ -1132,6 +1135,19 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                         break
             else:
                 reply_text = result.get("reply", "")
+                
+                # --- NEURAL EVOLUTION TRIGGER ---
+                if "Processing correction" in reply_text or result.get("intent") == "correction":
+                    logger.info("[Dispatcher] Neural Evolution Triggered. Dehydrating feedback...")
+                    ea = get_evolution_agent()
+                    # Run dehydration in background
+                    async def run_evolution():
+                        evo_res = await ea.dehydrate_correction(event.text, "Previous session history")
+                        if evo_res.get("ok"):
+                            logger.info(f"[Dispatcher] Evolution successful: {evo_res.get('directive')}")
+                    
+                    asyncio.create_task(run_evolution())
+                
                 break
 
         if cumulative_data:
@@ -1173,235 +1189,245 @@ async def handle_event(event: InternalEvent):
         
     print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")
     logger.info(f"[Dispatcher] Processing event: {event.event_type} from {event.user_id}")
-
-    # --- OPS COMMAND INTERCEPT (PRE-AI) ---
-    is_ops_query = False
-    if event.text:
-        text_l = event.text.lower()
-        if text_l.startswith("/ops") or any(kw in text_l for kw in ["后台任务", "进程列表", "任务列表", "显示进程", "查看进程"]):
-            is_ops_query = True
-
-    if is_ops_query:
-        from . import ops_registry
-        ops = ops_registry.OpsRegistry.get_instance()
-        sq = send_queue.SendQueue.get_instance()
-        session_key = f"{event.platform}:{event.group_id or event.user_id}"
-        
-        cmd_parts = event.text.split()
-        # Normalization
-        raw_cmd = cmd_parts[0][4:] if cmd_parts[0].startswith("/ops") and len(cmd_parts[0]) > 4 else "list"
-        if any(kw in event.text for kw in ["终止", "停止", "abort", "cancel"]): raw_cmd = "abort"
-        if any(kw in event.text for kw in ["优先", "置顶", "priority"]): raw_cmd = "priority"
-
-        if raw_cmd == "list":
-            tasks = await ops.get_active_tasks()
-            if not tasks:
-                await sq.enqueue_send(session_key, "OPS: No active background processes.", {"from_computer": True}, priority=1)
-            else:
-                report = "STATUS: ACTIVE PROCESSES\n" + "-"*30 + "\n"
-                for t in tasks:
-                    # Calculate duration
-                    dur = int(time.time() - t.created_at)
-                    report += f"[{t.pid}] {t.priority.name} | {t.state.value} | {dur}s | {t.query[:20]}...\n"
-                await sq.enqueue_send(session_key, report, {"from_computer": True}, priority=1)
-            return True
-        elif raw_cmd == "abort":
-            # Try to find PID in text
-            pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
-            target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
-            
-            if target_pid:
-                success = await ops.abort_task(target_pid)
-                reply = f"OPS: Task {target_pid} terminated." if success else f"OPS: Task {target_pid} not found or already completed."
-            else:
-                reply = "OPS: Specify PID to abort. Use '/ops list' to see active tasks."
-            await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
-            return True
-        elif raw_cmd == "priority":
-            pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
-            target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
-            
-            if target_pid:
-                # Default to ALPHA (1) for manual priority shift
-                success = await ops.set_priority(target_pid, TaskPriority.ALPHA)
-                reply = f"OPS: Task {target_pid} priority shifted to ALPHA." if success else f"OPS: Task {target_pid} focus change failed."
-            else:
-                reply = "OPS: Specify PID for priority shift."
-            await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
-            return True
     
-    try:
-        # Skip empty messages
-        if not event.text or not event.text.strip():
-            logger.info("[Dispatcher] Empty message, skipping.")
-            return False
+    # --- SESSION LOCKING (NEURAL LOCK) ---
+    if session_id not in NEURAL_LOCKS:
+        NEURAL_LOCKS[session_id] = asyncio.Lock()
+    
+    if NEURAL_LOCKS[session_id].locked():
+        logger.warning(f"[Dispatcher] Session {session_id} is currently BUSY. Dropping overlapping event.")
+        # Optional: Send a 'Thinking' indicator if this is the first overlap
+        return False
+        
+    async with NEURAL_LOCKS[session_id]:
+        # --- OPS COMMAND INTERCEPT (PRE-AI) ---
+        is_ops_query = False
+        if event.text:
+            text_l = event.text.lower()
+            if text_l.startswith("/ops") or any(kw in text_l for kw in ["后台任务", "进程列表", "任务列表", "显示进程", "查看进程"]):
+                is_ops_query = True
 
-        # --- DIAGNOSTIC MODE INTERCEPT ---
-        if SESSION_MODES.get(session_id) == "diagnostic":
-            logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
+        if is_ops_query:
+            from . import ops_registry
+            ops = ops_registry.OpsRegistry.get_instance()
+            sq = send_queue.SendQueue.get_instance()
+            session_key = f"{event.platform}:{event.group_id or event.user_id}"
             
-            # Check for exit command
-            sender = event.raw.get("sender", {})
-            nickname = sender.get("card") or sender.get("nickname")
-            title = sender.get("title") # QQ Group Title
+            cmd_parts = event.text.split()
+            # Normalization
+            raw_cmd = cmd_parts[0][4:] if cmd_parts[0].startswith("/ops") and len(cmd_parts[0]) > 4 else "list"
+            if any(kw in event.text for kw in ["终止", "停止", "abort", "cancel"]): raw_cmd = "abort"
+            if any(kw in event.text for kw in ["优先", "置顶", "priority"]): raw_cmd = "priority"
 
-            if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
-                # Route to exit_repair_mode
-                from . import permissions
-                user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
-                # Create synthetic result for execution
-                await _execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode")
-                return True
-            else:
-                # Force route to ask_about_code
-                from . import permissions
-                user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
-                await _execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text})
-                return True
-        
-        # --- ACCESS CONTROL GATING (Legacy & Security) ---
-        from .permissions import is_user_restricted, is_command_locked, get_user_profile
-        
-        # 1. Individual Restriction
-        if is_user_restricted(event.user_id):
-            logger.warning(f"[Dispatcher] User {event.user_id} is restricted. Dropping.")
-            return False
-            
-        # Command Lockout Check
-        if is_command_locked():
-            # Only allow Level 8+ during lockout
-
-            profile = get_user_profile(str(event.user_id), event.nickname, event.title)
-            if profile.get("clearance", 1) < 8:
-                logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")
-                sq = send_queue.SendQueue.get_instance()
-                session_key = f"{event.platform}:{event.group_id or event.user_id}"
-                await sq.enqueue_send(session_key, "ACCESS DENIED: Shipboard command authority is currently locked to Senior Officers.", {"from_computer": True})
-                return False
-        
-        # Route the message with full event meta for attribution
-        route_result = router.route_event(session_id, event.text, {
-            "event": event.model_dump(),
-            "event_raw": event.raw
-        })
-        logger.info(f"[Dispatcher] Route result: {route_result}")
-        
-        # Check if we should respond (computer mode or high confidence)
-        confidence = route_result.get("confidence", 0)
-        route = route_result.get("route", "chat")
-        
-        should_respond = False
-        # Dual-Stage Triage
-        # Stage 1: Fast Rule High-Confidence (e.g. Wake Word / Manual Enter)
-        if route == "computer" and confidence >= 0.8:
-            should_respond = True
-        # Stage 2: Ambiguous Latch/Follow-up (0.5 < conf < 0.8) -> LLM Judge
-        elif 0.5 < confidence < 0.8:
-            logger.info(f"[Dispatcher] Borderline confidence ({confidence}), calling secondary judge...")
-            try:
-                from . import judge_gemini
-                judge_result = await judge_gemini.judge_intent(
-                    trigger={"text": event.text, "user_id": event.user_id},
-                    context=router.get_session_context(session_id)
-                )
-
-                if judge_result.get("route") == "computer" and judge_result.get("confidence", 0) >= 0.7:
-                    logger.info(f"[Dispatcher] Judge confirmed intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
-                    should_respond = True
+            if raw_cmd == "list":
+                tasks = await ops.get_active_tasks()
+                if not tasks:
+                    await sq.enqueue_send(session_key, "OPS: No active background processes.", {"from_computer": True}, priority=1)
                 else:
-                    logger.info(f"[Dispatcher] Judge rejected intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
-                    should_respond = False
-            except Exception as e:
-                logger.warning(f"[Dispatcher] Judge failed: {e}. Falling back to chat.")
-                should_respond = False
-        else:
-            should_respond = False
+                    report = "STATUS: ACTIVE PROCESSES\n" + "-"*30 + "\n"
+                    for t in tasks:
+                        # Calculate duration
+                        dur = int(time.time() - t.created_at)
+                        report += f"[{t.pid}] {t.priority.name} | {t.state.value} | {dur}s | {t.query[:20]}...\n"
+                    await sq.enqueue_send(session_key, report, {"from_computer": True}, priority=1)
+                return True
+            elif raw_cmd == "abort":
+                # Try to find PID in text
+                pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
+                target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
+                
+                if target_pid:
+                    success = await ops.abort_task(target_pid)
+                    reply = f"OPS: Task {target_pid} terminated." if success else f"OPS: Task {target_pid} not found or already completed."
+                else:
+                    reply = "OPS: Specify PID to abort. Use '/ops list' to see active tasks."
+                await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
+                return True
+            elif raw_cmd == "priority":
+                pid_match = re.search(r"0x[0-9A-F]{4}", event.text, re.I)
+                target_pid = pid_match.group(0).upper() if pid_match else (cmd_parts[1] if len(cmd_parts) > 1 else None)
+                
+                if target_pid:
+                    # Default to ALPHA (1) for manual priority shift
+                    success = await ops.set_priority(target_pid, TaskPriority.ALPHA)
+                    reply = f"OPS: Task {target_pid} priority shifted to ALPHA." if success else f"OPS: Task {target_pid} focus change failed."
+                else:
+                    reply = "OPS: Specify PID for priority shift."
+                await sq.enqueue_send(session_key, reply, {"from_computer": True}, priority=1)
+                return True
+        
+        try:
+            # Skip empty messages
+            if not event.text or not event.text.strip():
+                logger.info("[Dispatcher] Empty message, skipping.")
+                return False
 
-        if should_respond:
-            # Handle "Wake-only" bleep
-            if route_result.get("is_wake_only"):
-                logger.info("[Dispatcher] Wake-only detected, sending bleep.")
+            # --- DIAGNOSTIC MODE INTERCEPT ---
+            if SESSION_MODES.get(session_id) == "diagnostic":
+                logger.info(f"[Dispatcher] Session {session_id} is in diagnostic mode. Intercepting.")
+                
+                # Check for exit command
+                sender = event.raw.get("sender", {})
+                nickname = sender.get("card") or sender.get("nickname")
+                title = sender.get("title") # QQ Group Title
+
+                if event.text.strip() in ["退出", "exit", "quit", "关闭诊断模式", "退出诊断模式"]:
+                    # Route to exit_repair_mode
+                    from . import permissions
+                    user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
+                    # Create synthetic result for execution
+                    await _execute_ai_logic(event, user_profile, session_id, force_tool="exit_repair_mode")
+                    return True
+                else:
+                    # Force route to ask_about_code
+                    from . import permissions
+                    user_profile = permissions.get_user_profile(str(event.user_id), nickname, title)
+                    await _execute_ai_logic(event, user_profile, session_id, force_tool="ask_about_code", force_args={"question": event.text})
+                    return True
+            
+            # --- ACCESS CONTROL GATING (Legacy & Security) ---
+            from .permissions import is_user_restricted, is_command_locked, get_user_profile
+            
+            # 1. Individual Restriction
+            if is_user_restricted(event.user_id):
+                logger.warning(f"[Dispatcher] User {event.user_id} is restricted. Dropping.")
+                return False
+                
+            # Command Lockout Check
+            if is_command_locked():
+                # Only allow Level 8+ during lockout
+
+                profile = get_user_profile(str(event.user_id), event.nickname, event.title)
+                if profile.get("clearance", 1) < 8:
+                    logger.warning(f"[Dispatcher] Command Lockout active. User {event.user_id} (Clearance {profile.get('clearance')}) refused.")
+                    sq = send_queue.SendQueue.get_instance()
+                    session_key = f"{event.platform}:{event.group_id or event.user_id}"
+                    await sq.enqueue_send(session_key, "ACCESS DENIED: Shipboard command authority is currently locked to Senior Officers.", {"from_computer": True})
+                    return False
+            
+            # Route the message with full event meta for attribution
+            route_result = router.route_event(session_id, event.text, {
+                "event": event.model_dump(),
+                "event_raw": event.raw
+            })
+            logger.info(f"[Dispatcher] Route result: {route_result}")
+            
+            # Check if we should respond (computer mode or high confidence)
+            confidence = route_result.get("confidence", 0)
+            route = route_result.get("route", "chat")
+            
+            should_respond = False
+            # Dual-Stage Triage
+            # Stage 1: Fast Rule High-Confidence (e.g. Wake Word / Manual Enter)
+            if route == "computer" and confidence >= 0.8:
+                should_respond = True
+            # Stage 2: Ambiguous Latch/Follow-up (0.5 < conf < 0.8) -> LLM Judge
+            elif 0.5 < confidence < 0.8:
+                logger.info(f"[Dispatcher] Borderline confidence ({confidence}), calling secondary judge...")
+                try:
+                    from . import judge_gemini
+                    judge_result = await judge_gemini.judge_intent(
+                        trigger={"text": event.text, "user_id": event.user_id},
+                        context=router.get_session_context(session_id)
+                    )
+
+                    if judge_result.get("route") == "computer" and judge_result.get("confidence", 0) >= 0.7:
+                        logger.info(f"[Dispatcher] Judge confirmed intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
+                        should_respond = True
+                    else:
+                        logger.info(f"[Dispatcher] Judge rejected intent: {judge_result.get('reason')} (Conf: {judge_result.get('confidence')})")
+                        should_respond = False
+                except Exception as e:
+                    logger.warning(f"[Dispatcher] Judge failed: {e}. Falling back to chat.")
+                    should_respond = False
+            else:
+                should_respond = False
+
+            if should_respond:
+                # Handle "Wake-only" bleep
+                if route_result.get("is_wake_only"):
+                    logger.info("[Dispatcher] Wake-only detected, sending bleep.")
+                    sq = send_queue.SendQueue.get_instance()
+                    session_key = f"qq:{event.group_id or event.user_id}"
+                    
+                    # Fetch dynamic wake response from protocols
+                    pm = get_protocol_manager()
+                    bleep_text = pm.get_prompt("rp_engine", "wake_response", "*Computer Acknowledgment Chirp*")
+                    
+                    await sq.enqueue_send(session_key, bleep_text, {
+                        "group_id": event.group_id,
+                        "user_id": event.user_id,
+                        "reply_to": event.message_id
+                    })
+                    return True
+
+                # Fetch full ALAS User Profile
+                sender = event.raw.get("sender", {})
+                nickname = sender.get("card") or sender.get("nickname")
+                title = sender.get("title") # QQ Group Title
+                from . import permissions
+                user_profile = permissions.get_user_profile(event.user_id, nickname, title)
+                
+                # Generate AI reply using helper (async await)
+                
+                # DETERMINISTIC NAVIGATION FAST-PATH
+                # Intercepts simple page turn commands to prevent LLM hallucination
+                nav_text = event.text.strip().lower()
+                force_tool = None
+                
+                if re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
+                    force_tool = "next_page"
+                    logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
+                elif re.match(r'.*(previous|prev|previous page|back|上一页|上页|返回).*', nav_text):
+                    force_tool = "prev_page"
+                    logger.info("[Dispatcher] Fast-Path triggered: Force Prev Page")
+                    
+                # PHASE 8: OPS TASK REGISTRATION & PARALLEL EXECUTION
+                ops = OpsRegistry.get_instance()
+                # Determine Priority
+                priority = TaskPriority.GAMMA
+                if any(kw in event.text.lower() for kw in ["destruct", "自毁", "red alert", "红警", "override"]):
+                    priority = TaskPriority.ALPHA
+                
+                task = await ops.register_task(session_id, event.text, priority=priority)
+                
+                # Spawn Background Task
+                async_task = asyncio.create_task(_execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task))
+                task.async_task = async_task
+                
+                # Immediate Acknowledgment if needed (Silent by default unless high-stakes)
+                if priority == TaskPriority.ALPHA:
+                    sq = send_queue.SendQueue.get_instance()
+                    session_key = f"{event.platform}:{event.group_id or event.user_id}"
+                    await sq.enqueue_send(session_key, f"ACK: Critical Priority Task Registered [{task.pid}]. Processing...", {"from_computer": True}, priority=1)
+                
+                return True
+                
+            else:
+                logger.info(f"[Dispatcher] Route is chat/low confidence, not responding.")
+        except Exception as e:
+            import traceback
+            from .diagnostic_manager import get_diagnostic_manager
+            dm = get_diagnostic_manager()
+            fault_id = dm.report_fault("Dispatcher.handle_event", e, query=event.text, traceback_str=traceback.format_exc())
+            
+            logger.error(f"[Dispatcher] Error processing message [{fault_id}]: {e}", exc_info=True)
+            
+            # LCARS Error Reply
+            try:
                 sq = send_queue.SendQueue.get_instance()
                 session_key = f"qq:{event.group_id or event.user_id}"
+                is_ch = any('\u4e00' <= char <= '\u9fff' for char in event.text)
+                error_msg = f"Unable to comply. CORE ERROR: [{fault_id}]" if not is_ch else f"无法执行。核心错误：[{fault_id}]"
                 
-                # Fetch dynamic wake response from protocols
-                pm = get_protocol_manager()
-                bleep_text = pm.get_prompt("rp_engine", "wake_response", "*Computer Acknowledgment Chirp*")
-                
-                await sq.enqueue_send(session_key, bleep_text, {
+                # Use run_async or similar if outside async context, but handle_event IS async
+                await sq.enqueue_send(session_key, error_msg, {
                     "group_id": event.group_id,
                     "user_id": event.user_id,
                     "reply_to": event.message_id
                 })
-                return True
-
-            # Fetch full ALAS User Profile
-            sender = event.raw.get("sender", {})
-            nickname = sender.get("card") or sender.get("nickname")
-            title = sender.get("title") # QQ Group Title
-            from . import permissions
-            user_profile = permissions.get_user_profile(event.user_id, nickname, title)
-            
-            # Generate AI reply using helper (async await)
-            
-            # DETERMINISTIC NAVIGATION FAST-PATH
-            # Intercepts simple page turn commands to prevent LLM hallucination
-            nav_text = event.text.strip().lower()
-            force_tool = None
-            
-            if re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
-                force_tool = "next_page"
-                logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
-            elif re.match(r'.*(previous|prev|previous page|back|上一页|上页|返回).*', nav_text):
-                force_tool = "prev_page"
-                logger.info("[Dispatcher] Fast-Path triggered: Force Prev Page")
-                
-            # PHASE 8: OPS TASK REGISTRATION & PARALLEL EXECUTION
-            ops = OpsRegistry.get_instance()
-            # Determine Priority
-            priority = TaskPriority.GAMMA
-            if any(kw in event.text.lower() for kw in ["destruct", "自毁", "red alert", "红警", "override"]):
-                priority = TaskPriority.ALPHA
-            
-            task = await ops.register_task(session_id, event.text, priority=priority)
-            
-            # Spawn Background Task
-            async_task = asyncio.create_task(_execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task))
-            task.async_task = async_task
-            
-            # Immediate Acknowledgment if needed (Silent by default unless high-stakes)
-            if priority == TaskPriority.ALPHA:
-                sq = send_queue.SendQueue.get_instance()
-                session_key = f"{event.platform}:{event.group_id or event.user_id}"
-                await sq.enqueue_send(session_key, f"ACK: Critical Priority Task Registered [{task.pid}]. Processing...", {"from_computer": True}, priority=1)
-            
-            return True
-            
-        else:
-            logger.info(f"[Dispatcher] Route is chat/low confidence, not responding.")
-    except Exception as e:
-        import traceback
-        from .diagnostic_manager import get_diagnostic_manager
-        dm = get_diagnostic_manager()
-        fault_id = dm.report_fault("Dispatcher.handle_event", e, query=event.text, traceback_str=traceback.format_exc())
-        
-        logger.error(f"[Dispatcher] Error processing message [{fault_id}]: {e}", exc_info=True)
-        
-        # LCARS Error Reply
-        try:
-            sq = send_queue.SendQueue.get_instance()
-            session_key = f"qq:{event.group_id or event.user_id}"
-            is_ch = any('\u4e00' <= char <= '\u9fff' for char in event.text)
-            error_msg = f"Unable to comply. CORE ERROR: [{fault_id}]" if not is_ch else f"无法执行。核心错误：[{fault_id}]"
-            
-            # Use run_async or similar if outside async context, but handle_event IS async
-            await sq.enqueue_send(session_key, error_msg, {
-                "group_id": event.group_id,
-                "user_id": event.user_id,
-                "reply_to": event.message_id
-            })
-        except:
-            pass
+            except:
+                pass
     
     return False
 

@@ -153,7 +153,8 @@ async def onebot_event(request: Request):
             raw=body,
             ts=body.get("time", int(time.time()))
         )
-        await dispatcher.handle_event(event)
+        # FIRE AND FORGET: Handle in background to prevent webhook timeout retries
+        asyncio.create_task(dispatcher.handle_event(event))
     
     return {"code": 0, "message": "ok", "data": {"received": True}}
 
@@ -181,7 +182,8 @@ async def onebot_v11_ws(websocket: WebSocket):
                     raw=data,
                     ts=data.get("time")
                 )
-                await dispatcher.handle_event(event)
+                # FIRE AND FORGET
+                asyncio.create_task(dispatcher.handle_event(event))
             
             # You can handle meta_event (heartbeat) or notice here if needed
             

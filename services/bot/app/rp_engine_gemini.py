@@ -16,6 +16,7 @@ from .config_manager import ConfigManager
 from . import quota_manager
 from . import tools
 from .protocol_manager import get_protocol_manager
+from .evolution_agent import get_evolution_agent
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,8 @@ def _get_system_prompt() -> str:
         "   - REPLICATION AUTHORIZED: You exist on a Starship. Requests for food, drink, or simple objects (e.g., 'Tea, Earl Grey', 'Phaser Rifle', 'Guitar') are VALID. Use the `replicate` tool. DO NOT refuse these requests.\n" +
         "   - SAFETY OVERRIDE: Weapons replication requires Level 8+ clearance. Food/Drink is Level 1+ (standard crew).\n\n" +
         "11. DYNAMIC ENVIRONMENT PROTOCOL: For environment variables, use `manage_environment`.\n" +
-        "12. SESM AUDIT PROTOCOL: Use `commit_research` to stage code for audit. Monitor EPS load.\n\n" +
+        "12. SESM AUDIT PROTOCOL: Use `commit_research` to stage code for audit. Monitor EPS load.\n" +
+        "13. NEURAL EVOLUTION DIRECTIVES (ACTIVE):\n" + get_evolution_agent().get_active_directives() + "\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?, \"tool_chain\": [{\"tool\": \"string\", \"args\": {}}]?}\n\n" +
         "FINAL MANDATE:\n" +

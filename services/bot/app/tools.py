@@ -1556,9 +1556,22 @@ def get_personnel_file(target_mention: str, user_id: str, is_chinese: bool = Fal
     # 6. Render Image
     try:
         img_io = visual_core.render_personnel_file(data, is_chinese=is_chinese)
+        
+        # ADS 4.0 fix: Provide text summary to AI so it doesn't hallucinate "Pending..."
+        # The AI implementation cannot read the generated image, so we must tell it what's inside.
+        summary = (
+            f"PERSONNEL FILE LOADED: {target_id}\n"
+            f"NAME: {data.get('name')}\n"
+            f"RANK: {data.get('rank')}\n"
+            f"DEPT: {data.get('department')}\n"
+            f"CLEARANCE: Level {data.get('clearance')}\n"
+            f"QUOTA: {data.get('quota_balance', 0)}\n"
+            f"[Visual Card Generated]"
+        )
+        
         return {
             "ok": True,
-            "message": f"正在显示人员档案: {target_id}",
+            "message": summary,
             "image_io": img_io
         }
     except Exception as e:

@@ -13,6 +13,7 @@ def get_status(**kwargs) -> dict:
     Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
     Categorized for: "System status", "Condition report", "Ship health".
     """
+    
     from .ship_systems import get_ship_systems, SubsystemState
     import os
     
@@ -1662,4 +1663,4 @@ def trigger_ads_test(clearance: int, **kwargs) -> dict:
     # This will bubble up to Dispatcher's handle_event except block
     # raise RuntimeError("ADS TEST: Simulated dilithium chamber breach in diagnostic subspace.")
     return {"ok": True, "message": "ADS Test Sequence Completed. All systems nominal."}
-\n# CHAOS INJECTION\nif True\n    pass
+

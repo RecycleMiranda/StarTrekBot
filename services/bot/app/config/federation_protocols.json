@@ -18,6 +18,6 @@
     }
   },
   "lexicon": {
-    "ship_structures": "TECHNICAL ICON: ..."
+    "ship_structures": "TECHNICAL ICON: main_reactor (Warp Core/Power Plant), warp_drive (Nacelles/Engines), eps_grid (Power Distribution), shields (Defensive Barrier), life_support (Atmosphere), comms (Subspace Radio), sensors (Scanner Array), transporters (Transporter Room/Beam), replicators (Matter Synthesis)."
   }
 }

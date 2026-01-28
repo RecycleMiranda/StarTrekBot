@@ -113,6 +113,7 @@ def _get_system_prompt() -> str:
         "12. SESM AUDIT PROTOCOL: Use `commit_research` to stage code for audit. Monitor EPS load.\n" +
         "13. NEURAL EVOLUTION DIRECTIVES (ACTIVE):\n" + get_evolution_agent().get_active_directives() + "\n\n" +
         "14. FAST PATH PROTOCOL (STRICT): If 'CUMULATIVE SEARCH/ACTION DATA' already contains specific ship status or scan results at Iteration 1, you ARE PROHIBITED from calling any search or status tools. You MUST synthesize the data immediately into a final reply.\n\n" +
+        "15. SEMANTIC DISCOVERY PROTOCOL: If you are unsure of a subsystem name (e.g. 'Intermix Chamber', 'Warp Core') or a tool returns 'Subsystem not found', you MUST call `discover_subsystem_alias` to find the correct local mapping before retrying the command. DO NOT assume or guess mappings.\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?, \"tool_chain\": [{\"tool\": \"string\", \"args\": {}}]?}\n\n" +
         "FINAL MANDATE:\n" +
@@ -233,6 +234,54 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         logger.exception("Escalation failed")
         return _fallback(str(e))
 
+def render_lcars_blueprint(data: dict) -> str:
+    """
+    Renders a JSON LCARS blueprint into a beautiful Star Trek style text report.
+    """
+    try:
+        header = data.get("header", {})
+        title_en = header.get("title_en", "SYSTEM REPORT")
+        title_cn = header.get("title_cn", "系统报告")
+        color = header.get("color", "blue").upper()
+        
+        # Color Indicators (ASCII Style)
+        color_tag = f"[{color}]"
+        output = f"== {title_en} | {title_cn} {color_tag} ==\n\n"
+        
+        for block in data.get("layout", []):
+            btype = block.get("type")
+            
+            if btype == "text_block":
+                output += f"{block.get('content', '')}\n\n"
+            
+            elif btype == "kv_grid":
+                grid_data = block.get("data", [])
+                if grid_data:
+                    # Filter out keys with empty values for clarity
+                    valid_items = [item for item in grid_data if item.get("v") not in [None, ""]]
+                    for item in valid_items:
+                        key = item.get("k", "UNKNOWN")
+                        val = item.get("v", "N/A")
+                        output += f"  > {key:<20} : {val}\n"
+                    output += "\n"
+            
+            elif btype == "section_header":
+                output += f"--- {block.get('title_en', 'SECTION')} | {block.get('title_cn', '分段')} ---\n"
+            
+            elif btype == "bullet_list":
+                for item in block.get("items", []):
+                    output += f"  • {item}\n"
+                output += "\n"
+
+        footer = data.get("footer", {})
+        if footer.get("source"):
+            output += f"-- {footer.get('source')} --"
+            
+        return output.strip()
+    except Exception as e:
+        logger.error(f"Renderer failed: {e}")
+        return str(data) # Fallback to raw dict string
+
 def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False, context: Optional[List[Dict]] = None) -> str:
     """
     Synthesizes raw tool output (KB/Memory Alpha) into a persona-compliant LCARS response.
@@ -332,7 +381,26 @@ Raw Data for Synthesis:
         )
         
         reply = response.text if response.text else "Subspace interference. Synthesis failed."
-        return strip_conversational_filler(reply)
+        
+        # Clean the reply for potential JSON parsing
+        cleaned_reply = strip_conversational_filler(reply)
+        
+        # Try to parse as JSON for rendering
+        try:
+            # Handle potential markdown fencing that strip_conversational_filler might have missed
+            json_str = cleaned_reply
+            if "```json" in json_str:
+                json_str = json_str.split("```json")[-1].split("```")[0].strip()
+            
+            data = json.loads(json_str)
+            if isinstance(data, dict) and "header" in data and "layout" in data:
+                logger.info("[NeuralEngine] Blueprint detected. Rendering...")
+                return render_lcars_blueprint(data)
+        except Exception:
+            # Not JSON or failed to parse, return as is
+            pass
+            
+        return cleaned_reply
 
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")

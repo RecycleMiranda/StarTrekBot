@@ -1,0 +1,19 @@
+{
+  "aliases": {
+    "warp_core": "main_reactor",
+    "intermix_chamber": "main_reactor",
+    "dilithium_chamber": "main_reactor",
+    "nacelles": "warp_drive",
+    "deflector_array": "nav_deflector",
+    "environmental_control": "life_support",
+    "internal_comms": "comms"
+  },
+  "discovery_audit": [
+    {
+      "term": "intermix chamber",
+      "mapped_to": "main_reactor",
+      "confidence": 0.92,
+      "timestamp": 1769589787.0469198
+    }
+  ]
+}

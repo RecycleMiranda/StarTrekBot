@@ -788,7 +788,6 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "get_personnel_file":
             # LOGIC FIX: If target is a NAME (not ID/Mention), route to Knowledge Base
             target = args.get("target_mention") or args.get("name") or args.get("who") or ""
-            import re
             is_real_user = bool(re.search(r"\d+", str(target)))
             
             if target and not is_real_user and len(target) > 2:
@@ -798,6 +797,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             else:
                 result = tools.get_personnel_file(target, str(event.user_id), is_chinese=is_chinese)
             
+        elif tool == "audit_clear_fault":
+             result = tools.audit_clear_fault(args.get("fault_id"), profile.get("clearance", 1))
+
         elif tool == "update_biography":
             result = tools.update_biography(args.get("content", ""), str(event.user_id))
             
@@ -1113,7 +1115,12 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 result = future.result(timeout=20) 
                 wd.update_latency(time.time() - start_t)
             except Exception as e:
-                logger.error(f"[Dispatcher] AI Core Failure: {e}")
+                import traceback
+                from .diagnostic_manager import get_diagnostic_manager
+                dm = get_diagnostic_manager()
+                fault_id = dm.report_fault("Dispatcher.AI_Core", e, query=event.text, traceback_str=traceback.format_exc())
+                
+                logger.error(f"[Dispatcher] AI Core Failure [{fault_id}]: {e}")
                 wd.record_error(severity="critical")
                 
                 # Emergency Kernel
@@ -1620,7 +1627,6 @@ async def handle_event(event: InternalEvent):
             
             # DETERMINISTIC NAVIGATION FAST-PATH
             # Intercepts simple page turn commands to prevent LLM hallucination
-            import re
             nav_text = event.text.strip().lower()
             force_tool = None
             
@@ -1655,7 +1661,29 @@ async def handle_event(event: InternalEvent):
         else:
             logger.info(f"[Dispatcher] Route is chat/low confidence, not responding.")
     except Exception as e:
-        logger.error(f"[Dispatcher] Error processing message: {e}", exc_info=True)
+        import traceback
+        from .diagnostic_manager import get_diagnostic_manager
+        dm = get_diagnostic_manager()
+        fault_id = dm.report_fault("Dispatcher.handle_event", e, query=event.text, traceback_str=traceback.format_exc())
+        
+        logger.error(f"[Dispatcher] Error processing message [{fault_id}]: {e}", exc_info=True)
+        
+        # LCARS Error Reply
+        try:
+            from . import send_queue
+            sq = send_queue.SendQueue.get_instance()
+            session_key = f"qq:{event.group_id or event.user_id}"
+            is_ch = any('\u4e00' <= char <= '\u9fff' for char in event.text)
+            error_msg = f"Unable to comply. CORE ERROR: [{fault_id}]" if not is_ch else f"无法执行。核心错误：[{fault_id}]"
+            
+            # Use run_async or similar if outside async context, but handle_event IS async
+            await sq.enqueue_send(session_key, error_msg, {
+                "group_id": event.group_id,
+                "user_id": event.user_id,
+                "reply_to": event.message_id
+            })
+        except:
+            pass
     
     return False
 

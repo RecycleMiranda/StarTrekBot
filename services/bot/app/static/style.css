@@ -252,3 +252,70 @@ input:focus {
 .error {
     color: #ff0000;
 }
+
+/* Sentinel Matrix Enhancements */
+.sentinel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.sentinel-card {
+    background: rgba(10, 20, 35, 0.6);
+    border: 1px solid var(--lcars-blue);
+    border-left: 8px solid var(--lcars-accent);
+    padding: 20px;
+    position: relative;
+    border-radius: 4px;
+}
+
+.sentinel-id {
+    font-family: 'Consolas', monospace;
+    font-size: 0.7rem;
+    color: var(--lcars-teal);
+    background: rgba(117, 162, 209, 0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    position: absolute;
+    top: 15px;
+    right: 15px;
+}
+
+.sentinel-desc {
+    font-weight: bold;
+    font-size: 1rem;
+    margin-bottom: 15px;
+    padding-right: 60px;
+}
+
+.sentinel-logic {
+    background: #000;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 0.8rem;
+    margin: 10px 0;
+    border: 1px solid #1b264f;
+}
+
+.logic-if { color: #f0c674; }
+.logic-then { color: #b5bd68; }
+
+.sentinel-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--lcars-accent);
+    margin-top: 10px;
+}
+
+.hit-badge {
+    color: var(--lcars-teal);
+    font-weight: bold;
+}
+
+.subtitle {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    margin-bottom: 20px;
+}

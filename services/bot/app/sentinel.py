@@ -111,6 +111,7 @@ class SentinelExecutionEngine:
             "list": list,
             "dict": dict,
             "len": len,
+            "re": re,
             "time": time.time
         }
 

@@ -74,7 +74,11 @@ def get_status(**kwargs) -> dict:
             "cpu_load_percent": f"{cpu_usage:.1f}",
             "efficiency_index": "98.4%"
         },
-        "eps_energy_grid": ss.get_power_status()
+        "eps_energy_grid": ss.get_power_status(),
+        "sentinel_core": {
+            "active_count": len(SentinelRegistry.get_instance().get_active_triggers()),
+            "status": "MONITORING" if SentinelRegistry.get_instance().get_active_triggers() else "STANDBY"
+        }
     }
 
 def normalize_subsystem_name(name: str) -> str:
@@ -705,7 +709,6 @@ def search_memory_alpha(query: str | list[str], session_id: str, is_chinese: boo
             logger.info(f"[Tools] Worker for '{single_query}' returned {len(text_content)} chars.")
             
             # Image Extraction Logic
-            import re
             img_url = None
             match = re.search(r'https?://static\.wikia\.nocookie\.net/memoryalpha/images/[^ \n]+', text_content)
             if match:
@@ -775,7 +778,6 @@ def access_memory_alpha_direct(query: str, session_id: str, is_chinese: bool = F
     Supports CHUNKED fetching for long articles.
     """
     import os
-    import re
     from .config_manager import ConfigManager
     from google import genai
     from google.genai import types
@@ -1174,7 +1176,7 @@ def lockdown_authority(state: bool, user_id: str, clearance: int, session_id: st
     if clearance < 10:
         return {"ok": False, "message": "ACCESS DENIED: Minimum Clearance Level 10 required for command lockout modification."}
         
-    # Multi-sig for Level 10-11
+    # Multi-sig for Level 10-11   
     auth = get_auth_system()
     action = "LOCKOUT_ON" if state else "LOCKOUT_OFF"
     res = auth.request_action(session_id, action, user_id, clearance, {"state": state})
@@ -1603,21 +1605,45 @@ def register_sentinel_trigger(condition: str, action: str, description: str, use
     }
 
 def get_sentinel_status(**kwargs) -> dict:
-    """Lists all active autonomous triggers."""
+    """Lists all active autonomous triggers with a formatted report."""
     registry = SentinelRegistry.get_instance()
     triggers = registry.get_active_triggers()
     
     t_list = []
+    lines = ["--- 哨兵逻辑矩阵 (Sentinel Matrix) ---"]
     for t in triggers:
         t_list.append({
             "id": t.id,
             "desc": t.description,
+            "condition": t.condition_code,
+            "action": t.action_code,
             "hits": t.hit_count,
             "last_run": t.last_run
         })
-        
+        lines.append(f"[{t.id}] {t.description}")
+        lines.append(f"  > 逻辑链: if ({t.condition_code}) -> {t.hit_count} hits")
+    
+    if not t_list:
+        lines.append("当前无活跃的自主监控逻辑。处理器正处于静默待机状态。")
+
     return {
         "ok": True,
         "triggers": t_list,
-        "count": len(t_list)
+        "count": len(t_list),
+        "message": "\n".join(lines)
     }
+
+def audit_clear_fault(fault_id: str, clearance: int) -> dict:
+    """
+    Clears a specific system fault from the active diagnostic report.
+    Requires Level 12 clearance.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "ACCESS DENIED: Engineering clearance Level 12 required for fault clearing."}
+    
+    from .diagnostic_manager import get_diagnostic_manager
+    dm = get_diagnostic_manager()
+    if dm.clear_fault(fault_id):
+        return {"ok": True, "message": f"Confirmation: Fault {fault_id} has been cleared and moved to historical audit records."}
+    else:
+        return {"ok": False, "message": f"Error: Fault ID {fault_id} not found in active diagnostic buffer."}

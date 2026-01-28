@@ -1,6 +1,9 @@
 import os
 import json
 import logging
+import re
+import time
+import subprocess
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -102,7 +105,6 @@ class ProtocolManager:
             # Remove the specified substring
             new_value = current_value.replace(value, "").strip()
             # Clean up double spaces
-            import re
             new_value = re.sub(r'\s+', ' ', new_value).strip()
             logger.info(f"[ProtocolManager] Removing from {key}: '{value}'")
         else:  # action == "set" or unknown
@@ -123,46 +125,55 @@ class ProtocolManager:
             self._sync_to_markdown()
             
             # Small delay to ensure file modification is indexed by OS/Docker
-            import time
             time.sleep(0.5)
             
             # Auto Git Sync
-            self._git_sync(f"LCARS: Updated protocol {category}.{key}")
+            self.git_sync(f"LCARS: Updated protocol {category}.{key}")
             return True
         except Exception as e:
             logger.error(f"Failed to save protocols: {e}")
             return False
 
-    def _git_sync(self, message: str):
-        """Automatically commits protocol changes to Git."""
-        import subprocess
+    def git_sync(self, message: str, extra_files: list[str] = None):
+        """Automatically commits changes to Git. Allows extra files to be staged."""
         try:
             # In Docker, we map the repo root directly to /app
             repo_dir = "/app" if os.path.exists("/app/.git") else os.path.dirname(os.path.dirname(BASE_DIR))
             logger.info(f"Initiating Git sync in: {repo_dir}")
             
-            # 1. Add altered files (relative to repo root)
-            rel_json = os.path.relpath(PROTOCOLS_JSON, repo_dir)
-            rel_md = os.path.relpath(STANDARDS_MD, repo_dir)
-            logger.info(f"Staging files: {rel_json}, {rel_md} (Abs: {PROTOCOLS_JSON})")
-            
-            cp_add = subprocess.run(["git", "add", rel_json, rel_md], cwd=repo_dir, capture_output=True, text=True)
+            # 1. Add files
+            files_to_add = [PROTOCOLS_JSON, STANDARDS_MD]
+            if extra_files:
+                for f in extra_files:
+                    if os.path.isabs(f):
+                        files_to_add.append(f)
+                    else:
+                        files_to_add.append(os.path.join(repo_dir, f))
+
+            rel_files = []
+            for fpath in files_to_add:
+                try:
+                    rel = os.path.relpath(fpath, repo_dir)
+                    rel_files.append(rel)
+                except ValueError:
+                    logger.warning(f"File {fpath} is outside of repo root {repo_dir}. Skipping.")
+
+            if not rel_files:
+                return
+
+            logger.info(f"Staging files: {rel_files}")
+            cp_add = subprocess.run(["git", "add"] + rel_files, cwd=repo_dir, capture_output=True, text=True)
             if cp_add.returncode != 0:
                 logger.warning(f"Git add failed: {cp_add.stderr}")
             
-            # Check what's actually staged
-            cp_status = subprocess.run(["git", "status", "--short"], cwd=repo_dir, capture_output=True, text=True)
-            logger.info(f"Current Git status: \n{cp_status.stdout.strip()}")
-
             # 2. Commit
             cp_commit = subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, capture_output=True, text=True)
             if cp_commit.returncode == 0:
                 logger.info(f"Git commit success: {cp_commit.stdout.strip()}")
             else:
-                # Often occurs if no changes were actually made to the files
-                logger.info(f"Git commit skipped/failed: {cp_commit.stdout.strip()} {cp_commit.stderr.strip()}")
+                logger.info(f"Git commit skipped/failed: {cp_commit.stdout.strip()}")
 
-            # 3. Push to remote (Subspace broadcast)
+            # 3. Push to remote
             cp_push = subprocess.run(["git", "push"], cwd=repo_dir, capture_output=True, text=True)
             if cp_push.returncode == 0:
                 logger.info(f"Git push success: {cp_push.stdout.strip()}")

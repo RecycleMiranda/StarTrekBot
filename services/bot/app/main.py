@@ -599,6 +599,13 @@ async def sync_moderation_keywords(token: str = None):
     result = await KeywordFilter.get_instance().sync_from_remote()
     return result
 
+@app.get("/api/sentinel/status")
+async def get_api_sentinel_status(token: str = None):
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    return {"code": 0, "message": "ok", "data": tools.get_sentinel_status()}
+
 @app.get("/api/napcat/qr")
 async def get_napcat_qr(token: str = None):
     if not _get_verified_token(token):

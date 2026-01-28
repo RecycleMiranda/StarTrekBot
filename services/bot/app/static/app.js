@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         bridge: "STARSHIP BRIDGE - 实时状态",
         navigation: "STARSHIP NAVIGATION - QQ 身份验证",
         engineering: "ENGINEERING BAY - 核心配置",
+        sentinel: "S.E.S.M. SENTINEL - 自主逻辑流控中心",
         records: "SUBSPACE RECORDS - 通讯日志"
     };
 
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             panelTitle.textContent = titles[target] || "星舰控制中心";
 
             if (target === 'navigation') fetchQR();
+            if (target === 'sentinel') fetchSentinelData();
         });
     });
 
@@ -110,6 +112,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             saveBtn.disabled = false;
         }
     }
+
+    async function fetchSentinelData() {
+        const sentinelList = document.getElementById('sentinel-list');
+        try {
+            const resp = await fetch(`/api/sentinel/status?token=${token}`);
+            const json = await resp.json();
+            if (json.code === 0 && json.data) {
+                const triggers = json.data.triggers || [];
+                if (triggers.length === 0) {
+                    sentinelList.innerHTML = `
+                        <div class="status-card" style="grid-column: 1/-1; border-color: #666; opacity: 0.6;">
+                            <p>主控核心当前无活跃的自主逻辑监控项 (S.E.S.M. Idle)</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                sentinelList.innerHTML = triggers.map(t => `
+                    <div class="sentinel-card">
+                        <div class="sentinel-id">${t.id}</div>
+                        <div class="sentinel-desc">${t.desc}</div>
+                        <div class="sentinel-logic">
+                            <span class="logic-if">IF</span> ${t.condition || 'N/A'}<br>
+                            <span class="logic-then">THEN</span> ${t.action || 'N/A'}
+                        </div>
+                        <div class="sentinel-stats">
+                            <span>命中频率: <span class="hit-badge">${t.hits}</span></span>
+                            <span>上次执行: ${t.last_run ? new Date(t.last_run * 1000).toLocaleTimeString() : '从未触发'}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (e) {
+            console.error('Failed to fetch sentinel data', e);
+        }
+    }
+
+    // Auto-refresh for bridge and sentinel panels
+    setInterval(() => {
+        const activePanel = document.querySelector('.panel.active');
+        if (activePanel && activePanel.id === 'sentinel') {
+            fetchSentinelData();
+        }
+        if (activePanel && activePanel.id === 'bridge') {
+            // In future, update real-time bridge status here
+        }
+    }, 5000);
 
     function showStatus(msg, type) {
         statusMsg.textContent = msg;

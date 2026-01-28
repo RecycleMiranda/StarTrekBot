@@ -535,3 +535,38 @@ def strip_conversational_filler(text: str) -> str:
                 return rest if rest else text
     
     return text.strip()
+
+
+def generate_technical_diagnosis(prompt: str) -> dict:
+    """
+    Generator for technical diagnosis of system faults.
+    Returns a dict with 'diagnosis' and 'suggested_fix'.
+    """
+    try:
+        config = ConfigManager.get_instance()
+        client = genai.Client(api_key=config.get("gemini_api_key"))
+        
+        response = client.models.generate_content(
+            model=DEFAULT_THINKING_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.1, # Low temperature for precision
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "object",
+                    "properties": {
+                        "diagnosis": {"type": "string"},
+                        "suggested_fix": {"type": "string"}
+                    },
+                    "required": ["diagnosis", "suggested_fix"]
+                }
+            )
+        )
+        data = json.loads(response.text)
+        return data
+    except Exception as e:
+        logger.error(f"Technical Diagnosis AI failed: {e}")
+        return {
+            "diagnosis": "Failed to analyze fault via AI Brain.",
+            "suggested_fix": "# ERROR: Diagnostic Subroutine Offline"
+        }

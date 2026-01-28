@@ -40,6 +40,7 @@
                 <div class="menu-btn active" data-panel="bridge">全舰状态</div>
                 <div class="menu-btn" data-panel="navigation">导航 (QQ 登录)</div>
                 <div class="menu-btn" data-panel="engineering">工程部 (设置)</div>
+                <div class="menu-btn" data-panel="sentinel">哨兵矩阵 (S.E.S.M.)</div>
                 <div class="menu-btn" data-panel="records">子空间记录 (日志)</div>
                 <button class="menu-btn link-btn" onclick="window.location.href='/admin/napcat'">原生控制台</button>
             </div>
@@ -133,7 +134,19 @@
                 </form>
             </section>
 
-            <!-- 面板 4: 日志 -->
+            <!-- 面板 4: 哨兵矩阵 -->
+            <section id="sentinel" class="panel config-panel">
+                <header class="panel-inner-header">
+                    <h2>S.E.S.M. SENTINEL - 自主逻辑流控中心</h2>
+                    <p class="subtitle">实时监控活动逻辑基因与条件触发频率</p>
+                </header>
+                <div class="sentinel-grid" id="sentinel-list">
+                    <!-- Sentinel cards will be injected here -->
+                    <div class="status-card" style="grid-column: 1/-1; border-color: gray;">
+                        <p>正在连接哨兵核心，请稍候...</p>
+                    </div>
+                </div>
+            </section>
             <section id="records" class="panel config-panel">
                 <div class="log-window" id="log-content">
                     [02:24:00] 系统启动...

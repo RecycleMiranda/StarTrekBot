@@ -216,6 +216,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "toggle_system": "set_subsystem_state",
         "system_offline": "set_subsystem_state",
         "system_online": "set_subsystem_state",
+        # 2.0 ADS & Audit Aliases
+        "ads_test": "trigger_ads_test",
+        "diagnose_system": "trigger_ads_test",
+        "fault_audit": "audit_clear_fault",
+        "clear_fault": "audit_clear_fault",
+        "archive_fault": "audit_clear_fault",
     }
 
 
@@ -800,6 +806,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "audit_clear_fault":
              result = tools.audit_clear_fault(args.get("fault_id"), profile.get("clearance", 1))
 
+        elif tool == "trigger_ads_test":
+             result = tools.trigger_ads_test(args.get("security_code", ""), profile.get("clearance", 1))
+
         elif tool == "update_biography":
             result = tools.update_biography(args.get("content", ""), str(event.user_id))
             
@@ -1025,8 +1034,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result["ok"] = True
         return result
     except Exception as e:
-        logger.error(f"Tool execution failed: {e}")
-        return {"ok": False, "message": f"Execution error: {str(e)}", "error": str(e)}
+        logger.error(f"Tool execution critical failure: {e}", exc_info=True)
+        # CRITICAL: Re-raise so this bubbles up to the Dispatcher's ADS fault reporter
+        raise e
 
 async def _destruct_notify(session_id: str, message: str):
     """Sends background countdown messages to the chat platform."""

@@ -1647,3 +1647,15 @@ def audit_clear_fault(fault_id: str, clearance: int) -> dict:
         return {"ok": True, "message": f"Confirmation: Fault {fault_id} has been cleared and moved to historical audit records."}
     else:
         return {"ok": False, "message": f"Error: Fault ID {fault_id} not found in active diagnostic buffer."}
+
+def trigger_ads_test(security_code: str, clearance: int) -> dict:
+    """
+    Simulates a CRITICAL ENGINE FAILURE to test the ADS (Auto-Diagnostic Routine).
+    Requires Level 10 clearance and code 'OMEGA-7'.
+    """
+    if clearance < 10 or security_code != "OMEGA-7":
+        return {"ok": False, "message": "ERR: INVALID SECURITY CODE. TESTING BLOCKED."}
+    
+    logger.warning("[CHAOS] ADS Test Sequence Initiated. Triggering system-wide fault...")
+    # This will bubble up to Dispatcher's handle_event except block
+    raise RuntimeError("ADS TEST: Simulated dilithium chamber breach in diagnostic subspace.")

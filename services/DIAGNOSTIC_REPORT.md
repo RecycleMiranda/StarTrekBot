@@ -4,39 +4,36 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x44A5 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 09:58:24
-- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
-- **原始指令**: `计算机，降低曲速核心功率，降至80吧`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
+### ERR-0xDB85 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 11:13:46
+- **错误信息**: `eject_warp_core() got an unexpected keyword argument 'destination'`
+- **原始指令**: `Computer, set course for Talos IV`
+- **AI 诊断**: The `eject_warp_core()` function was called with an unexpected keyword argument 'destination'. This indicates a mismatch between the function's expected parameters and the arguments passed during the call.
 - **建议方案**:
 
 ```diff
-# ERROR: Diagnostic Subroutine Offline
+```diff
+--- a/app/dispatcher.py
++++ b/app/dispatcher.py
+@@ -1002,7 +1002,7 @@
+ 
+   async def _execute_tool(tool: str, args: Dict, event: Event, user_profile: UserProfile, session_id: str) -> Any:
+     try:
+-      result = func(**args)
++      result = func(*args.values())
+              ^^^^^^^^^^^^
+     except Exception as e:
+       e2 = sys.exc_info()[0](str(sys.exc_info()[1]) + f' (tool: {tool})').with_traceback(sys.exc_info()[2])
+@@ -1033,7 +1033,7 @@
+     try:
+       # Attempt the function call again, but this time raise the original exception if it fails.
+       # This is to ensure that the original exception is not masked by the handling logic.
+-      result = func(**args)
++      result = func(*args.values())
+              ^^^^^^^^^^^^
+     except Exception as e:
+       raise e
 ```
-
----
-### ERR-0xB554 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 09:58:38
-- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
-- **原始指令**: `计算机，降低曲速核心功率，降至80吧`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
-- **建议方案**:
-
-```diff
-# ERROR: Diagnostic Subroutine Offline
-```
-
----
-### ERR-0xE86D | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 09:59:15
-- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
-- **原始指令**: `设定上?`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
-- **建议方案**:
-
-```diff
-# ERROR: Diagnostic Subroutine Offline
 ```
 
 ---

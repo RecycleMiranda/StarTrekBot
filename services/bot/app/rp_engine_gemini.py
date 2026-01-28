@@ -15,8 +15,82 @@ from . import quota_manager
 from . import tools
 from .protocol_manager import get_protocol_manager
 from .evolution_agent import get_evolution_agent
+import urllib.request
+import urllib.error
 
 logger = logging.getLogger(__name__)
+
+def _call_gemini_rest_api(
+    contents: List[Dict],
+    system_instruction: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = 0.3,
+    max_tokens: int = 1000,
+    json_mode: bool = False
+) -> Optional[str]:
+    """
+    Core REST API adapter for Gemini (Zero-Dependency).
+    Replaces google-genai SDK to fix NameError in restricted environments.
+    """
+    config = get_config()
+    api_key = config.get("GEMINI_API_KEY") or config.get("gemini_api_key")
+    
+    # 1. MOCK FALLBACK (Safe Mode for No-Key Environments)
+    if not api_key:
+        logger.warning("[GeminiREST] No API Key found. Using MOCK RESPONSE.")
+        return '{"reply": "Computer: Logic memory offline. Unable to process query.", "intent": "refuse"}' if json_mode else "Logic memory offline."
+
+    # 2. Model Normalization
+    target_model = model or config.get("gemini_rp_model", "gemini-1.5-flash")
+    if "models/" not in target_model: target_model = f"models/{target_model}"
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/{target_model}:generateContent?key={api_key}"
+    
+    # 3. Payload Construction
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens
+        }
+    }
+    
+    if system_instruction:
+        payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        
+    if json_mode:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
+        
+    # 4. Execution
+    try:
+        json_data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=json_data, headers={"Content-Type": "application/json"})
+        
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+            if response.status != 200:
+                logger.error(f"[GeminiREST] HTTP {response.status}")
+                return None
+            
+            resp_body = response.read().decode("utf-8")
+            response_json = json.loads(resp_body)
+            
+            # Extract Text
+            candidates = response_json.get("candidates", [])
+            if not candidates:
+                feedback = response_json.get("promptFeedback", {})
+                logger.warning(f"[GeminiREST] Safety Block: {feedback}")
+                return None
+                
+            text = candidates[0].get("content", {}).get("parts", [])[0].get("text", "")
+            return text
+
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        logger.error(f"[GeminiREST] API Error {e.code}: {error_body}")
+        return None
+    except Exception as e:
+        logger.error(f"[GeminiREST] Connection Failed: {e}")
+        return None
 
 def get_lexicon_prompt() -> str:
     """Returns the comprehensive LCARS/Cardassian technical lexicon."""
@@ -141,8 +215,7 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in trigger_text)
     
     try:
-        client = genai.Client(api_key=api_key)
-        
+        # CONTEXT BUILDER (Legacy String Format for Single-Turn Model Compatibility)
         history_str = ""
         for turn in context:
             history_str += f"[{turn.get('author') or 'user'}]: {turn.get('content')}\n"
@@ -170,21 +243,23 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
         if cumulative_context:
             logger.info(f"[NeuralEngine] Injecting {len(cumulative_context)} chars of cumulative/ODN context.")
 
-        response = client.models.generate_content(
+        # REST API CALL
+        prompt_text = f"History:\n{history_str}\n{cumulative_context}\nCurrent Input: {trigger_text}"
+        contents = [{"role": "user", "parts": [{"text": prompt_text}]}]
+        
+        raw_text = _call_gemini_rest_api(
+            contents=contents,
+            system_instruction=formatted_sys,
             model=fast_model,
-            contents=f"History:\n{history_str}\n{cumulative_context}\nCurrent Input: {trigger_text}",
-            config=types.GenerateContentConfig(
-                system_instruction=formatted_sys,
-                max_output_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-                response_mime_type="application/json"
-            )
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            json_mode=True
         )
         
-        if not response or not response.text:
-            return _fallback("empty")
+        if not raw_text:
+            return _fallback("empty_or_error")
         
-        result = _parse_response(response.text)
+        result = _parse_response(raw_text)
         result["model"] = fast_model
         result["is_chinese"] = is_chinese
         result["original_query"] = trigger_text
@@ -200,8 +275,6 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
     final_model = model_name or DEFAULT_THINKING_MODEL
 
     try:
-        client = genai.Client(api_key=api_key)
-        
         user_profile_str = meta.get("user_profile", "Unknown") if meta else "Unknown"
         user_id = str(meta.get("user_id", "0")) if meta else "0"
         qm = quota_manager.get_quota_manager()
@@ -215,17 +288,19 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
             f"Query: {trigger_text}"
         )
 
-        response = client.models.generate_content(
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        raw_text = _call_gemini_rest_api(
+            contents=contents,
             model=final_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=1000,
-                temperature=0.4,
-                response_mime_type="application/json"
-            )
+            temperature=0.4,
+            max_tokens=1000,
+            json_mode=True
         )
         
-        result = _parse_response(response.text)
+        if not raw_text:
+            return _fallback("escalation_failed")
+            
+        result = _parse_response(raw_text)
         result["model"] = final_model
         result["is_escalated"] = True
         return result
@@ -293,7 +368,6 @@ def synthesize_search_result(query: str, raw_data: str, is_chinese: bool = False
         return "Data retrieved. (Synthesis offline)"
 
     try:
-        client = genai.Client(api_key=api_key)
         
         # History Context for synthesis precision
         history_snippet = ""
@@ -370,16 +444,18 @@ Raw Data for Synthesis:
 
 
 
-        response = client.models.generate_content(
+
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        reply = _call_gemini_rest_api(
+            contents=contents,
             model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=8192,
-                temperature=0.3
-            )
+            temperature=0.3,
+            max_tokens=8192,
+            json_mode=False
         )
         
-        reply = response.text if response.text else "Subspace interference. Synthesis failed."
+        if not reply:
+            reply = "Subspace interference. Synthesis failed."
         
         # Clean the reply for potential JSON parsing
         cleaned_reply = strip_conversational_filler(reply)
@@ -430,7 +506,6 @@ class NeuralEngine:
             return raw_content
 
         try:
-            client = genai.Client(api_key=api_key)
             
             lang_instruction = "Target Language: Simplified Chinese (zh-CN)." if is_chinese else "Target Language: Federation Standard (English)."
             
@@ -457,16 +532,17 @@ class NeuralEngine:
                 "TRANSLATED OUTPUT (Start immediately with ^^DATA_START^^ then Full-Paragraph Bilingual Blocks):"
             )
 
-            response = client.models.generate_content(
+            contents = [{"role": "user", "parts": [{"text": prompt}]}]
+            reply = _call_gemini_rest_api(
+                contents=contents,
                 model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    max_output_tokens=8192,
-                    temperature=0.1
-                )
+                temperature=0.1,
+                max_tokens=8192,
+                json_mode=False
             )
             
-            reply = response.text if response.text else "Subspace interference. Translation failed."
+            if not reply:
+                reply = "Subspace interference. Translation failed."
             logger.info(f"[NeuralEngine] Raw translation received, length: {len(reply)}")
             return strip_conversational_filler(reply)
 
@@ -614,25 +690,22 @@ def generate_technical_diagnosis(prompt: str) -> dict:
     """
     try:
         config = ConfigManager.get_instance()
-        client = genai.Client(api_key=config.get("gemini_api_key"))
         
-        response = client.models.generate_content(
+        # Enforce JSON in prompt since Helper doesn't support Schema yet
+        if "JSON" not in prompt: prompt += "\n\nOUTPUT JSON ONLY: {\"diagnosis\": str, \"suggested_fix\": str}"
+        
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        raw_text = _call_gemini_rest_api(
+            contents=contents,
             model=DEFAULT_THINKING_MODEL,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.1, # Low temperature for precision
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "object",
-                    "properties": {
-                        "diagnosis": {"type": "string"},
-                        "suggested_fix": {"type": "string"}
-                    },
-                    "required": ["diagnosis", "suggested_fix"]
-                }
-            )
+            temperature=0.1,
+            json_mode=True
         )
-        data = json.loads(response.text)
+        
+        if not raw_text:
+            raise Exception("Empty response from Diagnostic AI")
+            
+        data = json.loads(raw_text)
         return data
     except Exception as e:
         logger.error(f"Technical Diagnosis AI failed: {e}")

@@ -514,6 +514,64 @@
       }
     }
   },
+  "software": {
+    "core_logic": {
+      "display_name_en": "Core Logic Systems",
+      "display_name_cn": "核心逻辑系统",
+      "components": {
+        "protocol_engine": {
+          "name": "Protocol Engine (ADS 4.0)",
+          "aliases": [
+            "protocols",
+            "compliance",
+            "go_monitor"
+          ],
+          "states": [
+            "ACTIVE",
+            "ENFORCING",
+            "OVERRIDE",
+            "LOCKED"
+          ],
+          "default_state": "ENFORCING",
+          "metrics": {
+            "compliance_rating": {
+              "unit": "%",
+              "default": 100.0
+            },
+            "active_protocols": {
+              "unit": "count",
+              "default": 14
+            }
+          }
+        },
+        "ads": {
+          "name": "Auto-Diagnostic Subroutine (ADS)",
+          "aliases": [
+            "diagnostics",
+            "self_repair",
+            "sentinel"
+          ],
+          "states": [
+            "MONITORING",
+            "DIAGNOSING",
+            "HEALING",
+            "OFFLINE"
+          ],
+          "default_state": "MONITORING",
+          "metrics": {
+            "faults_detected": {
+              "unit": "count",
+              "default": 0
+            },
+            "system_integrity": {
+              "unit": "%",
+              "default": 99.9
+            }
+          }
+        }
+      }
+    }
+  },
   "_evolution_log": [
     {
       "timestamp": 1769591505.063243,

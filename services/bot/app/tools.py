@@ -7,6 +7,7 @@ import logging
 import re
 import os
 import json
+from pathlib import Path
 from .sentinel import SentinelRegistry
 
 logger = logging.getLogger(__name__)
@@ -32,52 +33,19 @@ def get_status(**kwargs) -> dict:
     
     ss = get_ship_systems()
     
-    # Construct Narrative Summary for AI
-    summary_parts = [
-        f"Ship Alert Status: {ss.alert_status.value}",
-        f"Warp Core Output: {ss.warp_core_output}%",
-        f"Hull Integrity: {ss.hull_integrity}%",
-        f"Shields: {'ACTIVE' if ss.shields_active else 'OFFLINE'} ({ss.shield_integrity}%)",
-        f"Power/EPS: {ss.subsystems.get('eps_grid', SubsystemState.ONLINE).value}",
-        f"Life Support: {ss.subsystems.get('life_support', SubsystemState.ONLINE).value}",
-        f"Computer Core Metrics: CPU {cpu_usage}%, Memory {mem_usage}MB"
-    ]
-    summary_text = ", ".join(summary_parts)
+    ss = get_ship_systems()
     
+    # ADS 3.0: Unified MSD Report
+    report = ss.get_status_report()
+    
+    # Legacy wrapper for backward compatibility with frontend keys if needed,
+    # but the new MSD manifest is cleaner. We will wrap it in a standard response.
     return {
         "ok": True,
-        "alert": ss.alert_status.value,
-        "message": f"SYSTEM STATUS REPORT: {summary_text}",
-        "engineering": {
-            "warp_core_output": f"{ss.warp_core_output}%",
-            "fuel_reserves": f"{ss.fuel_reserves}%",
-            "eps_grid": ss.subsystems.get("eps_grid", "ONLINE").value,
-            "structural_integrity": f"{ss.hull_integrity}%",
-            "sif": ss.subsystems.get("structural_integrity", "ONLINE").value,
-            "waste_management": ss.subsystems.get("waste_management", "ONLINE").value
-        },
-        "tactical": {
-            "shields_active": ss.shields_active,
-            "shield_integrity": f"{ss.shield_integrity}%",
-            "phasers": ss.subsystems.get("phasers", "ONLINE").value,
-            "torpedoes": ss.subsystems.get("torpedoes", "ONLINE").value
-        },
-        "operations": {
-            "life_support": ss.subsystems.get("life_support", "ONLINE").value,
-            "communications": ss.subsystems.get("comms", "ONLINE").value,
-            "transporters": ss.subsystems.get("transporters", "ONLINE").value,
-            "sensors": ss.subsystems.get("sensors", "ONLINE").value
-        },
-        "personnel": {
-            "casualties": ss.casualties,
-            "emh": ss.subsystems.get("emh", "OFFLINE").value
-        },
-        "computer_core": {
-            "status": "ONLINE",
-            "memory_usage_mb": f"{mem_usage:.1f}",
-            "cpu_load_percent": f"{cpu_usage:.1f}",
-            "efficiency_index": "98.4%"
-        },
+        "alert": report.get("alert"),
+        "message": f"SYSTEM STATUS REPORT: {report.get('alert')}\nMSD Data Loaded.",
+        "msd_manifest": report.get("msd_manifest"),
+        # Legacy fallback keys for existing frontend (optional, can be phased out)
         "eps_energy_grid": ss.get_power_status(),
         "sentinel_core": {
             "active_count": len(SentinelRegistry.get_instance().get_active_triggers()),
@@ -145,18 +113,79 @@ def get_subsystem_status(name: str) -> dict:
     original_name = name
     name = normalize_subsystem_name(name)
     
-    if name in ss.subsystems:
-        state = ss.subsystems[name].value
+    comp = ss.get_component(name)
+    if comp:
+        state = comp.get("current_state", "UNKNOWN")
+        metrics = []
+        for mk, mv in comp.get("metrics", {}).items():
+            val = mv.get("current_value", mv.get("default"))
+            unit = mv.get("unit", "")
+            metrics.append(f"{mk}: {val}{unit}")
+            
         return {
             "ok": True,
-            "name": name,
+            "name": comp.get("name"),
             "state": state,
-            "message": f"子系统 {original_name} 当前状态：{state}，"
+            "metrics": metrics,
+            "message": f"{comp.get('name')} 状态: {state} | 指标: {', '.join(metrics)}"
         }
+        
+    return {
+        "ok": False,
+        "message": f"Subsystem '{original_name}' (mapped to '{name}') not found in MSD Registry."
+    }
+
+def evolve_msd_schema(system_name: str, parameter_type: str, proposed_value: str, justification: str, clearance: int) -> dict:
+    """
+    ADS 3.1: Propose a structural pattern evolution for the MSD Registry.
+    Use this when a valid state/metric is missing from the current definition.
+    Requires Level 12 Authorization.
     
-    # Check Auxiliary/Environmental states
-    # Use normalization logic here too or fuzzy match
-    target_key = original_name.lower().replace(" ", "_")
+    Args:
+        system_name: The internal key or alias (e.g. 'warp_core')
+        parameter_type: 'new_state' or 'new_metric'
+        proposed_value: e.g. 'WARP_9.975' or 'graviton_load:mC:0.0'
+        justification: Technical reasoning from Memory Alpha/Canon.
+    """
+    if clearance < 12:
+        return {"ok": False, "message": "Access Denied: Schema Evolution requires Level 12 clearance."}
+        
+    # Lazy import to avoid circular dep early on
+    from .evolution_agent import get_evolution_agent
+    from .ship_systems import get_ship_systems
+    
+    # Normalize name first to find the right key
+    ss = get_ship_systems()
+    normalized_name = normalize_subsystem_name(system_name)
+    
+    agent = get_evolution_agent()
+    return agent.evolve_msd(normalized_name, parameter_type, proposed_value, justification)
+
+def set_metric(system: str, metric: str, value: float) -> dict:
+    """
+    ADS 3.0: Adjusts a specific technical metric of a subsystem.
+    Usage: set_metric("warp_core", "output", 85.5)
+    """
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    system = normalize_subsystem_name(system)
+    
+    comp = ss.get_component(system)
+    if not comp:
+        return {"ok": False, "message": f"System '{system}' not found."}
+        
+    metrics = comp.get("metrics", {})
+    if metric not in metrics:
+        return {"ok": False, "message": f"Metric '{metric}' not found on system '{system}'. Valid: {list(metrics.keys())}"}
+        
+    # Update logic
+    # Check bounds if max/min defined (omitted for brevity)
+    metrics[metric]["current_value"] = value
+    
+    return {
+        "ok": True,
+        "message": f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+    }
     if "light" in target_key or "亮度" in target_key:
         if "bridge" in target_key or "舰桥" in target_key: target_key = "bridge_lighting"
         elif "engineering" in target_key or "轮机室" in target_key: target_key = "engineering_lighting"
@@ -1469,19 +1498,31 @@ def toggle_shields(active: bool, clearance: int) -> dict:
     msg = ss.toggle_shields(active)
     return {"ok": True, "message": msg, "active": ss.shields_active}
 
+def set_subsystem(name: str, state_val: str, clearance: int = 1) -> dict:
+    """
+    Control subsystem state (Unified MSD).
+    Support both 'ONLINE/OFFLINE' and new states.
+    (Wrapped for tool access)
+    """
+    # Basic clearance check (optional logic)
+    if clearance < 1: 
+         return {"ok": False, "message": "Access Denied."}
+    
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    
+    # Normalize input
+    name = normalize_subsystem_name(name)
+    msg = ss.set_subsystem(name, state_val) # This handles the MSD logic
+    
+    return {"ok": True, "message": msg}
+
 def set_subsystem_state(name: str, state_str: str, clearance: int) -> dict:
     """
-    Toggles a subsystem (online/offline).
-    Requires Level 11+.
+    Legacy Wrapper for set_subsystem.
     """
-    if clearance < 11:
-        return {"ok": False, "message": "权限不足拒绝访问"}
-        
-    from .ship_systems import get_ship_systems, SubsystemState
-    ss = get_ship_systems()
-    state = SubsystemState.ONLINE if "online" in state_str.lower() or "上线" in state_str else SubsystemState.OFFLINE
-    msg = ss.set_subsystem(name, state)
-    return {"ok": True, "message": msg}
+    state = "ONLINE" if "online" in state_str.lower() or "上线" in state_str else "OFFLINE"
+    return set_subsystem(name, state, clearance)
 
 def set_absolute_override(state: bool, user_id: str, clearance: int) -> dict:
     """
@@ -1711,7 +1752,16 @@ def discover_subsystem_alias(unknown_term: str, context_hint: str = "") -> dict:
             
             with open(alias_file, "w") as f:
                 json.dump(data, f, indent=2)
-                
+            
+            # 3. GIT SYNC (ADS 2.5)
+            try:
+                from .repair_tools import git_sync_changes
+                git_msg = f"ADS 2.5: Auto-discovery alias '{unknown_term}' -> '{mapping_suggestion}'"
+                git_res = git_sync_changes(Path(alias_file), git_msg)
+                logger.info(f"[ADS] Git Sync: {git_res.get('message')}")
+            except Exception as e:
+                logger.warning(f"[ADS] Git Sync failed (Local persistence only): {e}")
+
             logger.info(f"[ADS] Semantic Discovery Successful: '{unknown_term}' -> '{mapping_suggestion}'")
             return {
                 "ok": True,

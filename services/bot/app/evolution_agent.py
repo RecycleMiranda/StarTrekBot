@@ -1,13 +1,18 @@
 import os
 import json
 import logging
+import re
 from typing import Dict, List, Optional
 from .config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
+from .repair_tools import git_sync_changes
+from pathlib import Path
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 TRAINING_LIB_PATH = os.path.join(REPO_ROOT, "services/bot/app/config/training_library.jsonl")
+MSD_REGISTRY_PATH = os.path.join(REPO_ROOT, "services/bot/app/config/msd_registry.json")
 
 class EvolutionAgent:
     """
@@ -100,7 +105,123 @@ RETURN FORMAT (JSON ONLY):
         except Exception as e:
             logger.error(f"Error reading training library: {e}")
             
+        except Exception as e:
+            logger.error(f"Error reading training library: {e}")
+            
         return "\n".join(directives)
+
+    def evolve_msd(self, system_name: str, parameter_type: str, proposed_value: str, justification: str) -> Dict:
+        """
+        ADS 3.1: Evolution Protocol.
+        Allows the AI to propose structural changes to the MSD Registry.
+        
+        Args:
+            system_name: e.g., "warp_core"
+            parameter_type: "new_state", "new_metric", "update_limit"
+            proposed_value: e.g., "WARP_9.975"
+            justification: e.g., "Voyager class sustained cruise velocity upgrade."
+        """
+        # 1. CANON FIREWALL CHECK
+        canon_check = self._validate_msd_canon(parameter_type, proposed_value)
+        if not canon_check["ok"]:
+            return {
+                "ok": False, 
+                "message": f"Evolution Rejected (Canon Violation): {canon_check['reason']}"
+            }
+            
+        # 2. Load Registry
+        try:
+            with open(MSD_REGISTRY_PATH, "r") as f:
+                registry = json.load(f)
+        except Exception as e:
+            return {"ok": False, "message": f"Registry Load Failed: {e}"}
+
+        # 3. Locate Component (Reuse logic conceptually or just do a quick traverse helper)
+        # For simplicity, we assume system_name matches a key in component_map logic
+        # We need to find the definition in the JSON tree.
+        target_node = self._find_node_recursive(registry, system_name)
+        if not target_node:
+             return {"ok": False, "message": f"System '{system_name}' not found in registry topology."}
+             
+        # 4. Apply Mutation
+        change_log = ""
+        if parameter_type == "new_state":
+            current_states = target_node.get("states", [])
+            if proposed_value in current_states:
+                return {"ok": True, "message": f"State '{proposed_value}' already exists."}
+            target_node["states"].append(proposed_value)
+            change_log = f"Added state: {proposed_value}"
+            
+        elif parameter_type == "new_metric":
+            # Expecting proposed_value as "metric_name:unit:default"
+            try:
+                m_name, m_unit, m_def = proposed_value.split(":")
+                if "metrics" not in target_node: target_node["metrics"] = {}
+                target_node["metrics"][m_name] = {"unit": m_unit, "default": float(m_def)}
+                change_log = f"Added metric: {m_name} ({m_unit})"
+            except ValueError:
+                return {"ok": False, "message": "Format error. Use 'name:unit:default' for new metrics."}
+        
+        else:
+             return {"ok": False, "message": f"Unknown evolution type: {parameter_type}"}
+
+        # 5. Evolution Log & Persistence
+        import time
+        if "_evolution_log" not in registry: registry["_evolution_log"] = []
+        registry["_evolution_log"].append({
+            "timestamp": time.time(),
+            "system": system_name,
+            "change": change_log,
+            "justification": justification
+        })
+
+        try:
+            with open(MSD_REGISTRY_PATH, "w") as f:
+                json.dump(registry, f, indent=2)
+                
+            # 6. GIT SYNC
+            git_msg = f"ADS 3.1 Evolution: {system_name} -> {change_log}"
+            git_res = git_sync_changes(Path(MSD_REGISTRY_PATH), git_msg)
+            
+            return {
+                "ok": True,
+                "message": f"Evolution Accepted. {change_log}. Logic persisted to MSD Registry. {git_res.get('message')}"
+            }
+        except Exception as e:
+            return {"ok": False, "message": f"Persistence failed: {e}"}
+
+    def _validate_msd_canon(self, p_type: str, value: str) -> Dict:
+        """The 'Holy Timeline' Logic Checker (AI Powered)."""
+        from .rp_engine_gemini import verify_canon_compliance
+        
+        # Contextualize the proposal
+        context = f"Evolution Type: {p_type}. Value: {value}. The user is requesting to add this to the ship's MSD Registry."
+        
+        # Call the Judge
+        verdict = verify_canon_compliance(value, context)
+        
+        if verdict["allowed"]:
+            return {"ok": True}
+        else:
+            return {"ok": False, "reason": verdict["reason"]}
+
+    def _find_node_recursive(self, node: Dict, target_alias: str) -> Optional[Dict]:
+        """Helper to find the mutable dict node in the JSON tree."""
+        for key, value in node.items():
+            if not isinstance(value, dict): continue
+            
+            # Check matches
+            if key == target_alias: return value
+            if target_alias in value.get("aliases", []): return value
+            
+            # Recurse
+            if "components" in value:
+                found = self._find_node_recursive(value["components"], target_alias)
+                if found: return found
+            elif isinstance(value, dict): # Generic recursion
+                found = self._find_node_recursive(value, target_alias)
+                if found: return found
+        return None
 
 def get_evolution_agent():
     return EvolutionAgent.get_instance()

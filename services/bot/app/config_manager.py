@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "qq_send_endpoint": os.getenv("QQ_SEND_ENDPOINT", ""),
     "qq_send_token": os.getenv("QQ_SEND_TOKEN", ""),
     "gemini_rp_model": os.getenv("GEMINI_RP_MODEL", "gemini-2.0-flash-lite"),
+    "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
     "moderation_enabled": os.getenv("TENCENT_TMS_ENABLED", "false").lower() == "true",
     "moderation_provider": os.getenv("MODERATION_PROVIDER", "local"), 
     "tencent_secret_id": os.getenv("TENCENT_SECRET_ID", ""),

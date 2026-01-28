@@ -1,6 +1,8 @@
 import logging
+import json
+import os
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +11,8 @@ class AlertStatus(Enum):
     YELLOW = "YELLOW"
     RED = "RED"
 
+# SubsystemState is now dynamic string-based in the new architecture, 
+# but we keep this for legacy compatibility until full migration.
 class SubsystemState(Enum):
     ONLINE = "ONLINE"
     OFFLINE = "OFFLINE"
@@ -17,230 +21,237 @@ class SubsystemState(Enum):
 class ShipSystems:
     _instance = None
     
-    # Tier mapping for priority logic
-    TIER_MAP = {
-        "main_reactor": 1, "eps_grid": 1, "auxiliary_power": 1,
-        "shields": 2, "phasers": 2, "phase_cannons": 2, "torpedoes": 2, "sif": 2, "weapons": 2, "structural_integrity": 2,
-        "warp_drive": 3, "impulse_engines": 3, "nav_deflector": 3,
-        "life_support": 4, "computer_core": 4, "sensors": 4, "comms": 4,
-        "transporters": 5, "replicators": 5, "holodecks": 5, "emh": 5, "waste_management": 5
-    }
-
-    # Dependency mapping
-    DEPENDENCIES = {
-        "eps_grid": ["main_reactor"],
-        "shields": ["eps_grid"],
-        "phasers": ["eps_grid"],
-        "phase_cannons": ["eps_grid"],
-        "torpedoes": ["eps_grid"],
-        "weapons": ["eps_grid"],
-        "sif": ["eps_grid"],
-        "warp_drive": ["main_reactor"],
-        "impulse_engines": ["eps_grid"],
-        "nav_deflector": ["eps_grid"],
-        "life_support": ["eps_grid"],
-        "waste_management": ["eps_grid"],
-        "computer_core": ["eps_grid"],
-        "sensors": ["eps_grid"],
-        "comms": ["eps_grid"],
-        "transporters": ["eps_grid"],
-        "replicators": ["eps_grid"],
-        "holodecks": ["eps_grid"],
-        "emh": ["eps_grid", "computer_core"]
-    }
-
     def __init__(self):
         self.alert_status = AlertStatus.NORMAL
-        self.shields_active = False
-        self.shield_integrity = 100
+        self.shields_active = False # Legacy boolean, sync logic needed
+        self.shield_integrity = 100 # Legacy
         
-        # Initialize all known subsystems to ONLINE
-        self.subsystems: Dict[str, SubsystemState] = {
-            name: SubsystemState.ONLINE for name in self.TIER_MAP
-        }
-        # Specialized states
-        self.subsystems["emh"] = SubsystemState.OFFLINE # EMH starts offline
+        # MSD Architecture Containers
+        self.msd_registry = {}      # The raw JSON tree
+        self.component_map = {}     # Flat map: "warp_core" -> component_obj
         
-        # New MA Standard Metrics
-        self.warp_core_output = 98.4  # Percent
-        self.fuel_reserves = 85.0     # Percent (Deuterium/Antimatter)
-        self.hull_integrity = 100.0   # Percent
-        self.casualties = 0           # Count
-        
-        # --- PHASE 4: EPS ENERGY MODEL ---
-        self.power_output_mw = 12500000.0  # Total Warp Core Output in MW (Galaxy Class spec)
-        self.battery_reserve_pct = 100.0   # Emergency batteries
-        self.current_load_mw = 4200000.0   # Base load (Life Support, Computers, structural integrity)
-        
-        # Power drain mapping (Nominal costs in MW)
-        self.POWER_DRAIN = {
-            "shields": 1500000.0,
-            "phasers": 800000.0,
-            "warp_drive": 3000000.0,
-            "transporters": 500000.0,
-            "holodecks": 300000.0,
-            "replicators": 200000.0,
-            "eps_grid": 100000.0,
-            "life_support": 1000000.0,
-            "computer_core": 800000.0,
-            "sensors": 400000.0
-        }
-        
-        # --- PHASE 4: DYNAMIC AUXILIARY STATE ---
-        self.auxiliary_state: Dict[str, str] = {}
+        # Load the graph
+        self._load_msd_registry()
 
+        # Legacy TIER_MAP emulation (auto-generated from graph)
+        self.TIER_MAP = self._generate_tier_map()
+        
+        # Energy Model (Unified)
+        self.power_output_mw = 12500000.0 
+        self.battery_reserve_pct = 100.0
+        self.current_load_mw = 4200000.0
+        
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
+    def _load_msd_registry(self):
+        """Loads the Unified MSD Registry from JSON."""
+        try:
+            reg_path = os.path.join(os.path.dirname(__file__), "config", "msd_registry.json")
+            with open(reg_path, "r") as f:
+                self.msd_registry = json.load(f)
+            
+            # Build valid component map recursively
+            self._recursive_build_map(self.msd_registry)
+            logger.info(f"[ShipSystems] MSD Registry Loaded. {len(self.component_map)} components mapped.")
+            print(f"DEBUG: Loaded keys: {list(self.component_map.keys())}")
+            
+        except Exception as e:
+            logger.error(f"[ShipSystems] CRITICAL: Failed to load MSD Registry: {e}")
+            print(f"DEBUG CRITICAL ERROR: {e}")
+            # Fallback to minimal dict to prevent crash
+            self.component_map = {}
+
+    def _recursive_build_map(self, node: dict, prefix: str = ""):
+        """Traverses the tree to index components by name and aliases."""
+        for key, value in node.items():
+            if not isinstance(value, dict):
+                continue
+
+            # Case A: Component Leaf (Has Metrics)
+            if "metrics" in value:
+                # Store mutable state directly in the object
+                if "current_state" not in value:
+                    value["current_state"] = value.get("default_state", "OFFLINE")
+                
+                # Index by key
+                self.component_map[key] = value
+                
+                # Index by aliases
+                for alias in value.get("aliases", []):
+                    self.component_map[alias] = value
+            
+            # Case B: System Group (Has 'components' sub-dict)
+            elif "components" in value:
+                self._recursive_build_map(value["components"], prefix=f"{key}.")
+            
+            # Case C: Organizational Container (e.g. "engineering") -> Recurse values
+            else:
+                self._recursive_build_map(value, prefix=f"{key}.")
+
+    def _generate_tier_map(self) -> Dict[str, int]:
+        """Auto-generates tier map for legacy compatibility based on importance."""
+        # Simple heuristic mapping for now
+        tiers = {}
+        for key, comp in self.component_map.items():
+            # Default to mid-tier
+            tiers[key] = 3
+            if "core" in key or "reactor" in key or "eps" in key: tiers[key] = 1
+            if "shield" in key or "weapon" in key: tiers[key] = 2
+            if "life" in key: tiers[key] = 4
+            if "replicator" in key: tiers[key] = 5
+        return tiers
+
+    def get_component(self, name: str) -> Optional[Dict]:
+        """Retrieves a component object by name or alias."""
+        return self.component_map.get(name.lower())
+
+    def set_subsystem(self, name: str, state_val: Any) -> str:
+        """
+        Unified state setter. 
+        Supports both Enum (Legacy) and String (New) states.
+        Triggers Metric Cascade logic.
+        """
+        comp = self.get_component(name)
+        if not comp:
+            return f"找不到组件: {name} (Component not found in MSD)."
+            
+        # Normalize state
+        target_state = state_val
+        if isinstance(state_val, Enum):
+            target_state = state_val.value
+            
+        target_state = target_state.upper()
+        
+        # Validation
+        valid_states = comp.get("states", [])
+        if valid_states and target_state not in valid_states:
+            # Try to map generic ONLINE/OFFLINE to component specific
+            if target_state == "ONLINE" and comp.get("default_state") in valid_states:
+                target_state = comp.get("default_state")
+            elif target_state == "OFFLINE" and "OFFLINE" in valid_states:
+                target_state = "OFFLINE"
+            else:
+                return f"无效状态 '{target_state}'。有效值: {valid_states}"
+
+        # Update State
+        comp["current_state"] = target_state
+        state_display = target_state
+        
+        # --- METRIC CASCADE LOGIC (The Core Fix) ---
+        mapped_changes = []
+        metrics = comp.get("metrics", {})
+        for m_key, m_data in metrics.items():
+            link_map = m_data.get("linked_to_state", {})
+            
+            # If current state dictates a specific metric value (e.g. OFFLINE -> 0)
+            if target_state in link_map:
+                forced_val = link_map[target_state]
+                m_data["current_value"] = forced_val
+                mapped_changes.append(f"{m_key} -> {forced_val}{m_data.get('unit','')}")
+            
+            # If transitioning FROM a zero-state TO active, restore nominal if undefined
+            elif "current_value" not in m_data or m_data["current_value"] == 0:
+                 if "nominal" in m_data:
+                     m_data["current_value"] = m_data["nominal"]
+        
+        # Sync legacy attributes for backward compat
+        if "shield" in name and target_state in ["UP", "ONLINE"]:
+             self.shields_active = True
+        elif "shield" in name:
+             self.shields_active = False
+
+        msg = f"{comp.get('name')} 状态已变更为 [{target_state}]。"
+        if mapped_changes:
+            msg += f" 联动指标调整: {', '.join(mapped_changes)}。"
+            
+        return msg
+
+    def get_metric(self, system: str, metric: str) -> str:
+        comp = self.get_component(system)
+        if not comp: return "N/A"
+        
+        m_data = comp.get("metrics", {}).get(metric)
+        if not m_data: return "N/A"
+        
+        val = m_data.get("current_value", m_data.get("default", 0))
+        unit = m_data.get("unit", "")
+        return f"{val}{unit}"
+
+    # --- Legacy Adaptor Methods ---
+    
+    def is_subsystem_online(self, name: str) -> bool:
+        comp = self.get_component(name)
+        if not comp: return False
+        return comp.get("current_state") not in ["OFFLINE", "DAMAGED", "FAILING"]
+
+    def is_subsystem_operational(self, name: str) -> bool:
+        return self.is_subsystem_online(name) # Simplified for now
+
     def set_alert(self, level: str, validate_current: Optional[str] = None) -> (str, Optional[str]):
+        # Keep original alert logic, it's global not component specific
         level = level.upper()
         old_level = self.alert_status
-        
-        # Mapping to normalized strings
         target = "NORMAL"
         if level in ["RED", "红色"]: target = "RED"
         if level in ["YELLOW", "黄色"]: target = "YELLOW"
         
-        # Validation for cancellation targeting a specific level
         if validate_current and target == "NORMAL":
-            vc = validate_current.upper()
-            if old_level.value != vc:
-                display_names = {"RED": "红色警报", "YELLOW": "黄色警报", "NORMAL": "正常巡航模式"}
-                return f"无法完成：当前处于 {display_names.get(old_level.value)}，而非 {display_names.get(vc)}，", None
+             if old_level.value != validate_current.upper():
+                  return f"Alert condition mismatch.", None
 
-        # 1. State: Already in target
         if old_level.value == target:
-            if target == "RED": return "警报状态未变更：当前已处于红色警报状态，", None
-            if target == "YELLOW": return "警报状态未变更：当前已处于黄色警报状态，", None
-            return "舰船当前已处于正常巡航模式，", None
+            return "Alert status unchanged.", None
 
-        # Alert GIF paths (Local to Docker container)
-        # We assume the user will place these in the static/assets/alerts/ folder
         asset_base = "/app/services/bot/app/static/assets/alerts"
-        gif_map = {
-            "RED": f"{asset_base}/red_alert.gif",
-            "YELLOW": f"{asset_base}/yellow_alert.gif"
-        }
+        gif_map = {"RED": f"{asset_base}/red_alert.gif", "YELLOW": f"{asset_base}/yellow_alert.gif"}
 
-        # 2. Transition Logic
         if target == "RED":
             self.alert_status = AlertStatus.RED
-            self.shields_active = True
-            return "全体注意，红色警报，", gif_map.get("RED")
-            
+            self.set_subsystem("shields", "UP") 
+            self.set_subsystem("phasers", "STANDBY")
+            return "RED ALERT initiated. Shields UP. Weapons STANDBY.", gif_map.get("RED")
         elif target == "YELLOW":
             self.alert_status = AlertStatus.YELLOW
-            return "全体注意，黄色警报，", gif_map.get("YELLOW")
-            
-        else: # NORMAL
+            self.set_subsystem("shields", "UP")
+            return "Yellow Alert. Shields UP.", gif_map.get("YELLOW")
+        else:
             self.alert_status = AlertStatus.NORMAL
-            return "警报已解除，正常巡航模式已恢复，", None
+            self.set_subsystem("shields", "OFFLINE")
+            self.set_subsystem("phasers", "OFFLINE")
+            return "Condition Green. Systems normalized.", None
 
-    def toggle_shields(self, active: bool) -> str:
-        if active and not self.is_subsystem_operational("shields"):
-            return "无法执行：护盾核心或电力供应下线，"
-        
-        self.shields_active = active
-        return f"护盾已{'升起' if active else '降下'}，当前完整度：{self.shield_integrity}%，"
-
-    def get_shield_status(self) -> str:
-        state = "已升起" if self.shields_active else "未升起"
-        return f"护盾状态：{state}\n完整度：{self.shield_integrity}%"
-
-    def set_subsystem(self, name: str, state: SubsystemState) -> str:
-        if name in self.subsystems:
-            self.subsystems[name] = state
-            status_text = {
-                SubsystemState.ONLINE: "已上线",
-                SubsystemState.OFFLINE: "已下线",
-                SubsystemState.DAMAGED: "受损"
-            }.get(state, "状态不明")
-            
-            # Map common internal names to Chinese for the response
-            display_names = {
-                "weapons": "武器系统",
-                "shields": "护盾系统",
-                "phasers": "相位炮",
-                "phase_cannons": "相位加农炮",
-                "weapons": "武器阵列",
-                "torpedoes": "鱼雷系统",
-                "comms": "通讯系统",
-                "transporters": "传送器",
-                "replicators": "复制机",
-                "holodecks": "全息甲板",
-                "waste_management": "废弃物处理系统",
-                "structural_integrity": "结构完整性场",
-                "sif": "SIF发生器"
-            }
-            display_name = display_names.get(name.lower(), name.upper())
-            return f"{display_name}{status_text}，"
-        return f"找不到子系统: {name}，"
-
-    def is_subsystem_online(self, name: str) -> bool:
-        """Checks if the system itself is set to ONLINE."""
-        return self.subsystems.get(name) == SubsystemState.ONLINE
-
-    def is_subsystem_operational(self, name: str) -> bool:
-        """Recursively checks if the system and all its dependencies are ONLINE."""
-        if self.subsystems.get(name) != SubsystemState.ONLINE:
-            return False
-            
-        # Check dependencies
-        deps = self.DEPENDENCIES.get(name, [])
-        for dep in deps:
-            if not self.is_subsystem_operational(dep):
-                return False
-        
-        return True
-
-    def get_power_status(self) -> Dict:
-        """Calculates current load vs output."""
-        operational_output = self.power_output_mw if self.is_subsystem_online("main_reactor") else 0.0
-        
-        # Calculate load of all ONLINE systems
-        active_load = self.current_load_mw # Start with base load
-        for name, state in self.subsystems.items():
-            if state == SubsystemState.ONLINE:
-                active_load += self.POWER_DRAIN.get(name, 0.0)
-        
-        # Also add load for active shields
-        if self.shields_active:
-            active_load += self.POWER_DRAIN.get("shields", 1500000.0)
-            
-        load_pct = (active_load / self.power_output_mw) * 100 if self.power_output_mw > 0 else 100.0
-        
+    def get_status_report(self) -> Dict:
+        """Generates a full MSD status report."""
+        # This replaces the old get_status dict construction
+        # We can just return the entire MSD tree? No, cleaner to flatten or structure for AI
         return {
-            "total_output_mw": operational_output,
-            "active_load_mw": active_load,
-            "load_percent": round(load_pct, 2),
-            "reserve_power": self.battery_reserve_pct if operational_output == 0 else 100.0,
-            "status": "STABLE" if active_load <= operational_output else "DEFICIT"
+            "alert": self.alert_status.value,
+            "msd_manifest": self._get_flattened_metrics()
         }
 
-    def get_system_report(self) -> Dict:
-        """Returns a full categorized status report."""
-        report = {"power_grid": self.get_power_status()}
-        for tier in range(1, 6):
-            systems_in_tier = [name for name, t in self.TIER_MAP.items() if t == tier]
-            report[f"Tier_{tier}"] = {
-                name: {
-                    "state": self.subsystems[name].value,
-                    "operational": self.is_subsystem_operational(name)
-                } for name in systems_in_tier
+    def _get_flattened_metrics(self) -> Dict:
+        """Returns a flat key-value of critical systems for AI context."""
+        flat = {}
+        for key, comp in self.component_map.items():
+            # Skip aliases in output to avoid duplications
+            if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
+                 continue 
+                 
+            metrics_str = []
+            for m_k, m_v in comp.get("metrics", {}).items():
+                val = m_v.get("current_value", m_v.get("default"))
+                unit = m_v.get("unit", "")
+                metrics_str.append(f"{m_k}: {val}{unit}")
+            
+            flat[key] = {
+                "state": comp.get("current_state"),
+                "metrics": ", ".join(metrics_str)
             }
-        return report
-
-    def batch_shutdown(self, tier: Optional[int] = None, exclude: List[str] = None):
-        """Batch shutdown for energy conservation."""
-        exclude = exclude or []
-        for name, t in self.TIER_MAP.items():
-            if tier is not None and t < tier: continue
-            if name in exclude: continue
-            self.set_subsystem(name, SubsystemState.OFFLINE)
-        logger.warning(f"[ShipSystems] Batch shutdown executed for Tier {tier}+")
+        return flat
 
 def get_ship_systems():
     return ShipSystems.get_instance()

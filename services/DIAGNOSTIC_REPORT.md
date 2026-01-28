@@ -4,9 +4,9 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x6DB0 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 09:22:50
-- **错误信息**: `'ShipSystems' object has no attribute 'warp_core_output'`
+### ERR-0x44A5 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 09:58:24
+- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
 - **原始指令**: `计算机，降低曲速核心功率，降至80吧`
 - **AI 诊断**: Failed to analyze fault via AI Brain.
 - **建议方案**:

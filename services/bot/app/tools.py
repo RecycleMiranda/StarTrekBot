@@ -212,7 +212,6 @@ def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     from .ship_systems import get_ship_systems, SubsystemState
     ss = get_ship_systems()
     ss.set_subsystem("main_reactor", SubsystemState.OFFLINE)
-    ss.warp_core_output = 0.0
     
     # Also trigger Red Alert if not already active
     ss.set_alert("RED")

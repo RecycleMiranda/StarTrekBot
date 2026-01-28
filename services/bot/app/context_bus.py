@@ -24,21 +24,21 @@ def get_odn_snapshot(session_id: str, user_profile: dict = None) -> Dict[str, An
         },
         "ship_status": {
             "power": {
-                "warp_core_output": f"{ss.warp_core_output:.1f}%",
-                "fuel_reserves": f"{ss.fuel_reserves:.1f}%",
-                "eps_grid": ss.subsystems.get("eps_grid", SubsystemState.ONLINE).value
+                "warp_core_output": f"{ss.get_component('warp_core')['metrics']['output'].get('current_value', 98.4):.1f}%",
+                "fuel_reserves": f"{ss.get_component('batteries')['metrics']['charge_level'].get('current_value', 100.0):.1f}%",
+                "eps_grid": ss.get_component("eps_grid")["current_state"]
             },
             "defense": {
-                "shields_active": ss.shields_active,
-                "shield_integrity": f"{ss.shield_integrity:.1f}%",
-                "weapons_status": ss.subsystems.get("weapons", SubsystemState.ONLINE).value
+                "shields_active": ss.get_component("shields")["current_state"] == "UP",
+                "shield_integrity": f"{ss.get_component('shields')['metrics']['integrity'].get('current_value', 100.0):.1f}%",
+                "weapons_status": ss.get_component("phasers")["current_state"]
             },
             "hull": {
-                "integrity": f"{ss.hull_integrity:.1f}%",
-                "structural_integrity_field": ss.subsystems.get("structural_integrity", SubsystemState.ONLINE).value
+                "integrity": f"{ss.get_component('sif')['metrics']['field_density'].get('current_value', 100.0):.1f}%",
+                "structural_integrity_field": ss.get_component("sif")["current_state"]
             },
-            "life_support": ss.subsystems.get("life_support", SubsystemState.ONLINE).value,
-            "casualties": ss.casualties
+            "life_support": ss.get_component("life_support")["current_state"],
+            "casualties": "0" # Placeholder, not in MSD yet
         },
         "subsystems": {
             "main_odn": "OPTIMAL",

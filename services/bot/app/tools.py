@@ -1922,3 +1922,29 @@ def trigger_ads_test(clearance: int, **kwargs) -> dict:
     # raise RuntimeError("ADS TEST: Simulated dilithium chamber breach in diagnostic subspace.")
     return {"ok": True, "message": "ADS Test Sequence Completed. All systems nominal."}
 
+def check_text_protocols(text: str, context: dict) -> dict:
+    """
+    Scans raw text for protocol triggers (e.g., General Orders mentioned in chat).
+    Returns {"violation": bool, "message": str, "action": str}
+    """
+    text_upper = text.upper()
+    
+    # GO-7: TALOS IV
+    if "TALOS" in text_upper:
+        return {
+            "violation": True,
+            "message": "GENERAL ORDER 7 VIOLATION DETECTED. Contact with Talos IV is prohibited. This communication is logged.",
+            "action": "BLOCK"
+        }
+        
+    # GO-1: PRIME DIRECTIVE (Strict Text)
+    if "PRE-WARP" in text_upper or "PRIMITIVE" in text_upper:
+        if "INTERFERE" in text_upper or "CONTACT" in text_upper:
+             return {
+                "violation": True,
+                "message": "GENERAL ORDER 1 WARNING. Discussing interference with pre-warp civilizations is flagged.",
+                "action": "WARN"
+            }
+            
+    return {"violation": False}
+

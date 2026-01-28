@@ -1430,6 +1430,27 @@ async def handle_event(event: InternalEvent):
                 
                 # Generate AI reply using helper (async await)
                 
+                # Generate AI reply using helper (async await)
+                
+                # ADS 4.0: PRE-LLM PROTOCOL SCAN (Hard Block for Restricted Topics)
+                if True: # Local Scope
+                     proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
+                     if proto_scan.get("violation"):
+                         if proto_scan.get("action") == "BLOCK":
+                             logger.critical(f"[Dispatcher] PROTOCOL BLOCK: {proto_scan['message']}")
+                             await send_to_user({
+                                 "text": f"🛑 {proto_scan['message']}",
+                                 "reply_to": event.message_id
+                             })
+                             return True
+                         elif proto_scan.get("action") == "WARN":
+                             # Append warning to prompt context? Or send warning first.
+                             # For now, separate message
+                             await send_to_user({
+                                 "text": f"⚠️ {proto_scan['message']}",
+                                 "reply_to": event.message_id
+                             })
+
                 # DETERMINISTIC NAVIGATION & STATUS FAST-PATH (ADS 2.4 Super Fast-Path)
                 nav_text = event.text.strip().lower()
                 force_tool = None

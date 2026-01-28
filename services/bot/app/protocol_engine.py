@@ -38,6 +38,7 @@ class ProtocolEngine:
             for file in files:
                 if file.endswith(".yaml") or file.endswith(".yml"):
                     path = os.path.join(root, file)
+                    logger.warning(f"  [ProtocolEngine] Scanning file: {path}")
                     try:
                         with open(path, 'r', encoding='utf-8') as f:
                             # Load all documents if multiple
@@ -61,9 +62,9 @@ class ProtocolEngine:
                                         raw_data=data
                                     )
                                     self.protocols[p.id] = p
-                                    logger.info(f"Loaded Protocol: {p.id} ({p.name})")
+                                    logger.warning(f"  [ProtocolEngine] LOADED: {p.id} ({p.name})")
                     except Exception as e:
-                        logger.error(f"Failed to load protocol {path}: {e}")
+                        logger.error(f"  [ProtocolEngine] FAILED to load {path}: {e}")
 
     def get_protocol(self, protocol_id: str) -> Optional[Protocol]:
         return self.protocols.get(protocol_id)
@@ -88,6 +89,9 @@ class ProtocolEngine:
         warnings = []
         modifications = {}
         
+        if not self.protocols:
+            logger.warning(f"  [ProtocolEngine] WARNING: No protocols loaded in engine! (Path: {self.protocols_dir})")
+
         for p_id, protocol in self.protocols.items():
             triggers = protocol.raw_data.get('trigger', [])
             if not isinstance(triggers, list):

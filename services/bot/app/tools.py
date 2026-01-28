@@ -236,11 +236,13 @@ def set_course(destination: str, warp_factor: float = 5.0, clearance: int = 1) -
     Sets the ship's navigation coordinates and engages warp drive.
     Requires Protocol Check (General Order 7).
     """
+    logger.warning(f"  [Tools] set_course CALLED: dest={destination}, warp={warp_factor}, clearance={clearance}")
     # 1. Protocol Compliance Check (ADS 4.0)
     # Checks for GO-7 (Talos IV) or other Restricted Zones
     proto_context = {"clearance": clearance}
     proto_res = check_protocol_compliance("NAVIGATION_SET", {"target": destination, "warp_factor": warp_factor}, proto_context)
     
+    logger.warning(f"  [Tools] Protocol Result: {proto_res}")
     if not proto_res["allowed"]:
          return {
             "ok": False, 

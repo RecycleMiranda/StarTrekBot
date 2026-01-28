@@ -112,6 +112,7 @@ def _get_system_prompt() -> str:
         "11. DYNAMIC ENVIRONMENT PROTOCOL: For environment variables, use `manage_environment`.\n" +
         "12. SESM AUDIT PROTOCOL: Use `commit_research` to stage code for audit. Monitor EPS load.\n" +
         "13. NEURAL EVOLUTION DIRECTIVES (ACTIVE):\n" + get_evolution_agent().get_active_directives() + "\n\n" +
+        "14. FAST PATH PROTOCOL (STRICT): If 'CUMULATIVE SEARCH/ACTION DATA' already contains specific ship status or scan results at Iteration 1, you ARE PROHIBITED from calling any search or status tools. You MUST synthesize the data immediately into a final reply.\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?, \"tool_chain\": [{\"tool\": \"string\", \"args\": {}}]?}\n\n" +
         "FINAL MANDATE:\n" +

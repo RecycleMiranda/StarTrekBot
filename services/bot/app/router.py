@@ -21,7 +21,7 @@ RE_MANUAL_ENTER = re.compile(r"(进入计算机模式|计算机模式|computer o
 RE_MANUAL_EXIT = re.compile(r"(退出计算机模式|退出电脑模式|computer off|exit computer mode|停止计算机)", re.I)
 
 # Wake word: "computer" or "计算机" or "电脑" at start
-RE_WAKE_WORD = re.compile(r"^\s*(computer|计算机|电脑)", re.I)
+RE_WAKE_WORD = re.compile(r"^\s*(computer\b|计算机|电脑)", re.I)
 
 # Command verbs at start
 COMMAND_VERBS = ["报告", "查询", "设定", "锁定", "扫描", "显示", "确认", "执行", "计算", "诊断", "导航", "同步"]

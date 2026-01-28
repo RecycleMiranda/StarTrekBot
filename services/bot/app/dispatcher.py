@@ -1069,7 +1069,7 @@ def is_group_enabled(group_id: str | None) -> bool:
         
     return str(group_id) in whitelist
 
-async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None):
+async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None, initial_cumulative_data: list = None):
     """
     STAR EXECUTION LOOP 2.0 (Liquid Agent Matrix with Phase 4 Resilience)
     Enhanced with ADS (Auto-Diagnostic Routine) fault reporting.
@@ -1092,7 +1092,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         iteration = 0
         # SYNCED WITH FEDERATION PROTOCOL 2.1: Maximum efficiency mode
         max_iterations = 3 
-        cumulative_data = [] 
+        cumulative_data = initial_cumulative_data or [] 
         active_node = "COORDINATOR"
         last_audit_status = "NOMINAL"
         image_b64 = None
@@ -1399,14 +1399,20 @@ async def handle_event(event: InternalEvent):
                 
                 # Generate AI reply using helper (async await)
                 
-                # DETERMINISTIC NAVIGATION & STATUS FAST-PATH (ADS 2.3)
+                # DETERMINISTIC NAVIGATION & STATUS FAST-PATH (ADS 2.4 Super Fast-Path)
                 nav_text = event.text.strip().lower()
                 force_tool = None
+                initial_cumulative_data = []
                 
-                # Semantic Fast-Path: Status Reports / Scans
+                # Semantic Fast-Path: Status Reports / Scans (Direct Pre-fetch)
                 if any(kw in nav_text for kw in ["报告", "状态", "status", "report", "扫描", "scan"]):
-                     force_tool = "get_status"
-                     logger.info("[Dispatcher] Semantic Fast-Path triggered: Force get_status")
+                     logger.info("[Dispatcher] Super Fast-Path triggered: Pre-fetching get_status")
+                     status_res = await _execute_tool("get_status", {}, event, user_profile, session_id)
+                     if status_res.get("ok"):
+                         msg = status_res.get("message", "")
+                         initial_cumulative_data.append(f"ACTION (get_status): {msg}")
+                         logger.info("[Dispatcher] Status pre-fetched successfully.")
+                
                 # Navigation Fast-Path
                 elif re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
                     force_tool = "next_page"
@@ -1425,7 +1431,12 @@ async def handle_event(event: InternalEvent):
                 task = await ops.register_task(session_id, event.text, priority=priority)
                 
                 # Await in background: Lock now persists for the ENTIRE agentic loop
-                await _execute_ai_logic(event, user_profile, session_id, force_tool=force_tool, ops_task=task)
+                await _execute_ai_logic(
+                    event, user_profile, session_id, 
+                    force_tool=force_tool, 
+                    ops_task=task,
+                    initial_cumulative_data=initial_cumulative_data
+                )
                 
                 # Immediate Acknowledgment if needed (Silent by default unless high-stakes)
                 if priority == TaskPriority.ALPHA:

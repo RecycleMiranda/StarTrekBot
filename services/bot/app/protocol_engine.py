@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 class Protocol:
     id: str
     name: str
-    name: str
     category: str
     priority: int
     raw_data: Dict[str, Any]
@@ -43,19 +42,26 @@ class ProtocolEngine:
                         with open(path, 'r', encoding='utf-8') as f:
                             # Load all documents if multiple
                             docs = yaml.safe_load_all(f)
-                            for data in docs:
-                                if not data or 'id' not in data:
+                            for doc in docs:
+                                if not doc:
                                     continue
                                 
-                                p = Protocol(
-                                    id=data['id'],
-                                    name=data.get('name', 'Unknown'),
-                                    category=data.get('category', 'GENERAL'),
-                                    priority=data.get('priority', 100),
-                                    raw_data=data
-                                )
-                                self.protocols[p.id] = p
-                                logger.info(f"Loaded Protocol: {p.id} ({p.name})")
+                                # Handle single protocol vs list of protocols
+                                protocol_list = doc if isinstance(doc, list) else [doc]
+                                
+                                for data in protocol_list:
+                                    if not isinstance(data, dict) or 'id' not in data:
+                                        continue
+                                    
+                                    p = Protocol(
+                                        id=data['id'],
+                                        name=data.get('name', 'Unknown'),
+                                        category=data.get('category', 'GENERAL'),
+                                        priority=data.get('priority', 100),
+                                        raw_data=data
+                                    )
+                                    self.protocols[p.id] = p
+                                    logger.info(f"Loaded Protocol: {p.id} ({p.name})")
                     except Exception as e:
                         logger.error(f"Failed to load protocol {path}: {e}")
 
@@ -140,8 +146,10 @@ class ProtocolEngine:
                             is_blocking = True
                             
                     if is_blocking:
+                        logger.warning(f"Protocol VIOLATION: {protocol.name} blocks {action_type}")
                         violations.append(f"{protocol.name} ({protocol.id})")
                     else:
+                        logger.info(f"Protocol Warning: {protocol.name} active for {action_type}")
                         warnings.append(f"Protocol Active: {protocol.name}")
 
         allowed = len(violations) == 0

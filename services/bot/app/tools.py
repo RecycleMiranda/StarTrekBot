@@ -21,7 +21,10 @@ def check_protocol_compliance(action_type: str, params: dict, user_context: dict
     try:
         from .protocol_engine import get_protocol_engine
         engine = get_protocol_engine()
-        return engine.evaluate_action(action_type, params, user_context)
+        res = engine.evaluate_action(action_type, params, user_context)
+        if not res["allowed"]:
+            logger.warning(f"[Protocol] {action_type} REJECTED by {res['violations']}")
+        return res
     except Exception as e:
         logger.error(f"Protocol Engine Check Failed: {e}")
         # Fail safe (Open) or Fail secure (Closed)? 

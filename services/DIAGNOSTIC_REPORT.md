@@ -4,26 +4,27 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x4580 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 11:16:59
-- **错误信息**: `eject_warp_core() got an unexpected keyword argument 'destination'`
-- **原始指令**: `Computer, set course for Talos IV`
-- **AI 诊断**: The `eject_warp_core()` function was called with an unexpected keyword argument 'destination'. This indicates a mismatch between the function's expected parameters and the arguments passed during the call.
+### ERR-0xF65B | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 11:22:29
+- **错误信息**: `'NoneType' object has no attribute 'lower'`
+- **原始指令**: `计算机舰上有多少人？`
+- **AI 诊断**: The error `AttributeError: 'NoneType' object has no attribute 'lower'` indicates that `comp.get("name")` is returning `None` in the `_get_flattened_metrics` method of the `ship_systems.py` file. This is happening because some components in the ship's systems do not have a 'name' attribute defined, leading to a `None` value when trying to call `.lower()` on it.
 - **建议方案**:
 
 ```diff
 ```diff
---- a/app/services/bot/app/dispatcher.py
-+++ b/app/services/bot/app/dispatcher.py
-@@ -1002,7 +1002,7 @@
- 
-   async def _execute_tool(tool: str, args: Dict, event: Event, user_profile: UserProfile, session_id: str) -> Any:
-     try:
--      result = func(**args)
-+      result = func(args)
-     except Exception as e:
-       e2 = sys.exc_info()[0](str(e)).with_traceback(sys.exc_info()[2])
-       try:
+--- a/app/ship_systems.py
++++ b/app/ship_systems.py
+@@ -280,6 +280,9 @@
+     def _get_flattened_metrics(self):
+         metrics = {}
+         for key, comp in self.components.items():
++            if comp.get("name") is None:
++                continue
++
+             if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
+                 metrics[key] = comp.get("status")
+         return metrics
 ```
 ```
 

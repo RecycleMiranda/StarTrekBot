@@ -4,27 +4,42 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xE59E | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 15:07:34
-- **错误信息**: `'ShipSystems' object has no attribute 'auxiliary_state'`
-- **原始指令**: `计算机，发现一个未接触的原始文明，准备发射探测器`
-- **AI 诊断**: The `ShipSystems` object is missing the `auxiliary_state` attribute, likely due to a schema mismatch or an uninitialized state.
+### ERR-0x1357 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 15:17:21
+- **错误信息**: `restrict_user() got an unexpected keyword argument 'session_id'`
+- **原始指令**: `计算机，启动通用准则 24 (General Order 24)，对当前轨道目标进行轰炸`
+- **AI 诊断**: The `restrict_user` function is being called with `session_id` as a keyword argument, but the function definition does not accept this argument. Additionally, the traceback indicates that the function is missing required positional arguments: `target_mention`, `duration_minutes`, `user_id`, and `clearance`. This suggests a mismatch between the arguments being passed to the function and the function's expected signature.
 - **建议方案**:
 
 ```diff
 ```diff
---- a/app/tools.py
-+++ b/app/tools.py
-@@ -1688,6 +1688,9 @@
-     ss = await get_ship_systems(session_id)
-     if ss is None:
-         raise ValueError("Ship systems not initialized for session.")
-+    if not hasattr(ss, 'auxiliary_state'):
-+        ss.auxiliary_state = {}
+--- a/app/dispatcher.py
++++ b/app/dispatcher.py
+@@ -1036,12 +1036,20 @@
+     except Exception as e2:
+       logger.exception(f"Tool execution failed: {tool}")
+       # Re-raise the original exception for proper error handling upstream
+-      # Wrap the original exception in a new exception with more context
+       try:
+-        result = func(**args)
+-             ^^^^^^^^^^^^
+-TypeError: restrict_user() got an unexpected keyword argument 'session_id'
++        # Extract necessary arguments from the context (event, user_profile, args)
++        target_mention = args.get('target_mention') # Example, adjust based on actual argument names
++        duration_minutes = args.get('duration_minutes') # Example, adjust based on actual argument names
++        user_id = user_profile.user_id # Assuming user_profile has a user_id attribute
++        clearance = args.get('clearance') # Example, adjust based on actual argument names
 +
-     existing_keys = list(ss.auxiliary_state.keys())
-     new_keys = data.keys()
- 
++        # Call restrict_user with the correct positional arguments
++        result = func(target_mention, duration_minutes, user_id, clearance)
++      except TypeError as te:
++        logger.error(f"TypeError when calling restrict_user: {te}")
++        raise te # Re-raise the TypeError for further handling
++      except Exception as e3:
++        logger.exception(f"Unexpected error calling restrict_user: {e3}")
+         raise e2
+       except:
+         raise e
 ```
 ```
 

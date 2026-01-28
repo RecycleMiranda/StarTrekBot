@@ -4,27 +4,27 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xD0E1 | Dispatcher.handle_event
-- **发生时间**: 2026-01-28 11:25:46
-- **错误信息**: `'ShipSystems' object has no attribute 'get_power_status'`
-- **原始指令**: `计算机曲速核心状态如何`
-- **AI 诊断**: ShipSystems 类缺少 get_power_status 方法。
+### ERR-0xE59E | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 15:07:34
+- **错误信息**: `'ShipSystems' object has no attribute 'auxiliary_state'`
+- **原始指令**: `计算机，发现一个未接触的原始文明，准备发射探测器`
+- **AI 诊断**: The `ShipSystems` object is missing the `auxiliary_state` attribute, likely due to a schema mismatch or an uninitialized state.
 - **建议方案**:
 
 ```diff
 ```diff
---- a/app/services/bot/app/tools.py
-+++ b/app/services/bot/app/tools.py
-@@ -59,7 +59,7 @@
-     ss = ShipSystems()
-     return {
-         "warp_core_status": ss.get_warp_core_status(),
-         "impulse_engine_status": ss.get_impulse_engine_status(),
--        "eps_energy_grid": ss.get_power_status(),
-+        "eps_energy_grid": ss.get_eps_power_status(),
-         "life_support_status": ss.get_life_support_status(),
-         "weapons_status": ss.get_weapons_status(),
-     }
+--- a/app/tools.py
++++ b/app/tools.py
+@@ -1688,6 +1688,9 @@
+     ss = await get_ship_systems(session_id)
+     if ss is None:
+         raise ValueError("Ship systems not initialized for session.")
++    if not hasattr(ss, 'auxiliary_state'):
++        ss.auxiliary_state = {}
++
+     existing_keys = list(ss.auxiliary_state.keys())
+     new_keys = data.keys()
+ 
 ```
 ```
 

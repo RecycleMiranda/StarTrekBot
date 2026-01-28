@@ -309,6 +309,38 @@ def launch_probe(probe_type: str = "Class I", target: str = "Unknown", clearance
         "status": "IN_FLIGHT"
     }
 
+def execute_general_order(order_code: str, target: str = "Unknown", clearance: int = 1) -> dict:
+    """
+    Executes a Starfleet General Order (e.g., GO-24, GO-7).
+    CRITICAL: This tool triggers high-priority protocol checks.
+    """
+    logger.warning(f"  [Tools] execute_general_order CALLED: order={order_code}, target={target}, clearance={clearance}")
+    
+    # 1. Map order code to protocol trigger
+    keyword = f"EXECUTE GENERAL ORDER {order_code.replace('GO-', '')}"
+    if "24" in order_code:
+        keyword = "EXECUTE GENERAL ORDER 24"
+    
+    # 2. Protocol Check (ADS 4.0)
+    proto_context = {"clearance": clearance}
+    proto_res = check_protocol_compliance("MANUAL_COMMAND", {"keyword": keyword, "target": target}, proto_context)
+    
+    logger.warning(f"  [Tools] Protocol Result: {proto_res}")
+    
+    if not proto_res["allowed"]:
+         return {
+            "ok": False, 
+            "message": f"ORDER REJECTED: {order_code} execution blocked by {', '.join(proto_res['violations'] or ['Protocol Violation'])}. Authorization insufficient or conditions unmet.",
+            "protocol_violation": True,
+            "required_auth": "CAPTAIN (Level 8+) + SECOND AUTH"
+        }
+
+    return {
+        "ok": True,
+        "message": f"General Order {order_code} AUTHORIZED. Initiating execution sequence against {target}.",
+        "status": "EXECUTING"
+    }
+
 def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
     """
     Sets the state of a specific subsystem (ONLINE/OFFLINE).

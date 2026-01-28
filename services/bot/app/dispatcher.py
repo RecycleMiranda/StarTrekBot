@@ -229,6 +229,10 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "clear_fault": "audit_clear_fault",
         "archive_fault": "audit_clear_fault",
         "start_ads_diagnostic": "trigger_ads_test",
+        # 4.0 Protocol Aliases
+        "request_authorization": "execute_general_order",
+        "authorize": "execute_general_order",
+        "command_auth": "execute_general_order",
     }
 
 
@@ -268,6 +272,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         elif tool == "launch_probe":
             result = tools.launch_probe(
                 args.get("probe_type", "Class I"),
+                args.get("target", "Unknown"),
+                profile.get("clearance", 1)
+            )
+        elif tool == "execute_general_order":
+            result = tools.execute_general_order(
+                args.get("order_code", "GO-24"),
                 args.get("target", "Unknown"),
                 profile.get("clearance", 1)
             )

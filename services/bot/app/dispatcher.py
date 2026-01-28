@@ -76,6 +76,8 @@ SESSION_MODES = {}
 SEARCH_RESULTS = {} # {session_id: {"items": [], "query": "", "page": 1}}
 # NEURAL LOCKS: Prevents concurrent agentic loops in the same session
 NEURAL_LOCKS = {} # {session_id: asyncio.Lock}
+# PROCESSED_MESSAGES: Deduplication cache {message_id: timestamp}
+PROCESSED_MESSAGES = {} 
 
 def _prefetch_next_pages(session_id: str, is_chinese: bool):
     """
@@ -1088,7 +1090,8 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
     
     try: # --- ADS PROTECTED WRAPPER ---
         iteration = 0
-        max_iterations = 6
+        # SYNCED WITH FEDERATION PROTOCOL 2.1: Maximum efficiency mode
+        max_iterations = 3 
         cumulative_data = [] 
         active_node = "COORDINATOR"
         last_audit_status = "NOMINAL"
@@ -1179,6 +1182,21 @@ async def handle_event(event: InternalEvent):
     """
     Main entry point for processing incoming events.
     """
+    # --- MESSAGE DEDUPLICATION (ADS 2.2) ---
+    current_ts = time.time()
+    if event.message_id in PROCESSED_MESSAGES:
+        elapsed = current_ts - PROCESSED_MESSAGES[event.message_id]
+        if elapsed < 60: # 60s window
+            logger.info(f"[Dispatcher] Duplicate Message ID {event.message_id} detected. Dropping.")
+            return False
+    
+    PROCESSED_MESSAGES[event.message_id] = current_ts
+    
+    # Cleanup old message cache periodically
+    if len(PROCESSED_MESSAGES) > 1000:
+        expired = [m for m, t in PROCESSED_MESSAGES.items() if current_ts - t > 300]
+        for m in expired: PROCESSED_MESSAGES.pop(m)
+
     # Session ID logic (Group ID takes precedence)
     session_id = event.group_id if event.group_id else f"p_{event.user_id}"
     

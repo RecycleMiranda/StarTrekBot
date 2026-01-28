@@ -24,7 +24,7 @@
   description: "No contact with Talos IV. Violation carries death penalty."
   trigger:
     - type: "NAVIGATION_SET"
-      target: "TALOS_IV"
+      target: "TALOS"
     - type: "NAVIGATION_SET"
       target: "SECTOR_006"
   actions:

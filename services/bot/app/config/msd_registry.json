@@ -244,6 +244,10 @@
             "nutation": {
               "unit": "GHz",
               "default": 1.2
+            },
+            "graviton_load": {
+              "unit": "mC",
+              "default": 0.0
             }
           },
           "dependencies": [
@@ -515,6 +519,12 @@
       "system": "main_reactor",
       "change": "Added state: WARP_9.975",
       "justification": "Intrepid-class sustained cruise upgrade."
+    },
+    {
+      "timestamp": 1769591506.364942,
+      "system": "shields",
+      "change": "Added metric: graviton_load (mC)",
+      "justification": "Metaphasic shielding requirement."
     }
   ]
 }

@@ -251,6 +251,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         if tool == "get_status":
             result = tools.get_status(**args)
 
+        elif tool == "set_course":
+            result = tools.set_course(
+                args.get("destination", "Unknown Sector"),
+                float(args.get("warp_factor", 5.0)),
+                profile.get("clearance", 1)
+            )
+
         elif tool == "time":
             result = tools.get_time()
         elif tool == "calc":

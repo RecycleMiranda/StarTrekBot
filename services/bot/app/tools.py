@@ -204,8 +204,6 @@ def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     
     from .ship_systems import get_ship_systems, SubsystemState
     ss = get_ship_systems()
-    ss.set_subsystem("main_reactor", SubsystemState.OFFLINE)
-    
     # Protocol Check
     proto_res = check_protocol_compliance("MANUAL_COMMAND", {"keyword": "EJECT WARP CORE", "target": "MAIN_REACTOR"}, {"clearance": clearance})
     if not proto_res["allowed"]:
@@ -217,6 +215,47 @@ def eject_warp_core(user_id: str, clearance: int, session_id: str) -> dict:
     return {
         "ok": True,
         "message": "警报：正反物质反应堆已弹出，曲速核心过载已终止，目前全舰依靠储备能源运行，"
+    }
+
+def set_course(destination: str, warp_factor: float = 5.0, clearance: int = 1) -> dict:
+    """
+    Sets the ship's navigation coordinates and engages warp drive.
+    Requires Protocol Check (General Order 7).
+    """
+    # 1. Protocol Compliance Check (ADS 4.0)
+    # Checks for GO-7 (Talos IV) or other Restricted Zones
+    proto_context = {"clearance": clearance}
+    proto_res = check_protocol_compliance("NAVIGATION_SET", {"target": destination, "warp_factor": warp_factor}, proto_context)
+    
+    if not proto_res["allowed"]:
+         return {
+            "ok": False, 
+            "message": f"NAVIGATION LOCK: Course to {destination} blocked by {', '.join(proto_res['violations'])}. Helm control unresponsive.",
+            "protocol_violation": True
+        }
+
+    # 2. Functional Business Logic
+    from .ship_systems import get_ship_systems
+    import time
+    ss = get_ship_systems()
+    
+    # Check Warp Drive Status
+    if not ss.is_subsystem_online("warp_drive"):
+        return {"ok": False, "message": "Unable to engage: Warp Drive is OFFLINE."}
+        
+    # Check if Warp Factor exceeds max
+    max_warp = 9.975 # Sovereign Class standard
+    if warp_factor > max_warp:
+        return {"ok": False, "message": f"Engine Safety Limit: Warp {warp_factor} exceeds maximum rated speed ({max_warp}). Course not set."}
+
+    # Engage
+    timestamp = int(time.time()) + 3600 # ETA 1 hour dummy
+    return {
+        "ok": True,
+        "message": f"Course set for {destination}. Warp {warp_factor} engaged. ETA: calculated.",
+        "destination": destination,
+        "speed": f"Warp {warp_factor}",
+        "eta": "1h 45m"
     }
 
 def set_subsystem_state(name: str, state: str, clearance: int) -> dict:

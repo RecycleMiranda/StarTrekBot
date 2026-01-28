@@ -264,6 +264,12 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.calculator(args.get("expression"))
         elif tool == "replicate":
             result = tools.replicate(args.get("item_name", ""), str(event.user_id), profile.get("rank", "Ensign"), clearance=profile.get("clearance", 1))
+        elif tool == "launch_probe":
+            result = tools.launch_probe(
+                args.get("probe_type", "Class I"),
+                args.get("target", "Unknown"),
+                profile.get("clearance", 1)
+            )
         elif tool == "holodeck":
             result = tools.reserve_holodeck(
                 args.get("program", "Standard Grid"), 

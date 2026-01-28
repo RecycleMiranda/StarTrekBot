@@ -274,6 +274,41 @@ def set_course(destination: str, warp_factor: float = 5.0, clearance: int = 1) -
         "eta": "1h 45m"
     }
 
+def launch_probe(probe_type: str = "Class I", target: str = "Unknown", clearance: int = 1) -> dict:
+    """
+    Launches a scientific or tactical probe.
+    Requires Protocol Check (General Order 1 - Prime Directive).
+    """
+    logger.warning(f"  [Tools] launch_probe CALLED: type={probe_type}, target={target}, clearance={clearance}")
+    
+    # 1. Prime Directive Check (ADS 4.0)
+    # Detect if the target is a pre-warp civilization
+    # Heuristic: If user mentions 'primitive' or 'pre-warp' in context, or if target is unknown/primitive
+    is_primitive = "primitive" in target.lower() or "原始" in target.lower()
+    
+    proto_context = {
+        "clearance": clearance,
+        "target_tech_level": "PRE_WARP" if is_primitive else "WARP_CAPABLE"
+    }
+    
+    proto_res = check_protocol_compliance("SENSOR_CONTACT", {"target": target, "action": "LAUNCH_PROBE"}, proto_context)
+    
+    logger.warning(f"  [Tools] Protocol Result: {proto_res}")
+    
+    if not proto_res["allowed"]:
+         return {
+            "ok": False, 
+            "message": f"COMMAND ABORTED: Launch to {target} blocked by {', '.join(proto_res['violations'] or ['General Order 1 (Prime Directive) Error'])}. Non-interference protocol active.",
+            "protocol_violation": True
+        }
+
+    return {
+        "ok": True,
+        "message": f"Acknowledged. Launching {probe_type} sensor probe toward {target}. Data stream active.",
+        "probe_id": "PRB-2241",
+        "status": "IN_FLIGHT"
+    }
+
 def set_subsystem_state(name: str, state: str, clearance: int) -> dict:
     """
     Sets the state of a specific subsystem (ONLINE/OFFLINE).

@@ -131,12 +131,34 @@ class ProtocolEngine:
                     conditions_met = True # Default true if no conditions (Hard Constraint)
                     
                     if conditions:
-                        # Simple evaluator for authorization logic
-                        # Real implementation would be more complex
-                        if user_context:
-                            auth_level = user_context.get('clearance', 0)
-                            # Placeholder for condition logic
-                            pass 
+                        for condition in conditions:
+                            cond_str = str(condition).upper()
+                            # 1. Authorization Levels
+                            if "AUTH_LEVEL" in cond_str:
+                                required = 0
+                                if ">=" in cond_str: required = int(cond_str.split(">=")[-1].strip().replace("CAPTAIN", "8").replace("COMMANDER", "7"))
+                                elif ">" in cond_str: required = int(cond_str.split(">")[-1].strip()) + 1
+                                
+                                user_level = user_context.get("clearance", 0)
+                                if user_level < required:
+                                    conditions_met = False
+                                    logger.warning(f"Condition FAILED: {cond_str} (User: {user_level} < {required})")
+                            
+                            # 2. Tech Level / Prime Directive
+                            elif "TARGET.TECHLEVEL" in cond_str:
+                                target_tech = str(user_context.get("target_tech_level", "UNKNOWN")).upper()
+                                if "< WARP_CAPABLE" in cond_str:
+                                    if target_tech not in ["PRE_WARP", "PRIMITIVE", "STONE_AGE", "INDUSTRIAL"]:
+                                        conditions_met = False
+                                        logger.warning(f"Condition FAILED: {cond_str} (Target: {target_tech})")
+                                elif "== PRE_WARP" in cond_str:
+                                    if target_tech != "PRE_WARP":
+                                        conditions_met = False
+                            
+                    if not conditions_met:
+                        match = False
+                        logger.info(f"Protocol {protocol.id} matched trigger but conditions not met.")
+
 
                     # Determine Action (Block vs Warn)
                     # For V1, we assume if it triggers and it has "BLOCK" or "LOCK" or "DENY" in actions, it's a violation.

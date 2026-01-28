@@ -4,77 +4,27 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xF65B | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 11:22:29
-- **错误信息**: `'NoneType' object has no attribute 'lower'`
-- **原始指令**: `计算机舰上有多少人？`
-- **AI 诊断**: The error `AttributeError: 'NoneType' object has no attribute 'lower'` indicates that `comp.get("name")` is returning `None` in the `_get_flattened_metrics` method of the `ship_systems.py` file. This is happening because some components in the ship's systems do not have a 'name' attribute defined, leading to a `None` value when trying to call `.lower()` on it.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/ship_systems.py
-+++ b/app/ship_systems.py
-@@ -280,6 +280,9 @@
-     def _get_flattened_metrics(self):
-         metrics = {}
-         for key, comp in self.components.items():
-+            if comp.get("name") is None:
-+                continue
-+
-             if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
-                 metrics[key] = comp.get("status")
-         return metrics
-```
-```
-
----
-### ERR-0x4897 | Dispatcher.handle_event
-- **发生时间**: 2026-01-28 11:22:35
-- **错误信息**: `'NoneType' object has no attribute 'lower'`
+### ERR-0xD0E1 | Dispatcher.handle_event
+- **发生时间**: 2026-01-28 11:25:46
+- **错误信息**: `'ShipSystems' object has no attribute 'get_power_status'`
 - **原始指令**: `计算机曲速核心状态如何`
-- **AI 诊断**: 在 `ship_systems.py` 的 `_get_flattened_metrics` 方法中，`comp.get("name")` 返回了 `None`，导致后续调用 `lower()` 方法时出现 `AttributeError`。
+- **AI 诊断**: ShipSystems 类缺少 get_power_status 方法。
 - **建议方案**:
 
 ```diff
 ```diff
---- a/app/ship_systems.py
-+++ b/app/ship_systems.py
-@@ -280,6 +280,9 @@
-     msd_data = self.msd.get_data()
-     for key, value in msd_data.items():
-       for comp in value:
-+        if comp.get("name") is None:
-+          continue
-+
-         if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
-           flattened_metrics[key] = value
-     return flattened_metrics
-```
-```
-
----
-### ERR-0xF2EC | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 11:24:07
-- **错误信息**: `'NoneType' object has no attribute 'lower'`
-- **原始指令**: `计算机运行一个四级自检`
-- **AI 诊断**: 组件配置缺失导致 'name' 字段为 None，进而引发 AttributeError。
-- **建议方案**:
-
-```diff
-```diff
---- a/app/ship_systems.py
-+++ b/app/ship_systems.py
-@@ -280,6 +280,9 @@
-     def _get_flattened_metrics(self):
-         metrics = {}
-         for comp in self.components:
-+            if comp.get("name") is None:
-+                continue
-+
-             key = comp.get("name").lower().replace(" ", "_")
-             if key != comp.get("name").lower().replace(" ", "_") and key not in ["warp_core", "shields", "phasers"]:
-                 metrics[key] = comp.get("status")
+--- a/app/services/bot/app/tools.py
++++ b/app/services/bot/app/tools.py
+@@ -59,7 +59,7 @@
+     ss = ShipSystems()
+     return {
+         "warp_core_status": ss.get_warp_core_status(),
+         "impulse_engine_status": ss.get_impulse_engine_status(),
+-        "eps_energy_grid": ss.get_power_status(),
++        "eps_energy_grid": ss.get_eps_power_status(),
+         "life_support_status": ss.get_life_support_status(),
+         "weapons_status": ss.get_weapons_status(),
+     }
 ```
 ```
 

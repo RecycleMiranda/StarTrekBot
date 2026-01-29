@@ -1196,7 +1196,9 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 
                 break
 
-        if cumulative_data:
+        # ADS 2.7 Tune: Only synthesize if we actually executed tools during this call (meaning cumulative_data changed)
+        # OR if we have pre-fetched data but the LLM hasn't produced a final narrative reply yet.
+        if executed_tools or (cumulative_data and not reply_text):
             all_raw = "\n\n".join(cumulative_data)
             future = _executor.submit(rp_engine_gemini.synthesize_search_result, event.text, all_raw, True, context=router.get_session_context(session_id))
             reply_text = future.result(timeout=20)
@@ -1463,29 +1465,15 @@ async def handle_event(event: InternalEvent):
                                  "reply_to": event.message_id
                              })
 
-                # DETERMINISTIC NAVIGATION & STATUS FAST-PATH (ADS 2.4 Super Fast-Path)
+                # DETERMINISTIC NAVIGATION FAST-PATH (ADS 2.9: LLM-First for Status)
+                # We have retired the Status Fast-Path to avoid sensitivity issues. 
+                # Navigation tools (next/prev) remain deterministic for UI responsiveness.
                 nav_text = event.text.strip().lower()
                 force_tool = None
                 initial_cumulative_data = []
-                
-                # Semantic Fast-Path: Status Reports / Scans (Direct Pre-fetch)
-                # Semantic Fast-Path: Status Reports / Scans (Direct Pre-fetch)
-                # ADS 2.5 Tune: Reduce sensitivity. Only trigger if EXPLICITLY asking for status AND NOT an action command.
-                # ADS 2.6 Guard: If query is long or contains specific spec-words, assume it's a specific question and SKIP fast-path.
-                is_status_query = any(kw in nav_text for kw in ["报告", "状态", "status", "report", "扫描", "scan"])
-                is_command_action = any(kw in nav_text for kw in ["execute", "activate", "initiate", "enable", "disable", "启动", "执行", "开启", "关闭", "set", "change"])
-                is_specific_query = len(nav_text) > 20 or any(kw in nav_text for kw in ["具体", "frequency", "power", "efficiency", "detail", "完整", "full", "spec", "output", "核心", "core", "shield", "phaser", "weapon"])
 
-                if is_status_query and not is_command_action and not is_specific_query:
-                     logger.info("[Dispatcher] Super Fast-Path triggered: Pre-fetching get_status")
-                     status_res = await _execute_tool("get_status", {}, event, user_profile, session_id)
-                     if status_res.get("ok"):
-                         msg = status_res.get("message", "")
-                         initial_cumulative_data.append(f"ACTION (get_status): {msg}")
-                         logger.info("[Dispatcher] Status pre-fetched successfully.")
-                
                 # Navigation Fast-Path
-                elif re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
+                if re.match(r'.*(next|next page|下一页|下页|继续|还|more).*', nav_text):
                     force_tool = "next_page"
                     logger.info("[Dispatcher] Fast-Path triggered: Force Next Page")
                 elif re.match(r'.*(previous|prev|previous page|back|上一页|上页|返回).*', nav_text):

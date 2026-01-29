@@ -4,15 +4,64 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x72F5 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-29 12:16:20
-- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
-- **原始指令**: `计算机，进入简报模式`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
+### ERR-0x2357 | SendQueue.QQSender
+- **发生时间**: 2026-01-29 12:44:35
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
+- **AI 诊断**: The `SendQueue.QQSender` component is failing because the `send` method is being called without a `group_id` present in the `meta` dictionary. The `sender_qq.py` module explicitly raises a `RuntimeError` when `group_id` is missing.
 - **建议方案**:
 
 ```diff
-# ERROR: Diagnostic Subroutine Offline
+```diff
+--- a/app/sender_qq.py
++++ b/app/sender_qq.py
+@@ -21,4 +21,7 @@
+     async def send(self, text: str, meta: dict, msg_id: str, mod_info: dict):
+         # if meta.get('group_id') is None:
+         #     await self.bot.send_group_msg(group_id='727940857', message=text)
+-        raise RuntimeError("NO_GROUP_ID_IN_META")
++        if 'group_id' not in meta:
++            raise RuntimeError("NO_GROUP_ID_IN_META")
++        # Implement the actual sending logic here using meta['group_id']
++        pass
+```
+```
+
+---
+### ERR-0x375B | SendQueue.QQSender
+- **发生时间**: 2026-01-29 12:44:36
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
+- **AI 诊断**: SendQueue.QQSender 在发送消息时，meta 数据中缺少 group_id，导致发送失败。
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/send_queue.py
++++ b/app/send_queue.py
+@@ -146,6 +146,9 @@
+         try:
+             text_to_send = item.text
+             mod_info = item.mod_info
++            if 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta: {item.meta}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+             await self.db.update_send_item_status(item.id, SendItemStatus.SENT)
+             logger.info(f"send item {item.id} success")
+```
+```
+
+---
+### ERR-0x6FA8 | SendQueue.QQSender
+- **发生时间**: 2026-01-29 12:44:36
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
+- **AI 诊断**: Pending Investigation...
+- **建议方案**:
+
+```diff
+Computing...
 ```
 
 ---

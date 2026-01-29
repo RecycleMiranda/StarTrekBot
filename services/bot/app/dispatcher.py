@@ -234,6 +234,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "request_authorization": "execute_general_order",
         "authorize": "execute_general_order",
         "command_auth": "execute_general_order",
+        "execute_procedure": "execute_procedure",
+        "start_procedure": "execute_procedure",
+        "run_sequence": "execute_procedure",
     }
 
 
@@ -766,6 +769,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 args.get("name") or args.get("subsystem") or ("replicator" if "replicator" in tool_name else ""),
                 args.get("state") or ("ONLINE" if "online" in tool_name else "OFFLINE"),
                 profile.get("clearance", 1),
+                session_id=session_id
+            )
+            
+        elif tool == "execute_procedure":
+            result = tools.execute_procedure(
+                args.get("procedure_name") or "Standard Procedure",
+                args.get("steps") or [],
                 session_id=session_id
             )
             

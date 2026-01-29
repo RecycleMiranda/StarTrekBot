@@ -156,12 +156,16 @@ def get_subsystem_status(name: str) -> dict:
             unit = mv.get("unit", "")
             metrics.append(f"{mk}: {val}{unit}")
             
+        efficiency = comp.get("efficiency", 100.0)
+        eff_msg = f" (效率: {efficiency}%)" if efficiency < 100.0 else ""
+            
         return {
             "ok": True,
             "name": comp.get("name"),
             "state": state,
             "metrics": metrics,
-            "message": f"{comp.get('name')} 状态: {state} | 指标: {', '.join(metrics)}"
+            "efficiency": efficiency,
+            "message": f"{comp.get('name')} 状态: {state}{eff_msg} | 指标: {', '.join(metrics)}"
         }
         
     return {
@@ -1678,58 +1682,64 @@ def set_subsystem(name: str, state_val: str, clearance: int = 1, session_id: str
     if msg.startswith("[NO_CHANGE]"):
         return {"ok": True, "message": msg, "skipped": True}
 
-    # --- ADS 4.5: Temporal State Transition Handling ---
-    comp = ss.get_component(name)
-    if comp and "transitions" in comp:
-        curr_state = comp.get("current_state", "")
-        for trigger, t_data in comp.get("transitions", {}).items():
-            if f"->{curr_state}" in trigger:
-                # Trigger background transition
-                _schedule_state_transition(name, t_data, session_id)
-                prefix = " (Note: " if "Note:" not in msg else " "
-                msg += f"{prefix}{t_data.get('delay')}s delay until {t_data.get('target_state')})"
+def execute_procedure(procedure_name: str, steps: List[Dict], session_id: str = None) -> dict:
+    """
+    ADS 5.0: Autonomous Procedural Intelligence.
+    Executes a sequence of steps with timed delays.
+    Example steps: [{"action": "set_subsystem", "args": {"name": "eps_grid", "state": "ONLINE"}}, {"wait": 5}, ...]
+    """
+    logger.info(f"[Chrono] Initiating Procedure: {procedure_name} ({len(steps)} steps)")
     
-    return {"ok": True, "message": msg}
-
-def _schedule_state_transition(comp_key: str, t_data: dict, session_id: str = None):
-    """Schedules a delayed state update and user notification."""
-    async def _task():
+    async def _run_sequence():
+        from .ship_systems import get_ship_systems
+        from .send_queue import SendQueue
+        sq = SendQueue.get_instance()
+        
         try:
-            delay = t_data.get("delay", 5)
-            await asyncio.sleep(delay)
-            
-            from .ship_systems import get_ship_systems
-            ss = get_ship_systems()
-            target = t_data.get("target_state", "ONLINE")
-            ss.set_subsystem(comp_key, target)
-            
-            # Send Notification
-            if session_id:
-                from .send_queue import SendQueue
-                try:
-                    sq = SendQueue.get_instance()
-                    msg_en = t_data.get("msg_en", f"System {comp_key} transition to {target} complete.")
-                    msg_cn = t_data.get("msg_cn", f"系统 {comp_key} 已就绪。")
+            for i, step in enumerate(steps):
+                # 1. Handle Wait
+                if "wait" in step:
+                    wait_time = float(step["wait"])
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                # 2. Handle Action
+                action = step.get("action")
+                args = step.get("args", {})
+                
+                if action == "set_subsystem":
+                    ss = get_ship_systems()
+                    name = normalize_subsystem_name(args.get("name", ""))
+                    state = args.get("state", "ONLINE")
+                    ss.set_subsystem(name, state)
                     
-                    full_msg = f"== SYSTEM READY ==\n{msg_en} ({msg_cn})"
-                    await sq.enqueue_send(session_id, full_msg, {"from_computer": True}, priority=2)
-                except Exception as e:
-                    logger.warning(f"Could not notify user via queue: {e}")
-            
-            logger.info(f"[Temporal] Transition complete: {comp_key} -> {target}")
+                    # Notify user of progress
+                    if session_id:
+                        msg = f"Step {i+1}/{len(steps)}: {name} set to {state}."
+                        await sq.enqueue_send(session_id, f"LCARS: {msg}", {"is_system": True}, priority=2)
+                
+                elif action == "report":
+                    if session_id:
+                        text = args.get("text", "Procedure continues...")
+                        await sq.enqueue_send(session_id, f"LCARS: {text}", {"is_system": True}, priority=2)
+
+            if session_id:
+                await sq.enqueue_send(session_id, f"== {procedure_name} COMPLETE ==", {"is_system": True}, priority=1)
                 
         except Exception as e:
-            logger.error(f"Error in temporal transition: {e}")
+            logger.error(f"Procedure {procedure_name} FAILED: {e}")
+            if session_id:
+                await sq.enqueue_send(session_id, f"ERROR: Procedure {procedure_name} aborted: {e}", {"is_system": True}, priority=1)
 
-    # Fire and forget
-    loop = None
+    # Fire in background
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(_task())
+        loop.create_task(_run_sequence())
     except RuntimeError:
-        # If no loop in this thread, try to find the global one or just run in thread
         import threading
-        threading.Thread(target=lambda: asyncio.run(_task()), daemon=True).start()
+        threading.Thread(target=lambda: asyncio.run(_run_sequence()), daemon=True).start()
+
+    return {"ok": True, "message": f"Procedure '{procedure_name}' initiated. Sequence is running in background."}
 
 def set_subsystem_state(name: str, state_str: str, clearance: int, session_id: str = None) -> dict:
     """

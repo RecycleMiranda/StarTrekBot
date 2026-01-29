@@ -106,8 +106,39 @@ class ShipSystems:
         return tiers
 
     def get_component(self, name: str) -> Optional[Dict]:
-        """Retrieves a component object by name or alias."""
-        return self.component_map.get(name.lower())
+        """Retrieves a component object by name or alias, with dynamic efficiency."""
+        comp = self.component_map.get(name.lower())
+        if comp:
+            # Inject real-time efficiency
+            comp["efficiency"] = self.calculate_efficiency(name.lower())
+        return comp
+
+    def calculate_efficiency(self, name: str, visited: set = None) -> float:
+        """
+        ADS 6.0: Functional Graph Efficiency Calculation.
+        Recursively calculates a system's efficiency based on its dependencies.
+        """
+        if visited is None: visited = set()
+        
+        comp = self.component_map.get(name.lower())
+        if not comp or name.lower() in visited: return 100.0
+        visited.add(name.lower())
+        
+        # 1. Base Health (Damage/State)
+        state = comp.get("current_state", "OFFLINE")
+        if state in ["OFFLINE", "DAMAGED", "FAILING"]: return 0.0
+        
+        # 2. Dependency Check (The Cascade)
+        deps = comp.get("dependencies", [])
+        if not deps: return 100.0
+        
+        dep_efficiencies = []
+        for dep_key in deps:
+            eff = self.calculate_efficiency(dep_key, visited)
+            dep_efficiencies.append(eff)
+            
+        # Overall efficiency is limited by the weakest link in the chain
+        return min(dep_efficiencies) if dep_efficiencies else 100.0
 
     def set_subsystem(self, name: str, state_val: Any) -> str:
         """

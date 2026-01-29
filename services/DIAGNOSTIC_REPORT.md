@@ -70,11 +70,24 @@ Computing...
 - **发生时间**: 2026-01-29 08:25:56
 - **错误信息**: `NO_GROUP_ID_IN_META`
 - **原始指令**: `== Standard Procedure COMPLETE ==`
-- **AI 诊断**: Pending Investigation...
+- **AI 诊断**: SendQueue.QQSender 在发送消息时，meta 数据中缺少 group_id 信息，导致发送失败。
 - **建议方案**:
 
 ```diff
-Computing...
+```diff
+--- a/app/services/bot/app/send_queue.py
++++ b/app/services/bot/app/send_queue.py
+@@ -146,6 +146,9 @@
+         text_to_send = item.text
+         mod_info = item.mod_info
+         try:
++            if 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta: {item.meta}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+         except Exception as e:
+             logger.exception(f"Failed to send message {item.id}")
+```
 ```
 
 ---

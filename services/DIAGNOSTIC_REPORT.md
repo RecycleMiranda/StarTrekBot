@@ -4,31 +4,106 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xD2BF | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 15:44:15
-- **错误信息**: `discover_subsystem_alias() missing 1 required positional argument: 'unknown_term'`
-- **原始指令**: `计算机，分析当前所有子系统的别名映射表 (Subsystem Alias Table)`
-- **AI 诊断**: The `discover_subsystem_alias` function was called without the required `unknown_term` argument, leading to a `TypeError`. This indicates a problem in how the tool is being invoked within the `Dispatcher.AgenticLoop` component.
+### ERR-0xEA4B | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:18
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机，分析目前舰上有多少名 8 级以上权限的军官`
+- **AI 诊断**: Failed to analyze fault via AI Brain.
+- **建议方案**:
+
+```diff
+# ERROR: Diagnostic Subroutine Offline
+```
+
+---
+### ERR-0xE10B | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:25
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机，如果我的 Rank 提升为准将 (Commodore)，我的权限会有什么变化？`
+- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/services/bot/app/dispatcher.py
++++ b/app/services/bot/app/dispatcher.py
+@@ -1434,6 +1434,7 @@
+         user_profile = await self.get_user_profile(event.user_id)
+         if user_profile:
+             user_profile = user_profile.get('profile', {})
++        from app.utils import tools
+         proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
+         if proto_scan:
+             await self.send_message(event.channel, proto_scan)
+```
+```
+
+---
+### ERR-0x1A08 | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:33
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机，查看舰长 (Captain) 的详细服役记录`
+- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/dispatcher.py
 +++ b/app/dispatcher.py
-@@ -1026,7 +1026,12 @@
-         if isinstance(func, types.FunctionType):
-             try:
-                 # Execute the tool function
--                result = func(**args)
-+                if 'unknown_term' not in args and func.__name__ == 'discover_subsystem_alias':
-+                    print("WARNING: discover_subsystem_alias called without unknown_term. Providing a default value.")
-+                    result = func(unknown_term=None, **args) # Or some other appropriate default
-+                else:
-+                    result = func(**args)
-+                
-                 # Handle async functions
-                 if isinstance(result, Awaitable):
-                     result = await result
+@@ -1434,6 +1434,7 @@
+ 
+ 
+ from app.models import UserProfile
++from app import tools
+ 
+ 
+ class Dispatcher:
+```
+```
+
+---
+### ERR-0xB85E | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:40
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机，进入红色警报，并向全舰广播“进站准备”`
+- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/dispatcher.py
++++ b/app/dispatcher.py
+@@ -1434,6 +1434,7 @@
+     try:
+         user_profile = await self.get_user_profile(event.sender_id)
+         if user_profile:
++            from app import tools
+             proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
+             if proto_scan:
+                 event.text = proto_scan
+```
+```
+
+---
+### ERR-0x2CAF | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:49
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机今天星期几`
+- **AI 诊断**: The error 'NameError: name 'tools' is not defined' indicates that the 'tools' module or object was not imported or defined within the scope of the `dispatcher.handle_event` function.
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/services/bot/app/dispatcher.py
++++ b/app/services/bot/app/dispatcher.py
+@@ -1434,6 +1434,7 @@
+     except Exception as e:
+       self.logger.exception(f"Error during pre-processing: {e}")
+ 
++from app import tools
+ 
+   def handle_event(self, event):
+     try:
 ```
 ```
 

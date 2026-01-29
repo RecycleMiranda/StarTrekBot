@@ -4,22 +4,10 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xF3F5 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-29 12:13:14
+### ERR-0x72F5 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 12:16:20
 - **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
 - **原始指令**: `计算机，进入简报模式`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
-- **建议方案**:
-
-```diff
-# ERROR: Diagnostic Subroutine Offline
-```
-
----
-### ERR-0x0822 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-29 12:13:34
-- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
-- **原始指令**: `计算机！扫描附近的干扰源`
 - **AI 诊断**: Failed to analyze fault via AI Brain.
 - **建议方案**:
 

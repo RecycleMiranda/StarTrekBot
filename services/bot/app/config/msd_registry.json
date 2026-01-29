@@ -537,7 +537,7 @@
   "software": {
     "core_logic": {
       "display_name_en": "Core Logic Systems",
-      "display_name_cn": "核心逻辑系统",
+      "display_name_cn": "\u6838\u5fc3\u903b\u8f91\u7cfb\u7edf",
       "components": {
         "protocol_engine": {
           "name": "Protocol Engine (ADS 4.0)",
@@ -610,6 +610,38 @@
       "system": "warp_drive",
       "change": "Added state: QUANTUM_SLIPSTREAM_STANDBY",
       "justification": "Experimental drive upgrade."
+    },
+    {
+      "timestamp": 1769673645.3957949,
+      "system": "bioneural_gel_packs",
+      "change": "Expanded Registry: Integrated 'bioneural_gel_packs' into 'computer_systems' path.",
+      "justification": "Upgrade to Intrepid-class neural computing layer."
     }
-  ]
+  ],
+  "computer_systems": {
+    "display_name_en": "Computer Systems",
+    "display_name_cn": "\u65b0\u53d1\u73b0\u7cfb\u7edf (computer_systems)",
+    "components": {
+      "bioneural_gel_packs": {
+        "name": "Bio-Neural Gel Packs",
+        "states": [
+          "ONLINE",
+          "OFFLINE",
+          "DEGRADED"
+        ],
+        "default_state": "ONLINE",
+        "metrics": {
+          "processing_rate": {
+            "unit": "TFLOP/s",
+            "default": 25000.0
+          }
+        },
+        "dependencies": [
+          "main_core",
+          "life_support"
+        ],
+        "learned": true
+      }
+    }
+  }
 }

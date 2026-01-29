@@ -55,6 +55,7 @@ class ShipSystems:
         CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "msd_registry.json")
         EXP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "experimental_registry.json")
 
+        self.component_map = {} # Reset map for clean reload
         try:
             # 1. Load Main
             with open(CONFIG_PATH, "r") as f:

@@ -1979,7 +1979,7 @@ def discover_subsystem_alias(unknown_term: str, context_hint: str = "") -> dict:
                         json.dump(registry, f, indent=2)
                     
                     # Refresh active instance
-                    ss._load_msd_registry()
+                    ss._load_registry()
             
             return {
                 "ok": True, 

@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
     "qq_send_endpoint": os.getenv("QQ_SEND_ENDPOINT", ""),
     "qq_send_token": os.getenv("QQ_SEND_TOKEN", ""),
     "gemini_rp_model": os.getenv("GEMINI_RP_MODEL", "gemini-2.0-flash-lite"),
-    "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+    "gemini_api_key": os.getenv("GEMINI_API_KEY", "") or os.getenv("gemini_api_key", ""),
     "moderation_enabled": os.getenv("TENCENT_TMS_ENABLED", "false").lower() == "true",
     "moderation_provider": os.getenv("MODERATION_PROVIDER", "local"), 
     "tencent_secret_id": os.getenv("TENCENT_SECRET_ID", ""),
@@ -57,10 +57,14 @@ class ConfigManager:
 
     def save_config(self, new_config: Dict[str, Any]):
         """Persists config to file."""
-        # Only update keys that exist in defaults to prevent pollution
-        for key in DEFAULT_CONFIG:
-            if key in new_config:
-                self._config[key] = new_config[key]
+        # Normalize keys for matching
+        defaults_lower = {k.lower(): k for k in DEFAULT_CONFIG}
+        
+        for k, v in new_config.items():
+            k_lower = k.lower()
+            if k_lower in defaults_lower:
+                actual_key = defaults_lower[k_lower]
+                self._config[actual_key] = v
         
         try:
             os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
@@ -73,7 +77,17 @@ class ConfigManager:
             return False
 
     def get(self, key: str, default=None):
-        return self._config.get(key, default)
+        """Case-insensitive get."""
+        val = self._config.get(key)
+        if val is not None:
+            return val
+        
+        # Fallback to secondary casing
+        key_lower = key.lower()
+        for k, v in self._config.items():
+            if k.lower() == key_lower:
+                return v
+        return default
 
     def get_all(self):
         return self._config

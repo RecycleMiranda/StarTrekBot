@@ -57,11 +57,36 @@
 - **发生时间**: 2026-01-29 11:37:52
 - **错误信息**: `NO_GROUP_ID_IN_META`
 - **原始指令**: `== ADS 混沌测试 COMPLETE ==`
-- **AI 诊断**: Pending Investigation...
+- **AI 诊断**: The `SendQueue.QQSender` component is failing because the `send` function in `sender_qq.py` is raising a `RuntimeError` due to the absence of a group ID in the meta information. This indicates that the `item.meta` passed to the `send` function in `send_queue.py` does not contain the necessary group ID for sending the message.
 - **建议方案**:
 
 ```diff
-Computing...
+```diff
+--- a/app/send_queue.py
++++ b/app/send_queue.py
+@@ -146,6 +146,9 @@
+         try:
+             text_to_send = item.text
+             mod_info = item.mod_info
++            if not item.meta or 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta for item id: {item.id}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+             await self.db.update_send_item_status(item.id, SendItemStatus.SENT)
+             logger.info(f"Sent item id: {item.id}")
+
+--- a/app/sender_qq.py
++++ b/app/sender_qq.py
+@@ -21,6 +21,8 @@
+     async def send(self, text: str, meta: dict, item_id: str, mod_info: dict):
+         group_id = meta.get("group_id")
+         if not group_id:
++            logger.error(f"Missing group_id in meta for item id: {item_id}")
++            # No longer raise error here, it's handled in send_queue.py
+             raise RuntimeError("NO_GROUP_ID_IN_META")
+ 
+         # TODO: Implement actual sending logic here
+```
 ```
 
 ---

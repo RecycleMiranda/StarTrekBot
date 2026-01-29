@@ -4,29 +4,31 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x17A6 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 15:30:14
-- **错误信息**: `discover_subsystem_alias() got an unexpected keyword argument 'query'`
-- **原始指令**: `计算机上线武器系统`
-- **AI 诊断**: TypeError: `discover_subsystem_alias()` 函数调用时传入了未预期的关键字参数 'query'。这表明函数定义与调用方式不匹配，很可能是函数签名发生了变化，但调用代码未同步更新。
+### ERR-0xD2BF | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-28 15:44:15
+- **错误信息**: `discover_subsystem_alias() missing 1 required positional argument: 'unknown_term'`
+- **原始指令**: `计算机，分析当前所有子系统的别名映射表 (Subsystem Alias Table)`
+- **AI 诊断**: The `discover_subsystem_alias` function was called without the required `unknown_term` argument, leading to a `TypeError`. This indicates a problem in how the tool is being invoked within the `Dispatcher.AgenticLoop` component.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/dispatcher.py
 +++ b/app/dispatcher.py
-@@ -1050,7 +1050,10 @@
-     try:
-         # Execute the tool function
-         start_time = time.time()
--        result = func(**args)
-+        if 'query' in args and 'discover_subsystem_alias' in str(func):
-+            result = func(args['query'])
-+        else:
-+            result = func(**args)
-         end_time = time.time()
-         execution_time = end_time - start_time
-         print(f"Tool execution time: {execution_time} seconds")
+@@ -1026,7 +1026,12 @@
+         if isinstance(func, types.FunctionType):
+             try:
+                 # Execute the tool function
+-                result = func(**args)
++                if 'unknown_term' not in args and func.__name__ == 'discover_subsystem_alias':
++                    print("WARNING: discover_subsystem_alias called without unknown_term. Providing a default value.")
++                    result = func(unknown_term=None, **args) # Or some other appropriate default
++                else:
++                    result = func(**args)
++                
+                 # Handle async functions
+                 if isinstance(result, Awaitable):
+                     result = await result
 ```
 ```
 

@@ -87,9 +87,16 @@ RETURN FORMAT (JSON ONLY):
 
     def persist_rule(self, rule_data: Dict):
         """Appends the rule to the training library."""
-        with open(TRAINING_LIB_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(rule_data, ensure_ascii=False) + "\n")
-        logger.info(f"[EvolutionAgent] Persistent rule added: {rule_data.get('rule_name')}")
+        try:
+            with open(TRAINING_LIB_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rule_data, ensure_ascii=False) + "\n")
+            logger.info(f"[EvolutionAgent] Persistent rule added: {rule_data.get('rule_name')}")
+            
+            # ADS 7.0: Neural Sync Protocol - Auto-commit training data
+            from .repair_tools import git_sync_changes
+            git_sync_changes(Path(TRAINING_LIB_PATH), f"Neural Evolution: Added rule {rule_data.get('rule_name')}")
+        except Exception as e:
+            logger.error(f"Failed to persist rule or sync: {e}")
 
     def get_active_directives(self) -> str:
         """Compiles all stored rules into a dynamic prompt segment."""
@@ -219,7 +226,7 @@ RETURN FORMAT (JSON ONLY):
                 
             # 6. GIT SYNC
             git_msg = f"ADS 3.1 Evolution: {system_name} -> {change_log}"
-            git_res = git_sync_changes(Path(MSD_REGISTRY_PATH), git_msg)
+            git_res = git_sync_changes([Path(MSD_REGISTRY_PATH)], git_msg)
             
             return {
                 "ok": True,

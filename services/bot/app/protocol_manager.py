@@ -136,52 +136,17 @@ class ProtocolManager:
 
     def git_sync(self, message: str, extra_files: list[str] = None):
         """Automatically commits changes to Git. Allows extra files to be staged."""
-        try:
-            # In Docker, we map the repo root directly to /app
-            repo_dir = "/app" if os.path.exists("/app/.git") else os.path.dirname(os.path.dirname(BASE_DIR))
-            logger.info(f"Initiating Git sync in: {repo_dir}")
-            
-            # 1. Add files
-            files_to_add = [PROTOCOLS_JSON, STANDARDS_MD]
-            if extra_files:
-                for f in extra_files:
-                    if os.path.isabs(f):
-                        files_to_add.append(f)
-                    else:
-                        files_to_add.append(os.path.join(repo_dir, f))
+        from .repair_tools import git_sync_changes
+        from pathlib import Path
 
-            rel_files = []
-            for fpath in files_to_add:
-                try:
-                    rel = os.path.relpath(fpath, repo_dir)
-                    rel_files.append(rel)
-                except ValueError:
-                    logger.warning(f"File {fpath} is outside of repo root {repo_dir}. Skipping.")
-
-            if not rel_files:
-                return
-
-            logger.info(f"Staging files: {rel_files}")
-            cp_add = subprocess.run(["git", "add"] + rel_files, cwd=repo_dir, capture_output=True, text=True)
-            if cp_add.returncode != 0:
-                logger.warning(f"Git add failed: {cp_add.stderr}")
-            
-            # 2. Commit
-            cp_commit = subprocess.run(["git", "commit", "-m", message], cwd=repo_dir, capture_output=True, text=True)
-            if cp_commit.returncode == 0:
-                logger.info(f"Git commit success: {cp_commit.stdout.strip()}")
-            else:
-                logger.info(f"Git commit skipped/failed: {cp_commit.stdout.strip()}")
-
-            # 3. Push to remote
-            cp_push = subprocess.run(["git", "push"], cwd=repo_dir, capture_output=True, text=True)
-            if cp_push.returncode == 0:
-                logger.info(f"Git push success: {cp_push.stdout.strip()}")
-            else:
-                logger.error(f"Git push failed: {cp_push.stderr.strip()}")
-
-        except Exception as e:
-            logger.error(f"Critical error during Git sync: {e}", exc_info=True)
+        # Prepare list of paths
+        files_to_sync = [Path(PROTOCOLS_JSON), Path(STANDARDS_MD)]
+        if extra_files:
+            for f in extra_files:
+                files_to_sync.append(Path(f))
+        
+        # Call unified sync utility
+        return git_sync_changes(files_to_sync, message)
 
     def _sync_to_markdown(self):
         """Generates a fresh FEDERATION_STANDARDS.md from current protocols."""

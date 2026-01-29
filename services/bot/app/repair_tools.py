@@ -218,35 +218,76 @@ def rollback_module(module_name: str, backup_index: int = 0) -> dict:
         logger.error(f"[RepairTools] Rollback failed: {e}")
         return {"ok": False, "message": f"ROLLBACK ERROR: {str(e)}"}
 
-def git_sync_changes(file_path: Path, message: str) -> dict:
+def git_sync_changes(file_paths: list[Path], message: str) -> dict:
     """
-    Commit and push a file to git.
+    Commit and push multiple files to git.
+    Includes auto-configuration of git identity for server environments.
     """
     try:
-        # Check if inside git repo
-        repo_root = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"], 
-            cwd=file_path.parent, 
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
+        if not file_paths:
+            return {"ok": True, "message": "No files provided."}
+
+        # In Docker, we map the repo root directly to /app
+        repo_root = "/app" if os.path.exists("/app/.git") else None
         
-        # Add
-        subprocess.run(["git", "add", str(file_path)], cwd=repo_root, check=True)
+        first_file = file_paths[0]
+        if not repo_root:
+            try:
+                repo_root = subprocess.check_output(
+                    ["git", "rev-parse", "--show-toplevel"], 
+                    cwd=str(first_file.parent), 
+                    stderr=subprocess.DEVNULL
+                ).decode().strip()
+            except:
+                # Fallback to current working directory or APP_BASE parent
+                repo_root = str(APP_BASE.parent.parent)
+
+        logger.info(f"[RepairTools] Syncing {len(file_paths)} files in repo: {repo_root}")
+
+        # 1. Ensure Git Identity
+        try:
+            subprocess.run(["git", "config", "user.name"], cwd=repo_root, check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.info("[RepairTools] Configuring default Git identity...")
+            subprocess.run(["git", "config", "user.name", "StarTrekBot"], cwd=repo_root, check=True)
+            subprocess.run(["git", "config", "user.email", "bot@lcars.starfleet"], cwd=repo_root, check=True)
         
-        # Commit
+        # 2. Add files
+        rel_paths = []
+        for f in file_paths:
+            try:
+                rel = os.path.relpath(str(f), repo_root)
+                subprocess.run(["git", "add", rel], cwd=repo_root, check=True)
+                rel_paths.append(rel)
+            except Exception as e:
+                logger.warning(f"[RepairTools] Failed to stage {f}: {e}")
+        
+        if not rel_paths:
+            return {"ok": False, "message": "No valid files were staged."}
+
+        # 3. Commit
+        # Check if there are actually changes to commit
+        status = subprocess.run(["git", "status", "--porcelain"] + rel_paths, cwd=repo_root, capture_output=True, text=True)
+        if not status.stdout.strip():
+            logger.info(f"[RepairTools] No changes detected for provided files. Skipping commit.")
+            return {"ok": True, "message": "No changes to sync."}
+
         subprocess.run(["git", "commit", "-m", message], cwd=repo_root, check=True)
         
-        # Push 
-        # Note: This might block or fail if no credentials. 
-        # running with timeout to avoid hanging.
-        subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, timeout=10)
-        
-        logger.info(f"[RepairTools] Git sync successful for {file_path}")
-        return {"ok": True, "message": "Changes committed and pushed to git."}
+        # 4. Push 
+        try:
+            subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, timeout=15, capture_output=True)
+            logger.info(f"[RepairTools] Git push successful for {len(rel_paths)} files")
+        except Exception as e:
+            logger.warning(f"[RepairTools] Git push failed (but commit succeeded): {e}")
+            return {"ok": True, "message": "Changes committed locally, but push failed (check network/auth)."}
+            
+        return {"ok": True, "message": f"Successfully synced {len(rel_paths)} files to git."}
         
     except subprocess.CalledProcessError as e:
-        logger.error(f"[RepairTools] Git error: {e}")
-        return {"ok": False, "message": f"Git sync failed (local write ok): {e}"}
+        err_msg = e.stderr.decode() if e.stderr else str(e)
+        logger.error(f"[RepairTools] Git error: {err_msg}")
+        return {"ok": False, "message": f"Git sync failed: {err_msg}"}
     except Exception as e:
         logger.error(f"[RepairTools] Git unexpected error: {e}")
         return {"ok": False, "message": f"Git sync failed: {e}"}
@@ -290,7 +331,7 @@ def write_module(module_name: str, content: str, create_backup: bool = True) -> 
         
         # Try to git sync
         git_msg = f"Auto-repair: Updated {module_name} via Diagnostic Mode"
-        git_result = git_sync_changes(module_path, git_msg)
+        git_result = git_sync_changes([module_path], git_msg)
         
         return {
             "ok": True,

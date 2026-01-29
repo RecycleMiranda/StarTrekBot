@@ -58,11 +58,24 @@
 - **发生时间**: 2026-01-29 08:25:56
 - **错误信息**: `NO_GROUP_ID_IN_META`
 - **原始指令**: `== cold_start_warp_core COMPLETE ==`
-- **AI 诊断**: Pending Investigation...
+- **AI 诊断**: The `SendQueue.QQSender` component is failing because the `send` function in `sender_qq.py` is raising a `RuntimeError` due to a missing `group_id` in the `meta` dictionary when attempting to send a message. This indicates that the `group_id` is not being properly passed or set in the `item.meta` before being processed by the `SendQueue`.
 - **建议方案**:
 
 ```diff
-Computing...
+```diff
+--- a/app/send_queue.py
++++ b/app/send_queue.py
+@@ -146,6 +146,9 @@
+         try:
+             mod_info = item.mod_info or {}
+             text_to_send = item.text
++            if 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta for item id: {item.id}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+             await self.db.execute(self.queue_table.update().where(self.queue_table.c.id == item.id).values(status=SendQueueItemStatus.SENT))
+             await self.db.commit()
+```
 ```
 
 ---

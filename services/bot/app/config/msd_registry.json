@@ -104,6 +104,11 @@
       "components": {
         "impulse_engines": {
           "name": "Main Impulse Engines",
+          "aliases": [
+            "engines",
+            "impulse",
+            "sublight_drive"
+          ],
           "states": [
             "OFFLINE",
             "ONLINE",
@@ -257,6 +262,11 @@
         },
         "nav_deflector": {
           "name": "Navigational Deflector",
+          "aliases": [
+            "navigation",
+            "helm_control",
+            "deflector"
+          ],
           "states": [
             "OFFLINE",
             "ONLINE",
@@ -281,6 +291,11 @@
       "components": {
         "phasers": {
           "name": "Phaser Banks (Type X)",
+          "aliases": [
+            "weapons",
+            "offensive_systems",
+            "phaser"
+          ],
           "states": [
             "OFFLINE",
             "CHARGING",
@@ -434,6 +449,11 @@
       "components": {
         "lrs": {
           "name": "Long Range Sensors",
+          "aliases": [
+            "sensors",
+            "scanners",
+            "astrometrics"
+          ],
           "states": [
             "OFFLINE",
             "ONLINE",

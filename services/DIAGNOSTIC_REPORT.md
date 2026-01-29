@@ -4,106 +4,27 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xEA4B | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:18
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，分析目前舰上有多少名 8 级以上权限的军官`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
-- **建议方案**:
-
-```diff
-# ERROR: Diagnostic Subroutine Offline
-```
-
----
-### ERR-0xE10B | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:25
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，如果我的 Rank 提升为准将 (Commodore)，我的权限会有什么变化？`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
+### ERR-0xAC05 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 08:25:01
+- **错误信息**: `'NoneType' object has no attribute 'get'`
+- **原始指令**: `计算机，对能量网 (EPS Grid) 进行二级维护，暂时将其下线。`
+- **AI 诊断**: The `tool_result` variable is sometimes `None` when it should be a dictionary-like object. This leads to an `AttributeError` when trying to call the `.get()` method on it.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/services/bot/app/dispatcher.py
 +++ b/app/services/bot/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-         user_profile = await self.get_user_profile(event.user_id)
-         if user_profile:
-             user_profile = user_profile.get('profile', {})
-+        from app.utils import tools
-         proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
-         if proto_scan:
-             await self.send_message(event.channel, proto_scan)
-```
-```
-
----
-### ERR-0x1A08 | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:33
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，查看舰长 (Captain) 的详细服役记录`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
+@@ -1172,6 +1172,9 @@
+         # Execute AI Logic
+         tool_result = await ai_logic.execute(current_state, available_tools)
  
- 
- from app.models import UserProfile
-+from app import tools
- 
- 
- class Dispatcher:
-```
-```
-
----
-### ERR-0xB85E | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:40
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，进入红色警报，并向全舰广播“进站准备”`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-     try:
-         user_profile = await self.get_user_profile(event.sender_id)
-         if user_profile:
-+            from app import tools
-             proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
-             if proto_scan:
-                 event.text = proto_scan
-```
-```
-
----
-### ERR-0x2CAF | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:49
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机今天星期几`
-- **AI 诊断**: The error 'NameError: name 'tools' is not defined' indicates that the 'tools' module or object was not imported or defined within the scope of the `dispatcher.handle_event` function.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/services/bot/app/dispatcher.py
-+++ b/app/services/bot/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-     except Exception as e:
-       self.logger.exception(f"Error during pre-processing: {e}")
- 
-+from app import tools
- 
-   def handle_event(self, event):
-     try:
++        if tool_result is None:
++            tool_result = {}
++
+         if tool_result.get("ok"):
+             current_state = await self._update_state(current_state, tool_result)
+             await self._send_state_update(current_state)
 ```
 ```
 

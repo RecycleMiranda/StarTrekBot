@@ -1682,6 +1682,8 @@ def set_subsystem(name: str, state_val: str, clearance: int = 1, session_id: str
     # --- REDUNDANCY FILTER [ADS 4.5] ---
     if msg.startswith("[NO_CHANGE]"):
         return {"ok": True, "message": msg, "skipped": True}
+        
+    return {"ok": True, "message": msg}
 
 def execute_procedure(procedure_name: str, steps: List[Dict], session_id: str = None) -> dict:
     """
@@ -1730,17 +1732,20 @@ def execute_procedure(procedure_name: str, steps: List[Dict], session_id: str = 
         except Exception as e:
             logger.error(f"Procedure {procedure_name} FAILED: {e}")
             if session_id:
-                await sq.enqueue_send(session_id, f"ERROR: Procedure {procedure_name} aborted: {e}", {"is_system": True}, priority=1)
+                # Handle async exception reporting via background task safely
+                async def _report_error():
+                    await sq.enqueue_send(session_id, f"LCARS: ERROR: Procedure {procedure_name} aborted: {e}", {"is_system": True}, priority=1)
+                asyncio.create_task(_report_error())
 
-    # Fire in background
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_run_sequence())
-    except RuntimeError:
-        import threading
-        threading.Thread(target=lambda: asyncio.run(_run_sequence()), daemon=True).start()
-
-    return {"ok": True, "message": f"Procedure '{procedure_name}' initiated. Sequence is running in background."}
+    # Fire and Forget within the async loop
+    asyncio.create_task(_run_sequence())
+    
+    return {
+        "ok": True, 
+        "message": f"Procedure '{procedure_name}' initialized. {len(steps)} steps in queue.",
+        "procedure_name": procedure_name,
+        "step_count": len(steps)
+    }
 
 def set_subsystem_state(name: str, state_str: str, clearance: int, session_id: str = None) -> dict:
     """

@@ -231,6 +231,7 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
         for turn in context:
             history_str += f"[{turn.get('author') or 'user'}]: {turn.get('content')}\n"
 
+        if meta is None: meta = {}
         user_id = str(meta.get("user_id", "0"))
         qm = quota_manager.get_quota_manager()
         balance = qm.get_balance(user_id, "Ensign")

@@ -1172,7 +1172,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                     executed_tools.append(tool)
                     last_tool_result = tool_result
 
-                    if tool_result.get("ok"):
+                    if tool_result and tool_result.get("ok"):
                         msg = tool_result.get("message", "") or "OK"
                         cumulative_data.append(f"ACTION ({tool}): {msg}")
                     else:

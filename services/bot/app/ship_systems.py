@@ -149,8 +149,24 @@ class ShipSystems:
         valid_states = comp.get("states", [])
         if valid_states and target_state not in valid_states:
             # Try to map generic ONLINE/OFFLINE to component specific
-            if target_state == "ONLINE" and comp.get("default_state") in valid_states:
-                target_state = comp.get("default_state")
+            if target_state == "ONLINE":
+                # Find the first active state if ONLINE isn't explicitly defined
+                active_candidates = [s for s in valid_states if s not in ["OFFLINE", "FAILING", "DAMAGED"]]
+                if active_candidates:
+                    # Priority 1: Use specific default_state if it's active
+                    ds = comp.get("default_state")
+                    if ds in active_candidates:
+                        target_state = ds
+                    else:
+                        # Priority 2: Use STANDBY if available
+                        if "STANDBY" in active_candidates:
+                            target_state = "STANDBY"
+                        # Priority 3: Use first available active state
+                        else:
+                            target_state = active_candidates[0]
+                else:
+                    # Absolute fallback to registry default if no active states found
+                    target_state = comp.get("default_state", "ONLINE")
             elif target_state == "OFFLINE" and "OFFLINE" in valid_states:
                 target_state = "OFFLINE"
             else:

@@ -4,89 +4,15 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x9F2C | SendQueue.QQSender
-- **发生时间**: 2026-01-29 11:37:51
-- **错误信息**: `NO_GROUP_ID_IN_META`
-- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
-- **AI 诊断**: QQSender在发送消息时，meta数据中缺少group_id，导致发送失败。
+### ERR-0x72F5 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 12:16:20
+- **错误信息**: `cannot access local variable 'reply_text' where it is not associated with a value`
+- **原始指令**: `计算机，进入简报模式`
+- **AI 诊断**: Failed to analyze fault via AI Brain.
 - **建议方案**:
 
 ```diff
-```diff
---- a/app/sender_qq.py
-+++ b/app/sender_qq.py
-@@ -21,6 +21,8 @@
-     async def send(self, text: str, meta: dict, msg_id: str, mod_info: dict):
-         """发送QQ消息"""
-         logger.info(f"[QQSender] Sending message: {text}, meta: {meta}")
-+        if 'group_id' not in meta:
-+            raise RuntimeError("NO_GROUP_ID_IN_META: group_id is missing in meta data.")
-         # TODO: Implement actual sending logic here
-         # For now, just log the message
-         logger.info(f"[QQSender] Message sent successfully (mocked): {text}")
-```
-```
-
----
-### ERR-0x6FC9 | SendQueue.QQSender
-- **发生时间**: 2026-01-29 11:37:52
-- **错误信息**: `NO_GROUP_ID_IN_META`
-- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
-- **AI 诊断**: SendQueue.QQSender 在发送消息时，meta 数据中缺少 group_id，导致发送失败。
-- **建议方案**:
-
-```diff
-```diff
---- a/app/services/bot/app/send_queue.py
-+++ b/app/services/bot/app/send_queue.py
-@@ -146,6 +146,9 @@
-         try:
-             text_to_send = item.text
-             mod_info = item.mod_info
-+            if 'group_id' not in item.meta:
-+                logger.error(f"Missing group_id in meta: {item.meta}")
-+                raise ValueError("Missing group_id in meta")
-             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
-             self.redis.delete(item.id)
-             logger.info(f"[SendQueue] send message success, id: {item.id}")
-```
-```
-
----
-### ERR-0xE37F | SendQueue.QQSender
-- **发生时间**: 2026-01-29 11:37:52
-- **错误信息**: `NO_GROUP_ID_IN_META`
-- **原始指令**: `== ADS 混沌测试 COMPLETE ==`
-- **AI 诊断**: The `SendQueue.QQSender` component is failing because the `send` function in `sender_qq.py` is raising a `RuntimeError` due to the absence of a group ID in the meta information. This indicates that the `item.meta` passed to the `send` function in `send_queue.py` does not contain the necessary group ID for sending the message.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/send_queue.py
-+++ b/app/send_queue.py
-@@ -146,6 +146,9 @@
-         try:
-             text_to_send = item.text
-             mod_info = item.mod_info
-+            if not item.meta or 'group_id' not in item.meta:
-+                logger.error(f"Missing group_id in meta for item id: {item.id}")
-+                raise ValueError("Missing group_id in meta")
-             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
-             await self.db.update_send_item_status(item.id, SendItemStatus.SENT)
-             logger.info(f"Sent item id: {item.id}")
-
---- a/app/sender_qq.py
-+++ b/app/sender_qq.py
-@@ -21,6 +21,8 @@
-     async def send(self, text: str, meta: dict, item_id: str, mod_info: dict):
-         group_id = meta.get("group_id")
-         if not group_id:
-+            logger.error(f"Missing group_id in meta for item id: {item_id}")
-+            # No longer raise error here, it's handled in send_queue.py
-             raise RuntimeError("NO_GROUP_ID_IN_META")
- 
-         # TODO: Implement actual sending logic here
-```
+# ERROR: Diagnostic Subroutine Offline
 ```
 
 ---

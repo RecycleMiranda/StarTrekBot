@@ -8,6 +8,7 @@ import re
 import os
 import json
 import asyncio
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 from .sentinel import SentinelRegistry
 

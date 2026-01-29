@@ -4,39 +4,29 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x9C8D | SendQueue.QQSender
-- **发生时间**: 2026-01-29 15:56:48
-- **错误信息**: `ALL_SEND_PATHS_FAILED`
-- **原始指令**: `滴滴滴`
-- **AI 诊断**: 所有消息发送路径均失败，QQSender无法成功发送消息。可能原因包括：网络问题、QQ接口异常、鉴权失败、服务器内部错误等。
+### ERR-0x9934 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 16:26:40
+- **错误信息**: `object dict can't be used in 'await' expression`
+- **原始指令**: `计算机，访问联邦数据库，检索让-卢克·皮卡德在联邦星舰真理号上的服役记录`
+- **AI 诊断**: The `query_knowledge_base` function is likely returning a plain Python dictionary instead of an awaitable object (like a coroutine or a future). This is causing the `await` expression to fail.
 - **建议方案**:
 
 ```diff
 ```diff
---- a/app/sender_qq.py
-+++ b/app/sender_qq.py
-@@ -73,6 +73,10 @@
-         try:
-             # TODO: Implement actual sending logic here, potentially with retries and error handling.
-             # For now, simulate a successful send.
-+            # Example:
-+            # response = await self.qq_api.send_message(text_to_send, item.meta)
-+            # if response.status_code != 200: # Or whatever success code is
-+            #     raise RuntimeError(f"QQ API Error: {response.status_code} - {response.text}")
-             await asyncio.sleep(0.1) # Simulate network latency
-             print(f"[QQSender] Simulated send success: {text_to_send}")
-             return True
-@@ -80,4 +84,10 @@
-             print(f"[QQSender] Send failed: {e}")
-             raise RuntimeError("ALL_SEND_PATHS_FAILED")
+--- a/app/dispatcher.py
++++ b/app/dispatcher.py
+@@ -841,7 +841,10 @@
+     try:
+         # Execute the tool
+         logger.debug(f"Executing tool {tool.__name__} with args: {args}")
+-        result = await tools.query_knowledge_base(f"Personnel File: {target} history and biography", session_id)
++        result = tools.query_knowledge_base(f"Personnel File: {target} history and biography", session_id)
++        if isinstance(result, dict):
++            logger.warning("query_knowledge_base returned a dict, not an awaitable.  This is likely an error.")
++        result = await result
+         logger.debug(f"Tool {tool.__name__} returned: {result}")
  
-+        except Exception as e:
-+            print(f"[QQSender] Unexpected error during send: {e}")
-+            # Log the error for debugging purposes
-+            # Consider adding retry logic here before raising the ALL_SEND_PATHS_FAILED error
-+            raise RuntimeError("ALL_SEND_PATHS_FAILED") from e
-+
- ```
+         # Handle the result
 ```
 
 ---

@@ -1,0 +1,90 @@
+{
+    "standard_protocols": {
+        "shield_modulation_alpha": {
+            "name": "Standard Shield Modulation (Alpha)",
+            "description": "Rapidly rotates shield frequencies to bypass interference.",
+            "pre_conditions": {
+                "shields": "UP",
+                "eps_grid": "ONLINE"
+            },
+            "steps": [
+                {
+                    "action": "SET_METRIC",
+                    "system": "shields",
+                    "params": {
+                        "metric": "frequency",
+                        "value": 142.0
+                    },
+                    "delay": 0
+                },
+                {
+                    "action": "SET_METRIC",
+                    "system": "shields",
+                    "params": {
+                        "metric": "modulation_sync",
+                        "value": 0.9
+                    },
+                    "delay": 2
+                },
+                {
+                    "action": "SET_METRIC",
+                    "system": "shields",
+                    "params": {
+                        "metric": "frequency",
+                        "value": 435.0
+                    },
+                    "delay": 2
+                },
+                {
+                    "action": "BROADCAST",
+                    "system": "shields",
+                    "params": {
+                        "key": "SHIELD_MODULATION_ACTIVE",
+                        "value": true
+                    },
+                    "delay": 0
+                }
+            ]
+        },
+        "warp_core_cold_start": {
+            "name": "Warp Core Cold Start",
+            "description": "Sequential initialization of the M/AM reactor.",
+            "pre_conditions": {
+                "deuterium_supply": "ONLINE",
+                "antimatter_containment": "ONLINE"
+            },
+            "steps": [
+                {
+                    "action": "ONLINE",
+                    "system": "magnetic_containment",
+                    "params": {},
+                    "delay": 0
+                },
+                {
+                    "action": "SET_METRIC",
+                    "system": "warp_core",
+                    "params": {
+                        "metric": "matter_antimatter_ratio",
+                        "value": 1.0
+                    },
+                    "delay": 5
+                },
+                {
+                    "action": "ONLINE",
+                    "system": "warp_core",
+                    "params": {},
+                    "delay": 2
+                },
+                {
+                    "action": "BROADCAST",
+                    "system": "engineering",
+                    "params": {
+                        "key": "REACTOR_STABLE",
+                        "value": true
+                    },
+                    "delay": 0
+                }
+            ]
+        }
+    }
+}

@@ -973,29 +973,33 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             
             # 0. SEMANTIC ALIAS MAP (Hardcoded Hallucination Bridges)
             SEMANTIC_MAP = {
-                # Weapons
-                "fire_photon_torpedoes": "weapon_lock_fire",
-                "launch_torpedoes": "weapon_lock_fire",
-                "fire_phasers": "weapon_lock_fire",
-                "torpedo_control": "weapon_lock_fire",
-                "tactical_analysis": "weapon_lock_fire",
-                # Holodeck
-                "set_holosimulation": "reserve_holodeck",
-                "holodeck_simulation": "reserve_holodeck",
-                "start_simulation": "reserve_holodeck",
-                # Scanning
-                "scan_area": "query_knowledge_base",
-                "scan_lifeforms": "query_knowledge_base",
-                "long_range_scan": "search_memory_alpha",
-                # System
-                "computer_diagnosis": "get_system_metrics",
-                "system_diagnostic": "get_system_metrics",
-                "eject_reactor": "eject_warp_core",
-                # Environment (Dynamic Phase 4)
-                "set_temperature": "manage_environment",
-                "adjust_lighting": "manage_environment",
-                "set_brightness": "manage_environment",
-                "environmental_control": "manage_environment"
+                # ADS 6.0 Action Gateways
+                "fire_photon_torpedoes": "tactical_execute",
+                "launch_torpedoes": "tactical_execute",
+                "prepare_photon_torpedoes": "tactical_execute",
+                "fire_phasers": "tactical_execute",
+                "torpedo_control": "tactical_execute",
+                "tactical_analysis": "tactical_execute",
+                "weapon_lock_fire": "tactical_execute",
+                
+                # Engineering & Power
+                "eject_reactor": "eng_execute",
+                "warp_core_eject": "eng_execute",
+                "power_reroute": "eng_execute",
+                "adjust_power": "eng_execute",
+                
+                # Science & Scanning
+                "scan_area": "sci_execute",
+                "scan_lifeforms": "sci_execute",
+                "long_range_scan": "sci_execute",
+                
+                # Ops & Environment
+                "set_holosimulation": "ops_execute",
+                "holodeck_simulation": "ops_execute",
+                "start_simulation": "ops_execute",
+                "set_temperature": "ops_execute",
+                "adjust_lighting": "ops_execute",
+                "environmental_control": "ops_execute"
             }
             
             corrected_tool = None
@@ -1059,20 +1063,33 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                                  new_query = f"{base_query} ({' '.join(extra_context)})"
                                  logger.info(f"[Dispatcher] Squashing args for search: '{new_query}'")
                                  args = {"query": new_query, "session_id": session_id}
-                         
-                         # Standard Injection (Signature Aware)
+                         # Standard Injection (Signature Aware Filter)
                          standard_args = {
                              "user_id": str(event.user_id),
                              "session_id": session_id,
-                             "clearance": profile.get("clearance", 1)
+                             "clearance": profile.get("clearance", 1),
+                             "rank": profile.get("rank", "Unknown")
                          }
                          
                          sig = inspect.signature(func)
+                         
+                         # Phase A: Inject standard args if requested
                          for k, v in standard_args.items():
                              if k in sig.parameters and k not in args:
                                  args[k] = v
                          
-                         result = func(**args)
+                         # Phase B: Filter out arguments that the function DOES NOT accept
+                         # This prevents TypeError: got an unexpected keyword argument 'X'
+                         filtered_args = {}
+                         for k, v in args.items():
+                             if k in sig.parameters:
+                                 filtered_args[k] = v
+                             elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                                 # If function has **kwargs, we can pass everything
+                                 filtered_args[k] = v
+                         
+                         logger.info(f"[Dispatcher] Executing with filtered args: {list(filtered_args.keys())}")
+                         result = func(**filtered_args)
                          result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
                      except Exception as e2:
                          # CRITICAL: Re-raise so this bubbles up to the Dispatcher's ADS fault reporter
@@ -1111,10 +1128,18 @@ def is_group_enabled(group_id: str | None) -> bool:
     else:
         whitelist = [g.strip() for g in str(whitelist_raw).split(",") if g.strip()]
     
+    # ADS 2.12: Explicit logging for group gatekeeping
+    logger.info(f"[Dispatcher] GROUP AUDIT: ID={group_id} | Whitelist={whitelist}")
+    
     if not whitelist or "*" in whitelist:
         return True
         
-    return str(group_id) in whitelist
+    res = str(group_id) in whitelist
+    if not res:
+        logger.warning(f"[Dispatcher] ACCESS DENIED: Group {group_id} REJECTED by whitelist.")
+    return res
+        logger.warning(f"[Dispatcher] Group {group_id} REJECTED by whitelist.")
+    return res
 
 async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None, initial_cumulative_data: list = None):
     """

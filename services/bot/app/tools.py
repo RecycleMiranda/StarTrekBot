@@ -1602,6 +1602,35 @@ def update_protocol(category: str, key: str, value: str, user_id: str, clearance
         return {"ok": False, "message": "Failed to update protocol. System file write error."}
 # --- SHIP SYSTEMS & CONTROL TOOLS (1.8 Protocol) ---
 
+def weapon_control(weapon_type: str = "phasers", action: str = "LOCKED", count: int = 1, clearance: int = 1) -> dict:
+    """
+    ADS 5.1: Integrated Tactical Control.
+    Handles Phasers and Torpedoes with specific states and counts.
+    """
+    if clearance < 8:
+        return {"ok": False, "message": "ACCESS DENIED: Tactical systems require Level 8 authority."}
+        
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    
+    # Normalize weapon type
+    w_type = weapon_type.lower()
+    if "torpedo" in w_type: w_type = "torpedoes"
+    elif "phaser" in w_type: w_type = "phasers"
+    
+    # Execute action
+    # For torpedoes, 'FIRING' or 'LOADED' might involve inventory
+    msg = ss.set_subsystem(w_type, action.upper())
+    
+    # Handle count for torpedoes (Side effect/Metric update)
+    if w_type == "torpedoes" and action.upper() in ["FIRING", "LAUNCH"]:
+        current_inv = float(ss.get_metric("torpedoes", "inventory_photon").replace("count", ""))
+        new_inv = max(0, current_inv - count)
+        inv_msg = ss.set_metric_value("torpedoes", "inventory_photon", new_inv)
+        msg += f" {inv_msg}"
+
+    return {"ok": True, "message": msg, "weapon": w_type, "action": action}
+
 def set_alert_status(level: str, clearance: int, validate_current: str = None) -> dict:
     """
     Sets the ship's alert status (RED, YELLOW, NORMAL).
@@ -2018,3 +2047,95 @@ def check_text_protocols(text: str, context: dict) -> dict:
             
     return {"violation": False}
 
+
+# =================================================================
+# ADS 6.0: UNIVERSAL ACTION GATEWAYS
+# =================================================================
+
+def tactical_execute(action: str, target: Optional[str] = None, weapon_type: str = "phasers", quantity: int = 1, clearance: int = 1, **kwargs) -> Dict:
+    """ADS 6.0: Tactical Console Gateway."""
+    if clearance < 6:
+        return {"ok": False, "message": "ACCESS DENIED: Tactical console requires Level 6 authority."}
+    
+    action = action.upper()
+    from .ship_systems import accept_action, normalize_subsystem_name
+    
+    # Map high-level actions to system calls
+    if action == "LOCK":
+        return accept_action("sensors", "LOCK", {"target": target}, clearance)
+    
+    if action in ["FIRE", "LAUNCH", "ENGAGE"]:
+        # New weapon_control-like logic via standardized contract
+        w_sys = normalize_subsystem_name(weapon_type)
+        return accept_action(w_sys, "FIRING", {"count": quantity}, clearance)
+        
+    if action in ["RAISE", "LOWER"]:
+        state = "UP" if action == "RAISE" else "DOWN"
+        return accept_action("shields", state, {}, clearance)
+
+    return {"ok": False, "message": f"Tactical Error: Action '{action}' not recognized by console protocol."}
+
+def eng_execute(action: str, system: str, source: Optional[str] = None, sink: Optional[str] = None, value: Optional[float] = None, clearance: int = 1, **kwargs) -> Dict:
+    """ADS 6.0: Engineering Console Gateway."""
+    if clearance < 4:
+        return {"ok": False, "message": "ACCESS DENIED: Engineering console requires Level 4 authority."}
+    
+    action = action.upper()
+    from .ship_systems import accept_action, normalize_subsystem_name
+    sys_name = normalize_subsystem_name(system)
+    
+    if action == "REROUTE":
+        # Simplified reroute logic
+        hub = get_signal_hub()
+        hub.broadcast("engineering", "POWER_REROUTE", {"from": source, "to": sink, "amount": value})
+        return {"ok": True, "message": f"Engineering: Energy flow rerouted from {source} to {sink} ({value}%)."}
+        
+    if action == "ADJUST":
+        return accept_action(sys_name, "SET_METRIC", {"metric": "output", "value": value}, clearance)
+        
+    if action in ["ONLINE", "OFFLINE", "REBOOT"]:
+        target_state = "STANDBY" if action == "REBOOT" else action
+        return accept_action(sys_name, target_state, {}, clearance)
+
+    return {"ok": False, "message": f"Engineering Error: Action '{action}' not recognized."}
+
+def ops_execute(action: str, item: Optional[str] = None, destination: Optional[str] = None, frequency: Optional[float] = None, clearance: int = 1, **kwargs) -> Dict:
+    """ADS 6.0: Ops Console Gateway."""
+    action = action.upper()
+    from .ship_systems import accept_action
+    
+    if action == "TRANSPORT":
+        return accept_action("transporters", "ENGAGE", {"item": item, "to": destination}, clearance)
+        
+    if action == "REPLICATE":
+        return accept_action("replicators", "ENGAGE", {"item": item}, clearance)
+        
+    if action == "COMMS":
+        return accept_action("comms", "OPEN", {"target": destination, "freq": frequency}, clearance)
+
+    return {"ok": False, "message": f"Ops Error: Action '{action}' not recognized."}
+
+def sci_execute(action: str, scan_type: str = "standard", focus: Optional[str] = None, range: float = 1.0, clearance: int = 1, **kwargs) -> Dict:
+    """ADS 6.0: Science Console Gateway."""
+    action = action.upper()
+    from .ship_systems import accept_action
+    
+    if action in ["SCAN", "ANALYZE", "PROBE"]:
+        hub = get_signal_hub()
+        hub.broadcast("science", "SENSOR_ACTIVITY", {"type": scan_type, "focus": focus, "range": range})
+        return accept_action("sensors", "ACTIVE", {"mode": scan_type, "target": focus}, clearance)
+
+    return {"ok": False, "message": f"Science Error: Action '{action}' not recognized."}
+
+def execute_procedure(procedure_id: str, session_id: str, clearance: int = 1, **kwargs) -> Dict:
+    """
+    ADS 6.0: Procedural Execution Entry Point.
+    Executes a multi-step protocol (e.g. cold start, shield modulation) asynchronously.
+    """
+    from .procedure_engine import get_procedure_engine
+    engine = get_procedure_engine()
+    
+    # In the current bot framework, tools are executed in a thread pool.
+    # We can bridge to the async engine.
+    from .dispatcher import _run_async
+    return _run_async(engine.execute_protocol(procedure_id, session_id))

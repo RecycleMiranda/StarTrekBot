@@ -3,6 +3,9 @@ import json
 import os
 from enum import Enum
 from typing import Dict, List, Optional, Any
+from .signal_hub import get_signal_hub
+from .environment_manager import get_environment_manager
+from .physics_engine import get_physics_engine
 
 logger = logging.getLogger(__name__)
 
@@ -47,22 +50,44 @@ class ShipSystems:
             cls._instance = cls()
         return cls._instance
 
-    def _load_msd_registry(self):
-        """Loads the Unified MSD Registry from JSON."""
+    def _load_registry(self):
+        """Loads and merges the main and experimental registries."""
+        CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "msd_registry.json")
+        EXP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "experimental_registry.json")
+
         try:
-            reg_path = os.path.join(os.path.dirname(__file__), "config", "msd_registry.json")
-            with open(reg_path, "r") as f:
-                self.msd_registry = json.load(f)
+            # 1. Load Main
+            with open(CONFIG_PATH, "r") as f:
+                self.registry = json.load(f)
             
-            # Build valid component map recursively
-            self._recursive_build_map(self.msd_registry)
-            logger.info(f"[ShipSystems] MSD Registry Loaded. {len(self.component_map)} components mapped.")
+            # 2. Merge Experimental (L2 Buffer)
+            if os.path.exists(EXP_CONFIG_PATH):
+                with open(EXP_CONFIG_PATH, "r") as f:
+                    exp_data = json.load(f)
+                
+                # Simple deep-merge logic for top-level categories
+                for cat, content in exp_data.items():
+                    if cat.startswith("_"): continue # Skip metadata
+                    
+                    if cat not in self.registry:
+                        self.registry[cat] = content
+                    else:
+                        # Merge components if category already exists
+                        exp_comps = content.get("components", {})
+                        if "components" not in self.registry[cat]:
+                            self.registry[cat]["components"] = {}
+                        self.registry[cat]["components"].update(exp_comps)
+            
+            # Build valid component map recursively from the merged registry
+            self._recursive_build_map(self.registry)
+            logger.info(f"[ShipSystems] MSD Registry loaded with experimental buffer integration. {len(self.component_map)} components mapped.")
             print(f"DEBUG: Loaded keys: {list(self.component_map.keys())}")
-            
+
         except Exception as e:
-            logger.error(f"[ShipSystems] CRITICAL: Failed to load MSD Registry: {e}")
+            logger.error(f"[ShipSystems] CRITICAL: Failed to load registry: {e}")
             print(f"DEBUG CRITICAL ERROR: {e}")
             # Fallback to minimal dict to prevent crash
+            self.registry = {}
             self.component_map = {}
 
     def _recursive_build_map(self, node: dict, prefix: str = ""):
@@ -239,6 +264,42 @@ class ShipSystems:
         if mapped_changes:
             msg += f" 联动指标调整: {', '.join(mapped_changes)}。"
             
+        # ADS 6.0: Broadcast signal to the ODN Bus
+        hub = get_signal_hub()
+        hub.broadcast(name, f"{name.upper()}_STATE", target_state)
+        for change in mapped_changes:
+            if " -> " in change:
+                m_name, m_val = change.split(" -> ")
+                hub.broadcast(name, f"{name.upper()}_{m_name.upper()}", m_val)
+
+        # [ADS 7.1] Physics Engine Hook
+        try:
+            pe = get_physics_engine()
+            # Prepare context
+            ctx = comp.copy()
+            ctx["target_state"] = target_state
+            
+            # Recalculate side effects
+            physics_updates = pe.recalculate(name, ctx)
+            
+            # Apply derived updates
+            if physics_updates:
+                effect_msgs = []
+                for effect in physics_updates:
+                    eff_sys = effect.get("system")
+                    eff_met = effect.get("metric")
+                    eff_val = effect.get("value")
+                    
+                    if eff_sys and eff_met:
+                        self.set_metric_value(eff_sys, eff_met, eff_val)
+                        effect_msgs.append(f"{eff_sys}.{eff_met}={eff_val}")
+                        
+                if effect_msgs:
+                    msg += f" [PHYSICS] 衍生效应: {', '.join(effect_msgs)}"
+                    
+        except Exception as e:
+            logger.error(f"[ShipSystems] Physics Recalculation Error: {e}")
+            
         return msg
 
     def set_metric_value(self, system: str, metric: str, value: float) -> str:
@@ -260,9 +321,100 @@ class ShipSystems:
         if value > 0 and comp.get("current_state") == "OFFLINE":
              if comp.get("default_state"):
                  comp["current_state"] = comp.get("default_state")
+                 
+                 # ADS 6.0 Broadcast
+                 hub = get_signal_hub()
+                 hub.broadcast(system, f"{system.upper()}_STATE", comp["current_state"])
+                 hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
+                 
                  return f"Confirmed. {comp.get('name')} {metric} set to {value}. [AUTO-START] System brought ONLINE to support non-zero output."
         
-        return f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+        # ADS 6.0 Broadcast
+        hub = get_signal_hub()
+        hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
+        
+        # [ADS 7.1] Physics Engine Hook
+        msg = f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+        try:
+            pe = get_physics_engine()
+            ctx = comp.copy()
+            physics_updates = pe.recalculate(system, ctx)
+            # Apply derived updates (Simplified for metric-triggered recursion avoidance)
+             # In future, we might want a 'depth' param to prevent infinite loops
+            pass 
+        except Exception as e:
+            logger.error(f"[ShipSystems] Physics Recalculation Error (Metric): {e}")
+
+        return msg
+
+    def get_subsystem_efficiency(self, name: str) -> float:
+        """Public API for recursive efficiency calculation."""
+        return self.calculate_efficiency(name)
+
+    def calculate_efficiency(self, name: str, visited: Optional[set] = None) -> float:
+        """
+        ADS 6.0: Recursive efficiency calculation using weighted dependencies.
+        Formula: Eff = Health * min([1.0 - (1.0 - Dep_Eff) * Dep_Weight for Dep in Dependencies])
+        """
+        if visited is None: visited = set()
+        if name in visited: return 1.0 # Prevent recursion loops
+        visited.add(name)
+
+        comp = self.get_component(name)
+        if not comp: return 0.0
+
+        # Base Health (based on state)
+        # OFFLINE = 0, DAMAGED = 0.2, FAILING = 0.4, STANDBY = 0.8, ONLINE = 1.0
+        state = comp.get("current_state", "OFFLINE")
+        base_health = 1.0
+        if state == "OFFLINE": base_health = 0.0
+        elif state == "DAMAGED": base_health = 0.2
+        elif state == "FAILING": base_health = 0.4
+        elif state == "STANDBY": base_health = 0.8
+        
+        # If health is already 0, no need to check dependencies
+        if base_health == 0: return 0.0
+
+        # Process Dependencies
+        deps = comp.get("dependencies", {})
+        if not deps: return base_health
+
+        dep_impacts = []
+        # Case 1: ADS 6.0 Weighted Dictionary
+        if isinstance(deps, dict):
+            for dep_name, config in deps.items():
+                dep_eff = self.calculate_efficiency(dep_name, visited.copy())
+                weight = config.get("weight", 1.0)
+                # impact = 1.0 - (1.0 - dep_eff) * weight
+                impact = max(0.0, 1.0 - (1.0 - dep_eff) * weight)
+                dep_impacts.append(impact)
+        # Case 2: Legacy List (Assume Weight 1.0)
+        elif isinstance(deps, list):
+            for dep_name in deps:
+                dep_eff = self.calculate_efficiency(dep_name, visited.copy())
+                dep_impacts.append(dep_eff)
+
+        # Result is base health * minimum impact (Bottleneck approach)
+        dep_bottleneck = min(dep_impacts if dep_impacts else [1.0])
+        
+        # ADS 6.0 Expansion: Apply Environmental Factor
+        env_mgr = get_environment_manager()
+        # Derive system category from path or component type
+        sys_cat = "standard"
+        if "sensor" in name or "tactical" in name: sys_cat = "sensors"
+        elif "comms" in name: sys_cat = "communications"
+        elif "warp" in name or "impulse" in name: sys_cat = "navigation"
+        
+        env_factor = env_mgr.get_factor(sys_cat)
+        
+        final_eff = base_health * dep_bottleneck * env_factor
+        
+        # Broadcast unusual efficiency drops
+        if final_eff < 0.5 and (base_health * dep_bottleneck) > 0.5:
+            hub = get_signal_hub()
+            hub.broadcast(name, f"{name.upper()}_EFFICIENCY_ALERT", final_eff)
+            
+        return round(final_eff, 2)
 
     def get_metric(self, system: str, metric: str) -> str:
         comp = self.get_component(system)
@@ -350,3 +502,34 @@ class ShipSystems:
 
 def get_ship_systems():
     return ShipSystems.get_instance()
+
+# ADS 6.0: Standardized Contract Implementations
+def accept_action(system_name: str, action: str, params: Optional[Dict] = None, clearance: int = 1) -> Dict:
+    """
+    Standardized System Contract entry point.
+    Maps high-level gateway commands to specific system logic.
+    """
+    ss = get_ship_systems()
+    comp = ss.get_component(system_name)
+    if not comp:
+        return {"ok": False, "message": f"System '{system_name}' not recognized."}
+
+    # 1. State Actions
+    if action in ["ONLINE", "OFFLINE", "STANDBY", "UP", "DOWN"]:
+        msg = ss.set_subsystem(system_name, action)
+        return {"ok": True, "message": msg}
+
+    # 2. Metric Actions
+    if action == "SET_METRIC" and params and "metric" in params and "value" in params:
+        msg = ss.set_metric_value(system_name, params["metric"], params["value"])
+        return {"ok": True, "message": msg}
+
+    # 3. Special Actions (Logic expansion point)
+    # Tactical
+    if action == "LOCK" and "tactical" in str(comp.get("path", "")):
+        # Implementation of locking logic...
+        hub = get_signal_hub()
+        hub.broadcast(system_name, f"TACTICAL_LOCK", {"target": params.get("target"), "status": "LOCKED"})
+        return {"ok": True, "message": f"Tactical lock established on {params.get('target')}."}
+
+    return {"ok": False, "message": f"Action '{action}' not supported for system '{system_name}'."}

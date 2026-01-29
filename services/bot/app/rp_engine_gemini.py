@@ -40,6 +40,9 @@ def _call_gemini_rest_api(
         logger.warning("[GeminiREST] No API Key found. Using MOCK RESPONSE.")
         return '{"reply": "Computer: Logic memory offline. Unable to process query.", "intent": "refuse"}' if json_mode else "Logic memory offline."
 
+    # ADS 2.13: Sanitize Key (Remove non-ASCII/whitespace to prevent URL encoding crashes)
+    api_key = "".join(c for c in str(api_key) if ord(c) < 128).strip()
+
     # 2. Model Normalization
     target_model = model or config.get("gemini_rp_model", "gemini-1.5-flash")
     if "models/" not in target_model: target_model = f"models/{target_model}"

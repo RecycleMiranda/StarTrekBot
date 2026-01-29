@@ -1,0 +1,12 @@
+{
+    "experimental_systems": {
+        "display_name_en": "Experimental Systems (Staging)",
+        "display_name_cn": "实验性/学习系统 (暂存区)",
+        "description": "ADS 6.0 Staging buffer for newly discovered components. Systems here are pending L3 production promotion.",
+        "components": {}
+    },
+    "_evolution_metadata": {
+        "hit_counts": {},
+        "promotion_threshold": 5
+    }
+}

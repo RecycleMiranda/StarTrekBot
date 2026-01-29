@@ -4,106 +4,152 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xEA4B | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:18
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，分析目前舰上有多少名 8 级以上权限的军官`
-- **AI 诊断**: Failed to analyze fault via AI Brain.
-- **建议方案**:
-
-```diff
-# ERROR: Diagnostic Subroutine Offline
-```
-
----
-### ERR-0xE10B | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:25
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，如果我的 Rank 提升为准将 (Commodore)，我的权限会有什么变化？`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
+### ERR-0xAC05 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 08:25:01
+- **错误信息**: `'NoneType' object has no attribute 'get'`
+- **原始指令**: `计算机，对能量网 (EPS Grid) 进行二级维护，暂时将其下线。`
+- **AI 诊断**: The `tool_result` variable is sometimes `None` when it should be a dictionary-like object. This leads to an `AttributeError` when trying to call the `.get()` method on it.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/services/bot/app/dispatcher.py
 +++ b/app/services/bot/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-         user_profile = await self.get_user_profile(event.user_id)
-         if user_profile:
-             user_profile = user_profile.get('profile', {})
-+        from app.utils import tools
-         proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
-         if proto_scan:
-             await self.send_message(event.channel, proto_scan)
+@@ -1172,6 +1172,9 @@
+         # Execute AI Logic
+         tool_result = await ai_logic.execute(current_state, available_tools)
+ 
++        if tool_result is None:
++            tool_result = {}
++
+         if tool_result.get("ok"):
+             current_state = await self._update_state(current_state, tool_result)
+             await self._send_state_update(current_state)
 ```
 ```
 
 ---
-### ERR-0x1A08 | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:33
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，查看舰长 (Captain) 的详细服役记录`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
+### ERR-0x0634 | SendQueue.QQSender
+- **发生时间**: 2026-01-29 08:25:55
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== cold_start_warp_core COMPLETE ==`
+- **AI 诊断**: SendQueue.QQSender 在发送消息时，meta 数据中缺少 group_id，导致发送失败。
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/services/bot/app/sender_qq.py
++++ b/app/services/bot/app/sender_qq.py
+@@ -21,6 +21,9 @@
+     async def send(self, text_to_send: str, meta: dict, item_id: str, mod_info: dict):
+         # qq频道消息需要group_id
+         if self.platform == "qq" and not meta.get("group_id"):
++            logger.error(f"Missing group_id in meta: {meta}")
++            # Consider adding a default group_id or raising a more specific exception
++            # raise ValueError("Missing group_id in meta for QQ platform")
+             raise RuntimeError("NO_GROUP_ID_IN_META")
+ 
+         params = {
+```
+```
+
+---
+### ERR-0x96F6 | SendQueue.QQSender
+- **发生时间**: 2026-01-29 08:25:56
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== cold_start_warp_core COMPLETE ==`
+- **AI 诊断**: The `SendQueue.QQSender` component is failing because the `send` function in `sender_qq.py` is raising a `RuntimeError` due to a missing `group_id` in the `meta` dictionary when attempting to send a message. This indicates that the `group_id` is not being properly passed or set in the `item.meta` before being processed by the `SendQueue`.
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/send_queue.py
++++ b/app/send_queue.py
+@@ -146,6 +146,9 @@
+         try:
+             mod_info = item.mod_info or {}
+             text_to_send = item.text
++            if 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta for item id: {item.id}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+             await self.db.execute(self.queue_table.update().where(self.queue_table.c.id == item.id).values(status=SendQueueItemStatus.SENT))
+             await self.db.commit()
+```
+```
+
+---
+### ERR-0x92F0 | SendQueue.QQSender
+- **发生时间**: 2026-01-29 08:25:56
+- **错误信息**: `NO_GROUP_ID_IN_META`
+- **原始指令**: `== Standard Procedure COMPLETE ==`
+- **AI 诊断**: SendQueue.QQSender 在发送消息时，meta 数据中缺少 group_id 信息，导致发送失败。
+- **建议方案**:
+
+```diff
+```diff
+--- a/app/services/bot/app/send_queue.py
++++ b/app/services/bot/app/send_queue.py
+@@ -146,6 +146,9 @@
+         text_to_send = item.text
+         mod_info = item.mod_info
+         try:
++            if 'group_id' not in item.meta:
++                logger.error(f"Missing group_id in meta: {item.meta}")
++                raise ValueError("Missing group_id in meta")
+             await self.sender.send(text_to_send, item.meta, item.id, mod_info)
+         except Exception as e:
+             logger.exception(f"Failed to send message {item.id}")
+```
+```
+
+---
+### ERR-0x0074 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 08:26:49
+- **错误信息**: `'NoneType' object has no attribute 'get'`
+- **原始指令**: `计算机，下线计算机核心`
+- **AI 诊断**: The `tool_result` variable in `_execute_ai_logic` is sometimes `None`, leading to an `AttributeError` when trying to call the `get` method on it. This likely happens when a tool execution fails or returns no result.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/dispatcher.py
 +++ b/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
+@@ -1172,6 +1172,9 @@
+         except Exception as e:
+             self._log.exception(e)
+             return False
++
++        if tool_result is None:
++            return False
  
- 
- from app.models import UserProfile
-+from app import tools
- 
- 
- class Dispatcher:
+         if tool_result.get("ok"):
+             await self._memory.record_tool_execution(agent_id, tool_name, arguments, tool_result)
 ```
 ```
 
 ---
-### ERR-0xB85E | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:40
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机，进入红色警报，并向全舰广播“进站准备”`
-- **AI 诊断**: The `tools` module was not imported or is not accessible within the `Dispatcher.handle_event` function.
-- **建议方案**:
-
-```diff
-```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-     try:
-         user_profile = await self.get_user_profile(event.sender_id)
-         if user_profile:
-+            from app import tools
-             proto_scan = tools.check_text_protocols(event.text, {"clearance": user_profile.get("clearance", 1)})
-             if proto_scan:
-                 event.text = proto_scan
-```
-```
-
----
-### ERR-0x2CAF | Dispatcher.handle_event
-- **发生时间**: 2026-01-29 07:28:49
-- **错误信息**: `name 'tools' is not defined`
-- **原始指令**: `计算机今天星期几`
-- **AI 诊断**: The error 'NameError: name 'tools' is not defined' indicates that the 'tools' module or object was not imported or defined within the scope of the `dispatcher.handle_event` function.
+### ERR-0xDC30 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-29 08:27:21
+- **错误信息**: `'NoneType' object has no attribute 'get'`
+- **原始指令**: `计算机，关闭计算机核心`
+- **AI 诊断**: The `tool_result` variable in `_execute_ai_logic` is sometimes `None`, leading to an `AttributeError` when trying to call the `get` method on it.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/services/bot/app/dispatcher.py
 +++ b/app/services/bot/app/dispatcher.py
-@@ -1434,6 +1434,7 @@
-     except Exception as e:
-       self.logger.exception(f"Error during pre-processing: {e}")
- 
-+from app import tools
- 
-   def handle_event(self, event):
-     try:
+@@ -1172,6 +1172,9 @@
+         try:
+             tool_result = await execute_tool(tool_name, arguments, self.bot_id, self.user_id)
+             self.log.debug(f"Tool Result: {tool_result}")
++            if tool_result is None:
++                self.log.warning("Tool result is None, skipping 'ok' check.")
++                continue
+             if tool_result.get("ok"):
+                 await self.memory.append(
+                     f"{tool_name} result: {tool_result.get('content')}", self.bot_id, self.user_id
 ```
 ```
 

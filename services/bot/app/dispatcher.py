@@ -24,6 +24,7 @@ from . import emergency_kernel
 from .protocol_manager import get_protocol_manager
 from .ops_registry import OpsRegistry, TaskPriority, TaskState
 from .evolution_agent import get_evolution_agent
+from . import tools 
 
 logger = logging.getLogger(__name__)
 

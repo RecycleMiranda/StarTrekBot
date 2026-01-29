@@ -1105,7 +1105,11 @@ def is_group_enabled(group_id: str | None) -> bool:
     
     config = ConfigManager.get_instance()
     whitelist_raw = config.get("enabled_groups", "*")
-    whitelist = [g.strip() for g in whitelist_raw.split(",") if g.strip()]
+    
+    if isinstance(whitelist_raw, list):
+        whitelist = [str(g).strip() for g in whitelist_raw if str(g).strip()]
+    else:
+        whitelist = [g.strip() for g in str(whitelist_raw).split(",") if g.strip()]
     
     if not whitelist or "*" in whitelist:
         return True
@@ -1142,6 +1146,7 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         last_tool_call = None
         executed_tools = []
         terminate_agent_loop = False
+        reply_text = ""
 
         while iteration < max_iterations and not terminate_agent_loop:
             iteration += 1
@@ -1227,6 +1232,10 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
 
     except Exception as e:
         import traceback
+        # ADS 2.10: Re-initialize reply_text to prevent UnboundLocalError during crash log
+        if 'reply_text' not in locals():
+            reply_text = "Subspace interference detected in internal matrix."
+            
         from .diagnostic_manager import get_diagnostic_manager
         dm = get_diagnostic_manager()
         fault_id = dm.report_fault("Dispatcher.AgenticLoop", e, query=event.text, traceback_str=traceback.format_exc())
@@ -1256,9 +1265,8 @@ async def handle_event(event: InternalEvent):
     # Session ID logic (Group ID takes precedence)
     session_id = event.group_id if event.group_id else f"p_{event.user_id}"
     
-    # Check whitelist
-    if not is_group_enabled(event.group_id or session_id if "group" in session_id else None):
-        # logger.info(f"[Dispatcher] Group {event.group_id} not in whitelist. Dropping event.") # Silenced
+    # Check whitelist (ADS 2.11: Fixed bypass bug where numerical group IDs were ignored)
+    if not is_group_enabled(event.group_id):
         return False
         
     print(f"\n{'='*30} NEW TRANSMISSION {'='*30}\n")

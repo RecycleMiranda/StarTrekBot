@@ -765,7 +765,8 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
             result = tools.set_subsystem_state(
                 args.get("name") or args.get("subsystem") or ("replicator" if "replicator" in tool_name else ""),
                 args.get("state") or ("ONLINE" if "online" in tool_name else "OFFLINE"),
-                profile.get("clearance", 1)
+                profile.get("clearance", 1),
+                session_id=session_id
             )
             
         elif tool == "manage_environment":

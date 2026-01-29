@@ -7,6 +7,7 @@ import logging
 import re
 import os
 import json
+import asyncio
 from pathlib import Path
 from .sentinel import SentinelRegistry
 
@@ -1647,7 +1648,7 @@ def toggle_shields(active: bool, clearance: int) -> dict:
     msg = ss.toggle_shields(active)
     return {"ok": True, "message": msg, "active": ss.shields_active}
 
-def set_subsystem(name: str, state_val: str, clearance: int = 1) -> dict:
+def set_subsystem(name: str, state_val: str, clearance: int = 1, session_id: str = None) -> dict:
     """
     Control subsystem state (Unified MSD).
     Support both 'ONLINE/OFFLINE' and new states.
@@ -1661,24 +1662,81 @@ def set_subsystem(name: str, state_val: str, clearance: int = 1) -> dict:
     ss = get_ship_systems()
     
     # Normalize input
+    original_name = name
     name = normalize_subsystem_name(name)
     msg = ss.set_subsystem(name, state_val) # This handles the MSD logic
     
     if "找不到组件" in msg or "not found" in msg.lower():
          # ADS 4.0: Self-Adaptive Discovery Fallback
-         discovery = discover_subsystem_alias(name)
+         discovery = discover_subsystem_alias(original_name)
          if discovery.get("ok"):
-             msg = ss.set_subsystem(discovery["mapped_to"], state_val)
+             name = discovery["mapped_to"]
+             msg = ss.set_subsystem(name, state_val)
              msg = f"Learning active... {msg}"
+    
+    # --- REDUNDANCY FILTER [ADS 4.5] ---
+    if msg.startswith("[NO_CHANGE]"):
+        return {"ok": True, "message": msg, "skipped": True}
+
+    # --- ADS 4.5: Temporal State Transition Handling ---
+    comp = ss.get_component(name)
+    if comp and "transitions" in comp:
+        curr_state = comp.get("current_state", "")
+        for trigger, t_data in comp.get("transitions", {}).items():
+            if f"->{curr_state}" in trigger:
+                # Trigger background transition
+                _schedule_state_transition(name, t_data, session_id)
+                prefix = " (Note: " if "Note:" not in msg else " "
+                msg += f"{prefix}{t_data.get('delay')}s delay until {t_data.get('target_state')})"
     
     return {"ok": True, "message": msg}
 
-def set_subsystem_state(name: str, state_str: str, clearance: int) -> dict:
+def _schedule_state_transition(comp_key: str, t_data: dict, session_id: str = None):
+    """Schedules a delayed state update and user notification."""
+    async def _task():
+        try:
+            delay = t_data.get("delay", 5)
+            await asyncio.sleep(delay)
+            
+            from .ship_systems import get_ship_systems
+            ss = get_ship_systems()
+            target = t_data.get("target_state", "ONLINE")
+            ss.set_subsystem(comp_key, target)
+            
+            # Send Notification
+            if session_id:
+                from .send_queue import SendQueue
+                try:
+                    sq = SendQueue.get_instance()
+                    msg_en = t_data.get("msg_en", f"System {comp_key} transition to {target} complete.")
+                    msg_cn = t_data.get("msg_cn", f"系统 {comp_key} 已就绪。")
+                    
+                    full_msg = f"== SYSTEM READY ==\n{msg_en} ({msg_cn})"
+                    await sq.enqueue_send(session_id, full_msg, {"from_computer": True}, priority=2)
+                except Exception as e:
+                    logger.warning(f"Could not notify user via queue: {e}")
+            
+            logger.info(f"[Temporal] Transition complete: {comp_key} -> {target}")
+                
+        except Exception as e:
+            logger.error(f"Error in temporal transition: {e}")
+
+    # Fire and forget
+    loop = None
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_task())
+    except RuntimeError:
+        # If no loop in this thread, try to find the global one or just run in thread
+        import threading
+        threading.Thread(target=lambda: asyncio.run(_task()), daemon=True).start()
+
+def set_subsystem_state(name: str, state_str: str, clearance: int, session_id: str = None) -> dict:
     """
     Legacy Wrapper for set_subsystem.
     """
     state = "ONLINE" if "online" in state_str.lower() or "上线" in state_str else "OFFLINE"
-    return set_subsystem(name, state, clearance)
+    return set_subsystem(name, state, clearance, session_id=session_id)
 
 def set_absolute_override(state: bool, user_id: str, clearance: int) -> dict:
     """

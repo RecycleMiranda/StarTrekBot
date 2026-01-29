@@ -316,7 +316,15 @@
           },
           "dependencies": [
             "eps_grid"
-          ]
+          ],
+          "transitions": {
+            "OFFLINE->CHARGING": {
+              "target_state": "LOCKED",
+              "delay": 5,
+              "msg_en": "Charge complete. Phaser Banks READY.",
+              "msg_cn": "充电完成。相位炮已准备就绪。"
+            }
+          }
         },
         "torpedoes": {
           "name": "Photon Torpedo Launchers",

@@ -172,6 +172,11 @@ class ShipSystems:
             else:
                 return f"无效状态 '{target_state}'。有效值: {valid_states}"
 
+        # Prepare for state change tracking
+        old_state = comp.get("current_state", "UNKNOWN")
+        if old_state == target_state:
+             return f"[NO_CHANGE] {comp.get('name', name)} is already {target_state}."
+
         # Update State
         comp["current_state"] = target_state
         state_display = target_state

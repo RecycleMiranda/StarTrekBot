@@ -1,0 +1,2 @@
+# 每行一个违禁词
+# starship_explode_placeholder

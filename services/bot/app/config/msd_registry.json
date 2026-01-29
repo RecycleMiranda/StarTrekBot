@@ -530,7 +530,10 @@
               "unit": "Tbps",
               "default": 8500
             }
-          }
+          },
+          "aliases": [
+            "main_odn"
+          ]
         }
       }
     }
@@ -641,7 +644,10 @@
           "main_core",
           "life_support"
         ],
-        "learned": true
+        "learned": true,
+        "aliases": [
+          "bio_neural_gel_packs"
+        ]
       }
     }
   }

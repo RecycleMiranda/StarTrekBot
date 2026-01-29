@@ -1138,8 +1138,6 @@ def is_group_enabled(group_id: str | None) -> bool:
     if not res:
         logger.warning(f"[Dispatcher] ACCESS DENIED: Group {group_id} REJECTED by whitelist.")
     return res
-        logger.warning(f"[Dispatcher] Group {group_id} REJECTED by whitelist.")
-    return res
 
 async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id: str, force_tool: str = None, force_args: dict = None, ops_task=None, initial_cumulative_data: list = None):
     """

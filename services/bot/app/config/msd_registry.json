@@ -290,6 +290,7 @@
         "nav_deflector": {
           "name": "Navigational Deflector",
           "aliases": [
+            "main_deflector",
             "navigation",
             "helm_control",
             "deflector"
@@ -304,6 +305,11 @@
             "particle_dispersion": {
               "unit": "%",
               "default": 100.0
+            },
+            "output": {
+              "unit": "%",
+              "default": 45.0,
+              "max": 100.0
             }
           },
           "dependencies": [
@@ -340,6 +346,11 @@
               "unit": "level",
               "default": 1,
               "max": 16
+            },
+            "ndf_ratio": {
+              "unit": "ratio",
+              "default": 0.0,
+              "nominal": 0.0
             }
           },
           "dependencies": [
@@ -442,6 +453,42 @@
         }
       }
     },
+    "utility": {
+      "display_name_en": "Utility Systems",
+      "display_name_cn": "公用设施",
+      "components": {
+        "replicators": {
+          "name": "Replicator Network",
+          "states": [
+            "ONLINE",
+            "OFFLINE",
+            "STANDBY"
+          ],
+          "default_state": "ONLINE",
+          "metrics": {
+            "efficiency": {
+              "unit": "%",
+              "default": 100.0
+            }
+          }
+        },
+        "holodecks": {
+          "name": "Holodeck Grids",
+          "states": [
+            "ACTIVE",
+            "IDLE",
+            "OFFLINE"
+          ],
+          "default_state": "IDLE",
+          "metrics": {
+            "power_state": {
+              "unit": "boolean",
+              "default": 1
+            }
+          }
+        }
+      }
+    },
     "transporters": {
       "display_name_en": "Transporter Systems",
       "display_name_cn": "\u4f20\u9001\u7cfb\u7edf",
@@ -506,6 +553,10 @@
               "default": 15.0,
               "nominal": 17.0,
               "high_res_limit": 5.0
+            },
+            "interference_penalty": {
+              "unit": "%",
+              "default": 0.0
             },
             "pulse_velocity": {
               "unit": "warp",

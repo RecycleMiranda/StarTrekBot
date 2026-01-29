@@ -34,7 +34,7 @@ class ShipSystems:
         self.component_map = {}     # Flat map: "warp_core" -> component_obj
         
         # Load the graph
-        self._load_msd_registry()
+        self._load_registry()
 
         # Legacy TIER_MAP emulation (auto-generated from graph)
         self.TIER_MAP = self._generate_tier_map()
@@ -327,21 +327,51 @@ class ShipSystems:
                  hub.broadcast(system, f"{system.upper()}_STATE", comp["current_state"])
                  hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
                  
-                 return f"Confirmed. {comp.get('name')} {metric} set to {value}. [AUTO-START] System brought ONLINE to support non-zero output."
-        
-        # ADS 6.0 Broadcast
-        hub = get_signal_hub()
-        hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
-        
+                 msg = f"Confirmed. {comp.get('name')} {metric} set to {value}. [AUTO-START] System brought ONLINE to support non-zero output."
+             else:
+                 # Fallback if no default state
+                 hub = get_signal_hub()
+                 hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
+                 msg = f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+        else:
+             # Standard Broadcast
+             hub = get_signal_hub()
+             hub.broadcast(system, f"{system.upper()}_{metric.upper()}", value)
+             msg = f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
+
         # [ADS 7.1] Physics Engine Hook
-        msg = f"Confirmed. {comp.get('name')} {metric} set to {value}{metrics[metric].get('unit','')}."
         try:
             pe = get_physics_engine()
             ctx = comp.copy()
             physics_updates = pe.recalculate(system, ctx)
-            # Apply derived updates (Simplified for metric-triggered recursion avoidance)
-             # In future, we might want a 'depth' param to prevent infinite loops
-            pass 
+            # Apply derived updates
+            if physics_updates:
+                logger.debug(f"[Physics] Received updates: {physics_updates}")
+                effect_msgs = []
+                for effect in physics_updates:
+                    eff_sys = effect.get("system")
+                    eff_met = effect.get("metric")
+                    eff_val = effect.get("value")
+                    
+                    if eff_sys and eff_met:
+                        # Direct update to avoid infinite recursion on the hook
+                        # We get the component and update the metric directly
+                        t_comp = self.get_component(eff_sys)
+                        if t_comp:
+                            if "metrics" in t_comp and eff_met in t_comp["metrics"]:
+                                 t_comp["metrics"][eff_met]["current_value"] = eff_val
+                                 effect_msgs.append(f"{eff_sys}.{eff_met}={eff_val}")
+                                 
+                                 # Broadcast the derived change
+                                 hub.broadcast(eff_sys, f"{eff_sys.upper()}_{eff_met.upper()}", eff_val)
+                            else:
+                                logger.warning(f"[Physics] Metric '{eff_met}' not found in system '{eff_sys}'")
+                        else:
+                            logger.warning(f"[Physics] System '{eff_sys}' not found")
+
+                        
+                if effect_msgs:
+                    msg += f" [PHYSICS] 衍生效应: {', '.join(effect_msgs)}"
         except Exception as e:
             logger.error(f"[ShipSystems] Physics Recalculation Error (Metric): {e}")
 
@@ -360,7 +390,7 @@ class ShipSystems:
         if name in visited: return 1.0 # Prevent recursion loops
         visited.add(name)
 
-        comp = self.get_component(name)
+        comp = self.component_map.get(name.lower())
         if not comp: return 0.0
 
         # Base Health (based on state)

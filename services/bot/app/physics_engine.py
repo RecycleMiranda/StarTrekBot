@@ -37,22 +37,25 @@ class PhysicsEngine:
         name = system_name.lower()
         
         # Dispatch logic based on system type
-        if "phaser" in name:
-            updates.extend(self._calculate_phaser_physics(context))
+        if "phaser" in name or "weapons" in name:
+            updates.extend(self._calculate_phaser_physics(system_name, context))
         elif "deflector" in name:
-            updates.extend(self._calculate_deflector_interference(context))
+            updates.extend(self._calculate_deflector_interference(system_name, context))
         elif "warp_core" in name or "reactor" in name:
-            updates.extend(self._calculate_eps_load_shedding(context))
+            updates.extend(self._calculate_eps_load_shedding(system_name, context))
         elif "comms" in name:
-            updates.extend(self._calculate_subspace_decay(context))
+            updates.extend(self._calculate_subspace_decay(system_name, context))
         elif "rcs" in name:
-            updates.extend(self._calculate_rcs_vectors(context))
+            updates.extend(self._calculate_rcs_vectors(system_name, context))
+            
+        if updates:
+            logger.debug(f"Physics Generated Updates for {name}: {updates}")
             
         return updates
 
     # --- Domain Logic Methods ---
 
-    def _calculate_phaser_physics(self, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _calculate_phaser_physics(self, sys_key: str, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         [TACT] Calculates NDF (Nuclear Disruption Force) ratio based on Phaser Level.
         Ref: TNG Technical Manual 1.6
@@ -68,28 +71,24 @@ class PhysicsEngine:
                 yield_setting = int(val)
         
         # Calculate NDF Ratio
-        # Level 1-5: 0 (Pure Thermal)
-        # Level 7: 1:1
-        # Level 16: 1:40 (High Disruption)
         ndf_ratio = 0.0
         if yield_setting >= 16:
             ndf_ratio = 40.0
         elif yield_setting >= 7:
-            # Linear interpolation between 1.0 (L7) and 40.0 (L16)
             ndf_ratio = 1.0 + (yield_setting - 7) * (39.0 / 9.0)
         
-        # Create update check (avoid infinite loops by checking diff)
+        # Create update check
         current_ndf = metrics.get("ndf_ratio", {}).get("current_value", -1)
         if abs(current_ndf - ndf_ratio) > 0.1:
             updates.append({
-                "system": ctx.get("name"),
+                "system": sys_key,
                 "metric": "ndf_ratio",
                 "value": round(ndf_ratio, 2)
             })
             
         return updates
 
-    def _calculate_deflector_interference(self, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _calculate_deflector_interference(self, sys_key: str, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         [DEFL] Calculates sensor blind spots based on Deflector output.
         Ref: TNG Technical Manual 1.25
@@ -97,7 +96,7 @@ class PhysicsEngine:
         updates = []
         metrics = ctx.get("metrics", {})
         
-        # Check power output (assume default max 100%)
+        # Check power output
         output = 0.0
         if "output" in metrics:
              output = float(metrics["output"].get("current_value", 0))
@@ -107,12 +106,9 @@ class PhysicsEngine:
         # Inteference Threshold > 55%
         interference_penalty = 0.0
         if output > 55.0:
-            # Linear penalty from 0% at 55 output to 90% at 100 output
             interference_penalty = (output - 55.0) * (90.0 / 45.0)
             
-        # Apply to LRS (Long Range Sensors)
-        # We need to know the LRS system name, assuming 'lrs' here
-        # In a real implementation, we might query the registry for 'sensors'
+        # Apply to LRS
         if interference_penalty > 0:
             updates.append({
                 "system": "lrs",
@@ -122,7 +118,7 @@ class PhysicsEngine:
             
         return updates
 
-    def _calculate_eps_load_shedding(self, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _calculate_eps_load_shedding(self, sys_key: str, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         [EPS] Triggers load shedding if Warp Core output drops critically.
         Ref: TNG Technical Manual 1.22
@@ -137,22 +133,17 @@ class PhysicsEngine:
         # Critical Thresholds
         if output < 20.0:
             # Drop Non-Essential
-            updates.append({"system": "holodecks", "metric": "power_state", "value": 0}) # 0 = OFF
+            updates.append({"system": "holodecks", "metric": "power_state", "value": 0})
             updates.append({"system": "replicators", "metric": "efficiency", "value": 0})
-        elif output < 40.0:
-            # Warning level
-            pass
             
         return updates
 
-    def _calculate_subspace_decay(self, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _calculate_subspace_decay(self, sys_key: str, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         [COMM] Calculates effective range based on subspace signal decay.
         Ref: TNG Technical Manual 1.28 (22.65 ly limit)
         """
         updates = []
-        # Nominal range is 22.65 ly at standard output
-        # If output power drops, range drops linearly
         metrics = ctx.get("metrics", {})
         
         signal_strength = 100.0
@@ -162,20 +153,13 @@ class PhysicsEngine:
         effective_range = 22.65 * (signal_strength / 100.0)
         
         updates.append({
-            "system": ctx.get("name"), # Self-update
+            "system": sys_key,
             "metric": "effective_range",
             "value": round(effective_range, 2)
         })
         return updates
 
-    def _calculate_rcs_vectors(self, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        [RCS] Adjusts thruster vectors based on saucer separation state.
-        Ref: TNG Technical Manual 1.24
-        """
-        updates = []
-        # In a full engine, we'd check the global 'saucer_sep' state
-        # For now, we simulate a self-adjustment based on a 'mode' metric if it existed
+    def _calculate_rcs_vectors(self, sys_key: str, ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
         pass
         return updates
         """Converts Cochrane field strength to multiples of c (approximate)."""

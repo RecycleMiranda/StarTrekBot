@@ -176,9 +176,9 @@ def evolve_msd_schema(system_name: str, parameter_type: str, proposed_value: str
     
     Args:
         system_name: The internal key or alias (e.g. 'warp_core')
-        parameter_type: 'new_state' or 'new_metric'
-        proposed_value: e.g. 'WARP_9.975' or 'graviton_load:mC:0.0'
-        justification: Technical reasoning from Memory Alpha/Canon.
+        parameter_type: 'new_state', 'new_metric', or 'new_component'
+        proposed_value: For states: e.g. 'WARP_9.975'. For components: A JSON string: {"key": "bio_gel_packs", "name": "Bio-Neural Gel Packs", "category": "computer_systems", "dependencies": ["main_core"]}
+        justification: Technical reasoning from Memory Alpha/Canon citing dependencies.
     """
     if clearance < 12:
         return {"ok": False, "message": "Access Denied: Schema Evolution requires Level 12 clearance."}

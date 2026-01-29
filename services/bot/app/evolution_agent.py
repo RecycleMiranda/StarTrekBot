@@ -136,12 +136,12 @@ RETURN FORMAT (JSON ONLY):
         except Exception as e:
             return {"ok": False, "message": f"Registry Load Failed: {e}"}
 
-        # 3. Locate Component (Reuse logic conceptually or just do a quick traverse helper)
-        # For simplicity, we assume system_name matches a key in component_map logic
-        # We need to find the definition in the JSON tree.
-        target_node = self._find_node_recursive(registry, system_name)
-        if not target_node:
-             return {"ok": False, "message": f"System '{system_name}' not found in registry topology."}
+        # 3. Locate Component (if not adding a new one)
+        target_node = None
+        if parameter_type != "new_component":
+            target_node = self._find_node_recursive(registry, system_name)
+            if not target_node:
+                 return {"ok": False, "message": f"System '{system_name}' not found in registry topology."}
              
         # 4. Apply Mutation
         change_log = ""
@@ -161,6 +161,44 @@ RETURN FORMAT (JSON ONLY):
                 change_log = f"Added metric: {m_name} ({m_unit})"
             except ValueError:
                 return {"ok": False, "message": "Format error. Use 'name:unit:default' for new metrics."}
+
+        elif parameter_type == "new_component":
+            # Expecting proposed_value as a JSON string with full component spec
+            try:
+                new_comp = json.loads(proposed_value)
+                category = new_comp.get("category", "learned_systems")
+                comp_key = new_comp.get("key") or system_name.lower().replace(" ", "_")
+                
+                if not comp_key:
+                    return {"ok": False, "message": "Missing 'key' for new component."}
+
+                # Organize into groups
+                if category not in registry:
+                    registry[category] = {
+                        "display_name_en": category.replace("_", " ").title(),
+                        "display_name_cn": f"新发现系统 ({category})",
+                        "components": {}
+                    }
+                
+                group = registry[category]
+                if "components" not in group: group["components"] = {}
+                
+                if comp_key in group["components"]:
+                    return {"ok": True, "message": f"Component '{comp_key}' already exists in {category}."}
+                
+                # Construct the component definition
+                group["components"][comp_key] = {
+                    "name": new_comp.get("name") or system_name,
+                    "states": new_comp.get("states", ["OFFLINE", "ONLINE"]),
+                    "default_state": new_comp.get("default_state", "ONLINE"),
+                    "metrics": new_comp.get("metrics", {}),
+                    "dependencies": new_comp.get("dependencies", ["eps_grid"]),
+                    "learned": True
+                }
+                change_log = f"Expanded Registry: Integrated '{comp_key}' into '{category}' path."
+                
+            except json.JSONDecodeError:
+                return {"ok": False, "message": "Format error. 'new_component' requires a valid JSON string payload."}
         
         else:
              return {"ok": False, "message": f"Unknown evolution type: {parameter_type}"}

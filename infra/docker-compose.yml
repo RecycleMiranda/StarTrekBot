@@ -28,7 +28,8 @@ services:
     volumes:
       - ./napcat/config:/app/napcat/config
     ports:
-      - "6099:6099" # Keep 6099 open for legacy or backup access
+      - "6099:6099" # WebUI & Management API
+      - "3000:3000" # OneBot 11 HTTP API
     networks:
       - trek-net
 

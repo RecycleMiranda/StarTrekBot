@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
     "tencent_secret_key": os.getenv("TENCENT_SECRET_KEY", ""),
     # NapCat Proxy Settings
     "napcat_host": os.getenv("NAPCAT_HOST", "napcat"),
-    "napcat_port": int(os.getenv("NAPCAT_PORT", "6099")),
+    "napcat_port": int(os.getenv("NAPCAT_PORT", "3000")),
     "napcat_token": os.getenv("NAPCAT_TOKEN", ""), # WebUI logbin token
 }
 

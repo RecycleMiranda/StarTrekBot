@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('gemini_api_key').value = data.gemini_api_key || '';
                 document.getElementById('moderation_enabled').value = String(data.moderation_enabled);
                 document.getElementById('moderation_provider').value = data.moderation_provider || 'local';
+                document.getElementById('sender_type').value = data.sender_type || 'mock';
                 document.getElementById('napcat_port').value = data.napcat_port || '';
                 document.getElementById('napcat_token').value = data.napcat_token || '';
 
@@ -90,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             gemini_api_key: document.getElementById('gemini_api_key').value,
             moderation_enabled: document.getElementById('moderation_enabled').value === 'true',
             moderation_provider: document.getElementById('moderation_provider').value,
+            sender_type: document.getElementById('sender_type').value,
             napcat_port: parseInt(document.getElementById('napcat_port').value),
             napcat_token: document.getElementById('napcat_token').value
         };

@@ -4,32 +4,15 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0xD2BF | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-28 15:44:15
-- **错误信息**: `discover_subsystem_alias() missing 1 required positional argument: 'unknown_term'`
-- **原始指令**: `计算机，分析当前所有子系统的别名映射表 (Subsystem Alias Table)`
-- **AI 诊断**: The `discover_subsystem_alias` function was called without the required `unknown_term` argument, leading to a `TypeError`. This indicates a problem in how the tool is being invoked within the `Dispatcher.AgenticLoop` component.
+### ERR-0xEA4B | Dispatcher.handle_event
+- **发生时间**: 2026-01-29 07:28:18
+- **错误信息**: `name 'tools' is not defined`
+- **原始指令**: `计算机，分析目前舰上有多少名 8 级以上权限的军官`
+- **AI 诊断**: Failed to analyze fault via AI Brain.
 - **建议方案**:
 
 ```diff
-```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
-@@ -1026,7 +1026,12 @@
-         if isinstance(func, types.FunctionType):
-             try:
-                 # Execute the tool function
--                result = func(**args)
-+                if 'unknown_term' not in args and func.__name__ == 'discover_subsystem_alias':
-+                    print("WARNING: discover_subsystem_alias called without unknown_term. Providing a default value.")
-+                    result = func(unknown_term=None, **args) # Or some other appropriate default
-+                else:
-+                    result = func(**args)
-+                
-                 # Handle async functions
-                 if isinstance(result, Awaitable):
-                     result = await result
-```
+# ERROR: Diagnostic Subroutine Offline
 ```
 
 ---

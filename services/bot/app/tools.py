@@ -141,6 +141,12 @@ def get_subsystem_status(name: str) -> dict:
     name = normalize_subsystem_name(name)
     
     comp = ss.get_component(name)
+    if not comp:
+        # ADS 4.0: Self-Adaptive Discovery Fallback
+        discovery = discover_subsystem_alias(original_name)
+        if discovery.get("ok"):
+            comp = ss.get_component(discovery["mapped_to"])
+    
     if comp:
         state = comp.get("current_state", "UNKNOWN")
         metrics = []
@@ -1658,6 +1664,13 @@ def set_subsystem(name: str, state_val: str, clearance: int = 1) -> dict:
     name = normalize_subsystem_name(name)
     msg = ss.set_subsystem(name, state_val) # This handles the MSD logic
     
+    if "找不到组件" in msg or "not found" in msg.lower():
+         # ADS 4.0: Self-Adaptive Discovery Fallback
+         discovery = discover_subsystem_alias(name)
+         if discovery.get("ok"):
+             msg = ss.set_subsystem(discovery["mapped_to"], state_val)
+             msg = f"Learning active... {msg}"
+    
     return {"ok": True, "message": msg}
 
 def set_subsystem_state(name: str, state_str: str, clearance: int) -> dict:
@@ -1855,70 +1868,65 @@ def audit_clear_fault(fault_id: str, clearance: int) -> dict:
 
 def discover_subsystem_alias(unknown_term: str, context_hint: str = "") -> dict:
     """
-    ADS 2.5: Deep Semantic Discovery.
-    Analyzes an unknown term, queries the Federation DB, and maps it to a local subsystem.
-    Usage: "Target unknown: Intermix Chamber. Context: Power regulation."
+    ADS 4.0: Adaptive Self-Healing.
+    Uses Neural Engine to map unknown terms to MSD components.
     """
     from .ship_systems import get_ship_systems
+    from . import rp_engine_gemini
     ss = get_ship_systems()
     
-    # 1. Check local knowledge base for technical definition (Mocked search logic)
-    definition = f"Star Trek Technical Manual entry: {unknown_term} is frequently associated with power generation or propulsion systems."
-    if "intermix" in unknown_term.lower() or "chamber" in unknown_term.lower():
-        mapping_suggestion = "main_reactor"
-        confidence = 0.92
-    elif "nacelle" in unknown_term.lower():
-        mapping_suggestion = "warp_drive"
-        confidence = 0.95
-    else:
-        # Fallback to AI-driven fuzzy match against TIER_MAP keys
-        keys = list(ss.TIER_MAP.keys())
-        mapping_suggestion = "main_reactor" # Default for discovery demo
-        confidence = 0.60
-
-    if confidence > 0.80:
-        # 2. Persist to Alias Registry
+    # Get valid keys for the AI to choose from
+    valid_keys = list(ss.component_map.keys())
+    # Filter out common short aliases to reduce noise
+    valid_keys = [k for k in valid_keys if len(k) > 2]
+    
+    mapping_suggestion = rp_engine_gemini.verify_semantic_mapping(unknown_term, valid_keys)
+    
+    if mapping_suggestion:
+        logger.info(f"[Discovery] Mapped '{unknown_term}' -> '{mapping_suggestion}'")
+        
+        # 2. Persist to MSD Registry directly (Learning Mode)
         try:
-            alias_file = os.path.join(os.path.dirname(__file__), "config", "subsystem_aliases.json")
-            data = {"aliases": {}, "discovery_audit": []}
-            if os.path.exists(alias_file):
-                with open(alias_file, "r") as f:
-                    data = json.load(f)
+            reg_path = os.path.join(os.path.dirname(__file__), "config", "msd_registry.json")
+            if os.path.exists(reg_path):
+                with open(reg_path, "r") as f:
+                    registry = json.load(f)
+                
+                # Find the component in the registry tree to add as an alias
+                # We reuse the recursive logic to find where mapping_suggestion is
+                found = _add_alias_to_registry(registry, mapping_suggestion, unknown_term.lower().replace(" ", "_"))
+                
+                if found:
+                    with open(reg_path, "w") as f:
+                        json.dump(registry, f, indent=2)
+                    
+                    # Refresh active instance
+                    ss._load_msd_registry()
             
-            data["aliases"][unknown_term.lower().replace(" ", "_")] = mapping_suggestion
-            data["discovery_audit"].append({
-                "term": unknown_term,
-                "mapped_to": mapping_suggestion,
-                "confidence": confidence,
-                "timestamp": time.time()
-            })
-            
-            with open(alias_file, "w") as f:
-                json.dump(data, f, indent=2)
-            
-            # 3. GIT SYNC (ADS 2.5)
-            try:
-                from .repair_tools import git_sync_changes
-                git_msg = f"ADS 2.5: Auto-discovery alias '{unknown_term}' -> '{mapping_suggestion}'"
-                git_res = git_sync_changes(Path(alias_file), git_msg)
-                logger.info(f"[ADS] Git Sync: {git_res.get('message')}")
-            except Exception as e:
-                logger.warning(f"[ADS] Git Sync failed (Local persistence only): {e}")
-
-            logger.info(f"[ADS] Semantic Discovery Successful: '{unknown_term}' -> '{mapping_suggestion}'")
             return {
-                "ok": True,
-                "mapped_to": mapping_suggestion,
-                "confidence": confidence,
-                "message": f"语义自愈成功：已确认术语 '{unknown_term}' 对应底层子系统 '{mapping_suggestion}'。别名库已更新。"
+                "ok": True, 
+                "message": f"System learned: '{unknown_term}' is now mapped to {mapping_suggestion}.",
+                "mapped_to": mapping_suggestion
             }
         except Exception as e:
-            return {"ok": False, "message": f"Discovery failed during persistence: {e}"}
-            
-    return {
-        "ok": False,
-        "message": f"Analysis inconclusive for {unknown_term}. Confidence ({confidence}) below threshold."
-    }
+            logger.error(f"Failed to persist learned alias: {e}")
+            return {"ok": True, "mapped_to": mapping_suggestion}
+
+    return {"ok": False, "message": f"Unable to find logical mapping for '{unknown_term}'."}
+
+def _add_alias_to_registry(node: dict, target_key: str, new_alias: str) -> bool:
+    """Helper to inject new alias into the JSON tree."""
+    for key, value in node.items():
+        if key == target_key and isinstance(value, dict):
+            if "aliases" not in value: value["aliases"] = []
+            if new_alias not in value["aliases"]:
+                value["aliases"].append(new_alias)
+            return True
+        if isinstance(value, dict):
+            if "components" in value:
+                if _add_alias_to_registry(value["components"], target_key, new_alias): return True
+            elif _add_alias_to_registry(value, target_key, new_alias): return True
+    return False
 
 def trigger_ads_test(clearance: int, **kwargs) -> dict:
     """

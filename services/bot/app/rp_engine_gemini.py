@@ -318,6 +318,46 @@ def generate_escalated_reply(trigger_text: str, is_chinese: bool, model_name: Op
         logger.exception("Escalation failed")
         return _fallback(str(e))
 
+def verify_semantic_mapping(unknown_term: str, valid_components: List[str]) -> Optional[str]:
+    """
+    ADS 4.0: Adaptive Self-Healing.
+    Uses AI to map an unknown term to a valid MSD component.
+    """
+    logger.info(f"[NeuralEngine] Attempting semantic discovery for: {unknown_term}")
+    
+    sys_instruction = (
+        "You are the Starship LCARS Semantic Discovery Engine.\n"
+        "Your task is to map an unknown user term to the most likely official ship subsystem.\n"
+        "Return the result in JSON format: {\"mapped_to\": \"component_key\", \"confidence\": 0.0-1.0}\n"
+        "If no logical mapping exists, return null for mapped_to."
+    )
+    
+    prompt = (
+        f"Unknown Term: \"{unknown_term}\"\n"
+        f"Valid Official Components: {valid_components}\n\n"
+        "Select the best match based on Star Trek engineering logic."
+    )
+    
+    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    
+    raw_text = _call_gemini_rest_api(
+        contents=contents,
+        system_instruction=sys_instruction,
+        max_tokens=200,
+        json_mode=True
+    )
+    
+    if not raw_text:
+        return None
+        
+    try:
+        data = json.loads(raw_text)
+        if data.get("confidence", 0) > 0.7:
+             return data.get("mapped_to")
+    except:
+        pass
+    return None
+
 def render_lcars_blueprint(data: dict) -> str:
     """
     Renders a JSON LCARS blueprint into a beautiful Star Trek style text report.

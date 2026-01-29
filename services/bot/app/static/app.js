@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             saveBtn.disabled = true;
+            console.log("Saving config:", config);
             const resp = await fetch(`/api/settings?token=${token}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -105,11 +106,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             const json = await resp.json();
             if (json.code === 0) {
-                showStatus('✅ 配置已同步', 'success');
+                showStatus(`✅ 配置已同步 (模式: ${config.sender_type})`, 'success');
+                alert(`设置保存成功！当前发送模式：${config.sender_type}\n注意：切换模式后必须在服务器重启机器人。`);
                 updateStatusCards(config);
+            } else {
+                showStatus(`❌ 存储失败: ${json.message}`, 'error');
+                alert("存储失败: " + json.message);
             }
         } catch (e) {
-            showStatus('❌ 存储失败', 'error');
+            console.error("Save error:", e);
+            showStatus('❌ 存储异常：检查网络连接', 'error');
+            alert("存储异常: " + e.message);
         } finally {
             saveBtn.disabled = false;
         }

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>星舰全舰指挥中心 - Unified Command Hub</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=1.1">
     <style>
         /* Panel switching styles */
         .panel {
@@ -112,13 +112,17 @@
                                 <option value="true">启用</option>
                             </select>
                         </div>
-                        <div class="field-group">
-                            <label>发送者模式 (SENDER_TYPE)</label>
-                            <select id="sender_type">
-                                <option value="mock">模拟发送 (Mock)</option>
-                                <option value="qq">真实 QQ (QQSender)</option>
-                            </select>
-                        </div>
+                    </div>
+
+                    <div class="field-group"
+                        style="border: 1px solid var(--lcars-blue); padding: 15px; border-radius: 4px; background: rgba(50, 98, 149, 0.1);">
+                        <label style="color: #fff; font-size: 0.9rem;">重点：通讯发送模式 (SENDER_TYPE)</label>
+                        <p style="font-size: 0.7rem; color: #75a2d1; margin-bottom: 10px;">选择 '真实 QQ' 以实现群聊回复。选择 '模拟发送'
+                            仅限调试。</p>
+                        <select id="sender_type" style="border-width: 2px; border-color: var(--lcars-teal);">
+                            <option value="mock">模拟发送 (Mock Mode)</option>
+                            <option value="qq">真实 QQ (QQSender Adapter)</option>
+                        </select>
                     </div>
 
                     <div class="st-line header-small"></div>
@@ -162,7 +166,7 @@
             </section>
         </main>
     </div>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=1.1"></script>
 </body>
 
 </html>

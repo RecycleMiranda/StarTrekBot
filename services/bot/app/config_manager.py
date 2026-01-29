@@ -65,6 +65,9 @@ class ConfigManager:
             if k_lower in defaults_lower:
                 actual_key = defaults_lower[k_lower]
                 self._config[actual_key] = v
+                logger.info(f"[Config] Updated key '{actual_key}' to '{v}'")
+            else:
+                logger.warning(f"[Config] Attempted to save unknown key '{k}'")
         
         try:
             os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)

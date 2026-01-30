@@ -1,15 +1,20 @@
 :root {
-    /* Starfleet Master Palette (2401 Era) */
-    --lcars-orange: #f90;
-    --lcars-gold: #c9c;
-    --lcars-blue: #369;
-    --lcars-teal: #69c;
-    --lcars-apricot: #f96;
-    --lcars-red: #c33;
-    --lcars-bg: #000;
-    --lcars-card-bg: rgba(20, 30, 48, 0.4);
+    /* Starfleet Master Palette (2401 Era - Picard Style) */
+    --lcars-orange: #ff9d00;
+    --lcars-gold: #ffcc66;
+    --lcars-blue: #3366cc;
+    --lcars-teal: #00ccff;
+    --lcars-apricot: #ff9966;
+    --lcars-red: #cc3333;
+    --lcars-indigo: #445588;
+    --lcars-light-blue: #aaccff;
+    --lcars-bg: #00050a;
+    --lcars-card-bg: rgba(20, 35, 55, 0.6);
     --lcars-accent: #75a2d1;
     --lcars-font: 'Outfit', 'Segoe UI', sans-serif;
+    --lcars-text: #e0f0ff;
+    --lcars-success: #33cc33;
+    --lcars-danger: #ff3333;
 }
 
 body {
@@ -112,28 +117,37 @@ body {
     margin: 0 0 10px 0;
     text-transform: uppercase;
     letter-spacing: 2px;
+    font-weight: 800;
+    text-shadow: 0 0 10px rgba(0, 204, 255, 0.4);
 }
 
 .st-line {
     height: 6px;
-    background: linear-gradient(90deg, var(--lcars-blue), transparent);
+    background: linear-gradient(90deg, var(--lcars-blue) 0%, var(--lcars-teal) 50%, transparent 100%);
     margin-bottom: 30px;
+    border-radius: 3px;
+    box-shadow: 0 0 8px rgba(51, 102, 204, 0.5);
 }
 
 .config-panel {
-    background: rgba(30, 45, 65, 0.2);
-    border: 1px solid rgba(117, 162, 209, 0.1);
-    backdrop-filter: blur(10px);
-    padding: 25px;
+    background: rgba(10, 20, 35, 0.7);
+    /* Darker, more solid background */
+    border: 1px solid var(--lcars-blue);
+    backdrop-filter: blur(20px);
+    padding: 30px;
     border-radius: 4px;
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
+    margin-bottom: 20px;
 }
 
 h2 {
-    font-size: 1.1rem;
-    color: var(--lcars-accent);
-    margin: 25px 0 15px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 5px;
+    font-size: 1.2rem;
+    color: var(--lcars-teal);
+    margin: 30px 0 20px 0;
+    border-bottom: 2px solid var(--lcars-blue);
+    padding-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
 }
 
 .field-group {
@@ -142,24 +156,28 @@ h2 {
 
 label {
     display: block;
-    color: var(--lcars-teal);
-    font-size: 0.75rem;
-    margin-bottom: 6px;
+    color: var(--lcars-gold);
+    /* Golden/Orange for high contrast against blue/black */
+    font-size: 0.8rem;
+    margin-bottom: 8px;
     text-transform: uppercase;
-    font-weight: bold;
+    font-weight: 700;
+    letter-spacing: 1px;
 }
 
 input,
 select,
 textarea {
     width: 100%;
-    background: #0d1520;
-    border: 1px solid var(--lcars-blue);
+    background: rgba(13, 21, 32, 0.8);
+    border: 1.5px solid var(--lcars-blue);
     color: white;
-    padding: 10px;
-    border-radius: 30px;
-    font-size: 0.9rem;
+    padding: 12px 15px;
+    border-radius: 4px;
+    /* More standard for desktop forms than 30px pills */
+    font-size: 0.95rem;
     box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 input:focus {
@@ -189,14 +207,18 @@ input:focus {
 }
 
 .status-card h3 {
-    font-size: 0.8rem;
-    color: var(--lcars-teal);
-    margin: 0 0 8px 0;
+    font-size: 0.85rem;
+    color: var(--lcars-gold);
+    /* Brighter titles */
+    margin: 0 0 10px 0;
+    text-transform: uppercase;
 }
 
 .status-card p {
-    font-size: 1.2rem;
-    font-weight: 300;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0;
 }
 
 .log-window {
@@ -246,9 +268,17 @@ input:focus {
     font-size: 0.9rem;
 }
 
-.success { color: var(--lcars-success); }
-.error { color: var(--lcars-danger); }
-.warning { color: var(--lcars-orange); }
+.success {
+    color: var(--lcars-success);
+}
+
+.error {
+    color: var(--lcars-danger);
+}
+
+.warning {
+    color: var(--lcars-orange);
+}
 
 /* --- PHASE 10: PREMIUM LCARS ADDITIONS --- */
 .glass-panel {
@@ -287,14 +317,35 @@ input:focus {
     text-transform: uppercase;
 }
 
-.status-online { background: #3c3; color: #000; box-shadow: 0 0 10px #3c3; }
-.status-offline { background: #666; color: #fff; }
-.status-hazard { background: #f33; color: #fff; animation: pulse-red 1s infinite; }
+.status-online {
+    background: #3c3;
+    color: #000;
+    box-shadow: 0 0 10px #3c3;
+}
+
+.status-offline {
+    background: #666;
+    color: #fff;
+}
+
+.status-hazard {
+    background: #f33;
+    color: #fff;
+    animation: pulse-red 1s infinite;
+}
 
 @keyframes pulse-red {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+
+    100% {
+        opacity: 1;
+    }
 }
 
 .sop-card {
@@ -308,13 +359,26 @@ input:focus {
     margin-top: 15px;
 }
 
-.btn-approve { background: var(--lcars-blue) !important; color: #fff !important; }
-.btn-reject { background: var(--lcars-red) !important; color: #fff !important; }
+.btn-approve {
+    background: var(--lcars-blue) !important;
+    color: #fff !important;
+}
+
+.btn-reject {
+    background: var(--lcars-red) !important;
+    color: #fff !important;
+}
 
 /* Responsive adjustments */
 @media (max-width: 900px) {
-    .lcars-container { flex-direction: column; }
-    .sidebar { width: 100%; height: auto; }
+    .lcars-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+    }
 }
 
 /* Sentinel Matrix Enhancements */
@@ -362,8 +426,13 @@ input:focus {
     border: 1px solid #1b264f;
 }
 
-.logic-if { color: #f0c674; }
-.logic-then { color: #b5bd68; }
+.logic-if {
+    color: #f0c674;
+}
+
+.logic-then {
+    color: #b5bd68;
+}
 
 .sentinel-stats {
     display: flex;

@@ -14,6 +14,22 @@ def get_odn_snapshot(session_id: str, user_profile: dict = None) -> Dict[str, An
     from .signal_hub import get_signal_hub
     from .environment_manager import get_environment_manager
     ss = get_ship_systems()
+
+    def _safe_get_metric(sys_name: str, metric_key: str, default_val: Any) -> Any:
+        try:
+            comp = ss.get_component(sys_name)
+            if not comp: return default_val
+            m_data = comp.get("metrics", {}).get(metric_key, {})
+            return m_data.get("current_value", m_data.get("default", default_val))
+        except:
+            return default_val
+
+    def _safe_get_state(sys_name: str, default_state: str = "UNKNOWN") -> str:
+        try:
+            comp = ss.get_component(sys_name)
+            return comp.get("current_state", default_state) if comp else default_state
+        except:
+            return default_state
     
     snapshot = {
         "timestamp": datetime.datetime.now().isoformat(),
@@ -26,23 +42,23 @@ def get_odn_snapshot(session_id: str, user_profile: dict = None) -> Dict[str, An
         },
         "ship_status": {
             "power": {
-                "warp_core_output": f"{ss.get_component('warp_core')['metrics']['output'].get('current_value', 98.4):.1f}%",
+                "warp_core_output": f"{_safe_get_metric('warp_core', 'output', 98.4):.1f}%",
                 "warp_core_eff": f"{ss.get_subsystem_efficiency('warp_core'):.2f}",
-                "fuel_reserves": f"{ss.get_component('batteries')['metrics']['charge_level'].get('current_value', 100.0):.1f}%",
-                "eps_grid": ss.get_component("eps_grid")["current_state"]
+                "fuel_reserves": f"{_safe_get_metric('batteries', 'charge_level', 100.0):.1f}%",
+                "eps_grid": _safe_get_state("eps_grid", "STABLE")
             },
             "defense": {
-                "shields_active": ss.get_component("shields")["current_state"] == "UP",
+                "shields_active": _safe_get_state("shields") == "UP",
                 "shield_eff": f"{ss.get_subsystem_efficiency('shields'):.2f}",
-                "shield_integrity": f"{ss.get_component('shields')['metrics']['integrity'].get('current_value', 100.0):.1f}%",
-                "weapons_status": ss.get_component("phasers")["current_state"],
+                "shield_integrity": f"{_safe_get_metric('shields', 'integrity', 100.0):.1f}%",
+                "weapons_status": _safe_get_state("phasers", "OFFLINE"),
                 "weapons_eff": f"{ss.get_subsystem_efficiency('phasers'):.2f}"
             },
             "hull": {
-                "integrity": f"{ss.get_component('sif')['metrics']['field_density'].get('current_value', 100.0):.1f}%",
-                "structural_integrity_field": ss.get_component("sif")["current_state"]
+                "integrity": f"{_safe_get_metric('sif', 'field_density', 100.0):.1f}%",
+                "structural_integrity_field": _safe_get_state("sif", "NOMINAL")
             },
-            "life_support": ss.get_component("life_support")["current_state"],
+            "life_support": _safe_get_state("life_support", "NOMINAL"),
             "casualties": "0" 
         },
         "subsystems": {

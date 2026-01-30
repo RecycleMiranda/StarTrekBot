@@ -36,21 +36,52 @@ class GitLogistics:
                     print(f"Git Notice: Permission denied on some files (likely .env.example). Proceeding.")
                 else:
                     print(f"Git Error ({args}): {result.stderr}")
+                    # ADS 10.1: Report to DiagnosticManager if possible
+                    self._report_git_fault(args, result.stderr)
             return result.stdout if capture else result.returncode
         except Exception as e:
             print(f"Subprocess Error: {e}")
             return None
 
+    def _report_git_fault(self, args: list, err: str):
+        """Attempts to notify the DiagnosticManager of a sync failure."""
+        try:
+            # We use a simple sentinel file to trigger ADS if we are on the server
+            fault_report = os.path.join(self.repo_path, "services", "bot", "app", "git_fault.json")
+            with open(fault_report, "w") as f:
+                json.dump({
+                    "timestamp": datetime.now().isoformat(),
+                    "command": args,
+                    "error": err,
+                    "status": "UNSYNCED"
+                }, f)
+        except:
+            pass
+
     def pull_all(self):
         print(">>> EXECUTING MASTER PULL PROTOCOL")
+        # Check for dirty worktree that might block merge
+        status = self.run_git(["status", "--porcelain"])
+        if status and status.strip():
+            print("WARNING: Local changes detected. Attempting to stash before pull.")
+            self.run_git(["stash"])
+
         self.run_git(["fetch", "--all"])
         print("Updating 'main'...")
         self.run_git(["checkout", "main"])
         self.run_git(["pull", "origin", "main", "--no-verify"])
+        
         print("Updating 'logs'...")
         self.run_git(["checkout", "logs"])
         self.run_git(["pull", "origin", "logs", "--no-verify"])
+        
         self.run_git(["checkout", "main"])
+        
+        # Restore stash if needed
+        if status and status.strip():
+            print("Restoring local changes from stash...")
+            self.run_git(["stash", "pop"])
+            
         print(">>> MASTER PULL COMPLETE.")
 
     def sync_to_logs_branch(self):

@@ -130,7 +130,6 @@ def get_status(scope: str = "all", depth: str = "full", **kwargs) -> dict:
             "status": "MONITORING" if SentinelRegistry.get_instance().get_active_triggers() else "STANDBY"
         }
     }
-    }
 
 def normalize_subsystem_name(name: str) -> str:
     """Normalizes variations of subsystem names (e.g. Holodeck 1 -> holodecks)."""

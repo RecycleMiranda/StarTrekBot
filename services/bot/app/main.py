@@ -604,6 +604,66 @@ async def post_route_feedback(request: Request):
 
 # --- Settings & Admin API ---
 
+@app.get("/api/v1/lcars/msd")
+async def get_lcars_msd(token: str = None):
+    """Returns the full tree of MSD systems and their metrics."""
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    from .ship_systems import get_ship_systems
+    ss = get_ship_systems()
+    return {"code": 0, "message": "ok", "data": ss.get_full_manifest()}
+
+@app.get("/api/v1/lcars/sop")
+async def list_lcars_sops(token: str = None):
+    """Returns all learned (DRAFT) SOPs for review."""
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    from .sop_manager import get_sop_manager
+    sm = get_sop_manager()
+    return {"code": 0, "message": "ok", "data": sm.cache.get("learned_procedures", {})}
+
+@app.post("/api/v1/lcars/sop/approve")
+async def approve_lcars_sop(request: Request, token: str = None):
+    """Approves a DRAFT SOP and moves it to system_defaults."""
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    
+    body = await request.json()
+    query = body.get("query")
+    
+    from .sop_manager import get_sop_manager
+    sm = get_sop_manager()
+    
+    learned = sm.cache.get("learned_procedures", {})
+    if query in learned:
+        sop = learned.pop(query)
+        sop["status"] = "APPROVED"
+        sop["confidence"] = 1.0
+        
+        # Add to system_defaults with a clean ID
+        intent_id = sop.get("intent_id", f"APPROVED_{int(time.time())}")
+        sm.cache.setdefault("system_defaults", {})[intent_id] = {
+            "trigger": [query],
+            "tool_chain": sop["tool_chain"],
+            "intent_id": intent_id,
+            "confidence": 1.0
+        }
+        sm._save_cache()
+        return {"code": 0, "message": "SOP approved into fleet protocols"}
+    
+    return {"code": 404, "message": "SOP draft not found"}
+
+@app.get("/api/v1/lcars/faults")
+async def get_lcars_faults(token: str = None):
+    """Returns all active faults from the DiagnosticManager."""
+    if not _get_verified_token(token):
+        return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized"})
+    from .diagnostic_manager import get_diagnostic_manager
+    dm = get_diagnostic_manager()
+    # Simplified manifest for UI scan
+    return {"code": 0, "message": "ok", "data": dm.active_faults}
+
+
 @app.get("/api/settings")
 async def get_settings(token: str = None):
     if not _get_verified_token(token):

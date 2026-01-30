@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const titles = {
         bridge: "STARSHIP BRIDGE - 实时状态",
+        msd: "MASTER SYSTEMS DISPLAY - 实时诊断",
+        sops: "SOP LEARNING DOCK - 规程核准终端",
         navigation: "STARSHIP NAVIGATION - QQ 身份验证",
         engineering: "ENGINEERING BAY - 核心配置",
         sentinel: "S.E.S.M. SENTINEL - 自主逻辑流控中心",
@@ -32,6 +34,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (target === 'navigation') fetchQR();
             if (target === 'sentinel') fetchSentinelData();
+            if (target === 'msd') fetchMSDData();
+            if (target === 'sops') fetchSOPData();
+            if (target === 'bridge') fetchFaults();
         });
     });
 
@@ -158,16 +163,117 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Auto-refresh for bridge and sentinel panels
+    async function fetchMSDData() {
+        const container = document.getElementById('msd-container');
+        try {
+            const resp = await fetch(`/api/v1/lcars/msd?token=${token}`);
+            const json = await resp.json();
+            if (json.code === 0 && json.data) {
+                container.innerHTML = Object.entries(json.data).map(([catId, cat]) => `
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="color:var(--lcars-gold); font-size: 0.8rem; border-bottom: 1px solid rgba(255,153,0,0.3);">${cat.display_name_en} (${cat.display_name_cn})</h3>
+                        ${Object.entries(cat.components || {}).map(([compId, comp]) => `
+                            <div class="msd-node">
+                                <span>${comp.name}</span>
+                                <span class="status-indicator ${comp.state === 'OFFLINE' ? 'status-offline' : (comp.state === 'HAZARD' ? 'status-hazard' : 'status-online')}">
+                                    ${comp.state}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `).join('');
+            }
+        } catch (e) {
+            console.error('MSD Sync Failure', e);
+        }
+    }
+
+    async function fetchSOPData() {
+        const list = document.getElementById('sop-list');
+        try {
+            const resp = await fetch(`/api/v1/lcars/sop?token=${token}`);
+            const json = await resp.json();
+            if (json.code === 0 && json.data) {
+                const sops = Object.entries(json.data);
+                if (sops.length === 0) {
+                    list.innerHTML = '<p style="opacity:0.5;">没有待核准的 DRAFT 规程。</p>';
+                    return;
+                }
+                list.innerHTML = sops.map(([query, sop]) => `
+                    <div class="glass-panel sop-card">
+                        <div style="font-size: 0.7rem; color: var(--lcars-teal);">NEURAL INFERENCE | ID: ${sop.intent_id}</div>
+                        <div style="font-weight: bold; margin: 10px 0;">指令: "${query}"</div>
+                        <div style="font-family: monospace; font-size: 0.8rem; background:rgba(0,0,0,0.3); padding: 10px;">
+                            ${sop.tool_chain.map(step => `&gt; Execute ${step.tool}(${JSON.stringify(step.args)})`).join('<br>')}
+                        </div>
+                        <div class="action-bar">
+                            <button class="st-btn btn-approve" onclick="window.approveSOP('${query}')">核准进入协议 (APPROVE)</button>
+                            <button class="st-btn btn-reject">忽略 (IGNORE)</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (e) {
+            console.error('SOP Retrieval Failure', e);
+        }
+    }
+
+    window.approveSOP = async (query) => {
+        try {
+            const resp = await fetch(`/api/v1/lcars/sop/approve?token=${token}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+            const json = await resp.json();
+            if (json.code === 0) {
+                alert("规程已成功核准并在子空间缓存生效。");
+                fetchSOPData();
+            }
+        } catch (e) {
+            alert("Approve failed: " + e.message);
+        }
+    };
+
+    async function fetchFaults() {
+        const faultsList = document.getElementById('faults-list');
+        const alertLevel = document.getElementById('alert-level');
+        const alertCard = document.getElementById('alert-card');
+        try {
+            const resp = await fetch(`/api/v1/lcars/faults?token=${token}`);
+            const json = await resp.json();
+            if (json.code === 0 && json.data) {
+                const faults = Object.entries(json.data);
+                if (faults.length === 0) {
+                    faultsList.innerHTML = '<span style="color:var(--lcars-success);">[ NOMINAL ] 未检测到活跃故障。</span>';
+                    alertLevel.textContent = "GREEN ALERT";
+                    alertCard.style.borderLeftColor = "var(--lcars-teal)";
+                } else {
+                    faultsList.innerHTML = faults.map(([id, f]) => `
+                        <div style="margin-bottom: 5px; color: var(--lcars-red);">
+                            [!] ${f.subsystem || 'SYS'}: ${f.error_msg} (${f.timestamp})
+                        </div>
+                    `).join('');
+                    alertLevel.textContent = "RED ALERT";
+                    alertCard.style.borderLeftColor = "var(--lcars-red)";
+                }
+            }
+        } catch (e) {
+            console.error('Fault Scan Failure', e);
+        }
+    }
+
+    // Auto-refresh loop
     setInterval(() => {
         const activePanel = document.querySelector('.panel.active');
-        if (activePanel && activePanel.id === 'sentinel') {
-            fetchSentinelData();
-        }
-        if (activePanel && activePanel.id === 'bridge') {
-            // In future, update real-time bridge status here
-        }
-    }, 5000);
+        if (!activePanel) return;
+
+        const id = activePanel.id;
+        if (id === 'sentinel') fetchSentinelData();
+        if (id === 'msd') fetchMSDData();
+        if (id === 'sops') fetchSOPData();
+        if (id === 'bridge') fetchFaults();
+    }, 4000);
 
     function showStatus(msg, type) {
         statusMsg.textContent = msg;

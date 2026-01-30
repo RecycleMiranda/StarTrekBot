@@ -254,9 +254,11 @@ def generate_computer_reply(trigger_text: str, context: List[Dict], meta: Option
                 cumulative_context += f"\nCUMULATIVE AGENT/ACTION DATA:\n{meta['cumulative_data']}\n"
             if "odn_snapshot" in meta:
                 cumulative_context += f"\n{meta['odn_snapshot']}\n"
+            if "situational_directive" in meta:
+                cumulative_context += f"\n{meta['situational_directive']}\n"
         
         if cumulative_context:
-            logger.info(f"[NeuralEngine] Injecting {len(cumulative_context)} chars of cumulative/ODN context.")
+            logger.info(f"[NeuralEngine] Injecting {len(cumulative_context)} chars of cumulative/Situational context.")
 
         # REST API CALL
         prompt_text = f"History:\n{history_str}\n{cumulative_context}\nCurrent Input: {trigger_text}"

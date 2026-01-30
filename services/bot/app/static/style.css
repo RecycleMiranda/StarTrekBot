@@ -1,14 +1,15 @@
 :root {
-    /* LCARS 2.0 Picard Palette (Cool Tones) */
-    --lcars-blue: #326295;
-    --lcars-teal: #75a2d1;
-    --lcars-indigo: #1b264f;
-    --lcars-light-blue: #9ebbd7;
-    --lcars-bg: #05080c;
-    --lcars-accent: #5e8bb7;
-    --lcars-danger: #c54242;
-    --lcars-success: #47b2b2;
-    --lcars-text: #e0e6ed;
+    /* Starfleet Master Palette (2401 Era) */
+    --lcars-orange: #f90;
+    --lcars-gold: #c9c;
+    --lcars-blue: #369;
+    --lcars-teal: #69c;
+    --lcars-apricot: #f96;
+    --lcars-red: #c33;
+    --lcars-bg: #000;
+    --lcars-card-bg: rgba(20, 30, 48, 0.4);
+    --lcars-accent: #75a2d1;
+    --lcars-font: 'Outfit', 'Segoe UI', sans-serif;
 }
 
 body {
@@ -245,12 +246,75 @@ input:focus {
     font-size: 0.9rem;
 }
 
-.success {
-    color: #00ff00;
+.success { color: var(--lcars-success); }
+.error { color: var(--lcars-danger); }
+.warning { color: var(--lcars-orange); }
+
+/* --- PHASE 10: PREMIUM LCARS ADDITIONS --- */
+.glass-panel {
+    background: var(--lcars-card-bg);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-.error {
-    color: #ff0000;
+.data-stream {
+    font-family: 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--lcars-teal);
+    line-height: 1.4;
+}
+
+.msd-node {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(117, 162, 209, 0.1);
+    transition: background 0.2s;
+}
+
+.msd-node:hover {
+    background: rgba(117, 162, 209, 0.1);
+}
+
+.status-indicator {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-online { background: #3c3; color: #000; box-shadow: 0 0 10px #3c3; }
+.status-offline { background: #666; color: #fff; }
+.status-hazard { background: #f33; color: #fff; animation: pulse-red 1s infinite; }
+
+@keyframes pulse-red {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.sop-card {
+    border-left: 10px solid var(--lcars-apricot);
+    margin-bottom: 15px;
+}
+
+.action-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.btn-approve { background: var(--lcars-blue) !important; color: #fff !important; }
+.btn-reject { background: var(--lcars-red) !important; color: #fff !important; }
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+    .lcars-container { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; }
 }
 
 /* Sentinel Matrix Enhancements */

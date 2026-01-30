@@ -58,3 +58,32 @@ python3 git_sync.py pull
 
 > [!TIP]
 > **实时监控**: 建议开启两个终端，一个监控 `SENSOR_LOGS.md`，另一个执行 `git_sync.py`。
+
+---
+
+## 4. 情报分析验证 (Log Intelligence & Analysis)
+
+情报分析系统允许您分段读取日志并进行智能筛选。
+
+### 导出战术摘要 (AI Summary)
+让分析引擎为您总结最近的战术态势：
+```bash
+python3 -c "from services.bot.app.tactical.log_analyzer import LogAnalyzer; import os; ana=LogAnalyzer(os.getcwd()+'/services/bot/app'); print(ana.generate_summary('tactical'))"
+```
+
+### 智能事件筛选 (Smart Filtering)
+只查看特定的“锁定 (LOCK)”事件或“命中 (BDA)”事件：
+```bash
+# 筛选所有 TACTICAL_LOCK 事件
+python3 -c "from services.bot.app.tactical.log_analyzer import LogAnalyzer; import os; ana=LogAnalyzer(os.getcwd()+'/services/bot/app'); print('\n'.join(ana.filter_logs('tactical', event_type='TACTICAL_LOCK')))"
+```
+
+### 分段读取测试 (Pagination)
+模拟 AI 按需读取日志（例如只读取前 5 条）：
+```bash
+python3 -c "from services.bot.app.tactical.log_analyzer import LogAnalyzer; import os; ana=LogAnalyzer(os.getcwd()+'/services/bot/app'); print(ana.read_segmented('tactical', page=0, page_size=5))"
+```
+
+> [!NOTE]
+> **AI 协同模式**:
+> 在我们对话时，您可以直接对我说：“帮我分析一下最近的战术日志”，我将自动在后台运行这些程序并为您汇报。

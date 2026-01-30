@@ -34,52 +34,102 @@ def check_protocol_compliance(action_type: str, params: dict, user_context: dict
         return {"allowed": True, "warnings": ["Protocol Engine Offline"], "violations": []}
 
 
-def get_status(**kwargs) -> dict:
+def get_status(scope: str = "all", depth: str = "full", **kwargs) -> dict:
     """
     Returns REAL-TIME starship status and COMPUTER CORE METRICS (Memory, CPU, Power).
-    Categorized for: "System status", "Condition report", "Ship health".
+    
+    Args:
+        scope (str): Data filter - "all", "tactical", "engineering", "ops", "medical", "internal". 
+        depth (str): Detail level - "full" (detailed metrics) or "summary" (just status).
     """
     
     from .ship_systems import get_ship_systems, SubsystemState
     import os
     
-    # Graceful degradation for OS metrics
-    try:
-        import psutil
-        process = psutil.Process(os.getpid())
-        mem_usage = process.memory_info().rss / 1024 / 1024 # MB
-        cpu_usage = psutil.cpu_percent(interval=None)
-    except (ImportError, Exception):
-        mem_usage = 42.5 # Simulated nominal value
-        cpu_usage = 2.4  # Simulated nominal value
-    
+    # 1. CORE OS METRICS (Throttled by internal scope)
+    mem_usage, cpu_usage = 0, 0
+    if scope in ["all", "internal"]:
+        try:
+            import psutil
+            process = psutil.Process(os.getpid())
+            mem_usage = round(process.memory_info().rss / 1024 / 1024, 2)
+            cpu_usage = psutil.cpu_percent(interval=None)
+        except (ImportError, Exception):
+            mem_usage, cpu_usage = 42.5, 2.4
+
     ss = get_ship_systems()
-    
-    ss = get_ship_systems()
-    
-    # ADS 3.0: Unified MSD Report
     report = ss.get_status_report()
+    full_manifest = report.get("msd_manifest", {})
     
-    # Create a dense summary for context
-    manifest = report.get("msd_manifest", {})
-    wc_state = manifest.get("warp_core", {}).get("state", "UNKNOWN")
-    sh_state = manifest.get("shields", {}).get("state", "UNKNOWN")
-    ph_state = manifest.get("phasers", {}).get("state", "UNKNOWN")
+    # 2. SCOPE FILTERING (ADS 8.1 Precision)
+    filtered_manifest = {}
     
-    summary_line = f"Alert: {report.get('alert')}. Warp Core: {wc_state}. Shields: {sh_state}. Phasers: {ph_state}."
+    # Define system categories
+    categories = {
+        "tactical": ["shields", "phasers", "torpedoes", "sensors", "deflectors"],
+        "engineering": ["warp_core", "impulse_drive", "eps_grid", "structural_integrity"],
+        "ops": ["communications", "transporters", "replicators", "waste_management"],
+        "medical": ["bio_monitors", "sickbay_grid", "life_support"]
+    }
+    
+    if scope == "all":
+        filtered_manifest = full_manifest
+    elif scope in categories:
+        target_keys = categories[scope]
+        filtered_manifest = {k: v for k, v in full_manifest.items() if k in target_keys}
+    else:
+        # Mini-summary for generic queries
+        filtered_manifest = {k: v for k, v in full_manifest.items() if k in ["warp_core", "shields", "alert_level"]}
+
+    # 3. DEPTH THROTTLING (ADS 8.1 Noise Reduction)
+    if depth == "summary":
+        # Strip detailed metrics, keep only state/status
+        for sys_name, data in filtered_manifest.items():
+            if isinstance(data, dict):
+                filtered_manifest[sys_name] = {
+                    "state": data.get("state", "UNKNOWN"),
+                    "efficiency": data.get("efficiency", 0.0)
+                }
+
+    # 4. TACTICAL / LOGISTICS (Throttled by scope)
+    tac_summary = "DATA_THROTTLED"
+    log_status = "DATA_THROTTLED"
+    
+    if scope in ["all", "tactical"]:
+        try:
+            from .tactical.log_analyzer import LogAnalyzer
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            analyzer = LogAnalyzer(base_path)
+            tac_data = analyzer.generate_summary("tactical")
+            tac_summary = tac_data.split("\n")[-1].replace("- **", "").replace("**", "")
+        except Exception:
+            tac_summary = "OFFLINE"
+
+    if scope in ["all", "ops"]:
+        log_status = "STABLE" # Placeholder for future LogisticsHub integration
+
+    # 5. CONSTRUCT RESPONSE
+    summary_line = f"Alert: {report.get('alert')}. Filter: {scope}/{depth}."
     
     return {
         "ok": True,
         "alert": report.get("alert"),
-        "message": f"SYSTEM STATUS REPORT: {summary_line}\nFull MSD Registry Attached.",
-        "msd_manifest": report.get("msd_manifest"),
-        # Legacy fallback keys for existing frontend (optional, can be phased out)
-        # Legacy fallback keys for existing frontend (optional, can be phased out)
-        "eps_energy_grid": report.get("msd_manifest", {}).get("eps_grid", {}),
+        "scope": scope,
+        "depth": depth,
+        "message": f"SYSTEM STATUS REPORT [{scope.upper()}]: {summary_line}",
+        "msd_manifest": filtered_manifest,
+        "core_telemetry": {
+            "cpu_vitals": f"{cpu_usage}%" if scope in ["all", "internal"] else "HIDDEN",
+            "memory_heap": f"{mem_usage}MB" if scope in ["all", "internal"] else "HIDDEN"
+        },
+        "tactical_summary": tac_summary if scope in ["all", "tactical"] else "FILTERED",
+        "logistics_status": log_status if scope in ["all", "ops"] else "FILTERED",
+        "timestamp": report.get("timestamp"),
         "sentinel_core": {
             "active_count": len(SentinelRegistry.get_instance().get_active_triggers()),
             "status": "MONITORING" if SentinelRegistry.get_instance().get_active_triggers() else "STANDBY"
         }
+    }
     }
 
 def normalize_subsystem_name(name: str) -> str:
@@ -2126,6 +2176,59 @@ def sci_execute(action: str, scan_type: str = "standard", focus: Optional[str] =
         return accept_action("sensors", "ACTIVE", {"mode": scan_type, "target": focus}, clearance)
 
     return {"ok": False, "message": f"Science Error: Action '{action}' not recognized."}
+
+def analyze_tactical_situation(clearance: int = 1, **kwargs) -> Dict:
+    """
+    ADS 6.0: Log Intelligence Gateway.
+    Generates a high-level Tactical Analysis Report from recent telemetry.
+    """
+    if clearance < 6:
+        return {"ok": False, "message": "ACCESS DENIED: Tactical analysis requires Level 6 authority."}
+    
+    from .tactical.log_analyzer import LogAnalyzer
+    # Base path: services/bot/app/
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    analyzer = LogAnalyzer(base_path)
+    
+    report = analyzer.generate_summary("tactical")
+    return {
+        "ok": True,
+        "message": f"TACTICAL SENSOR FEED SUMMARY:\n\n{report}",
+        "report": report
+    }
+
+def get_mission_logs(log_type: str = "tactical", page: int = 0, filter_event: Optional[str] = None, keyword: Optional[str] = None, clearance: int = 1, **kwargs) -> Dict:
+    """
+    ADS 6.0: Mission Log Retrieval Gateway.
+    Retrieves segmented and filtered ship logs (Tactical, Arsenal, Routing, Comms).
+    """
+    if clearance < 4:
+        return {"ok": False, "message": "ACCESS DENIED: log retrieval requires Level 4 authority."}
+
+    from .tactical.log_analyzer import LogAnalyzer
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    analyzer = LogAnalyzer(base_path)
+
+    if filter_event or keyword:
+        entries = analyzer.filter_logs(log_type, keyword=keyword, event_type=filter_event)
+        # Limit result size for chat
+        msg = "\n".join(entries[-20:]) if entries else "No matching entries found."
+        return {
+            "ok": True,
+            "message": f"FILTERED LOG [{log_type.upper()}]:\n\n{msg}",
+            "count": len(entries)
+        }
+    else:
+        res = analyzer.read_segmented(log_type, page=page)
+        if "error" in res:
+            return {"ok": False, "message": res["error"]}
+        
+        msg = "\n".join(res["data"]) if res["data"] else "No data found on this page."
+        return {
+            "ok": True,
+            "message": f"MISSION LOG [{log_type.upper()}] - PAGE {page}:\n\n{msg}",
+            "has_next": res["has_next"]
+        }
 
 def execute_procedure(procedure_id: str, session_id: str, clearance: int = 1, **kwargs) -> Dict:
     """

@@ -25,6 +25,8 @@ from .protocol_manager import get_protocol_manager
 from .ops_registry import OpsRegistry, TaskPriority, TaskState
 from .evolution_agent import get_evolution_agent
 from . import tools 
+from .sop_manager import get_sop_manager
+from .dehydrator import get_dehydrator
 
 logger = logging.getLogger(__name__)
 
@@ -979,7 +981,9 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 "prepare_photon_torpedoes": "tactical_execute",
                 "fire_phasers": "tactical_execute",
                 "torpedo_control": "tactical_execute",
-                "tactical_analysis": "tactical_execute",
+                "tactical_analysis": "analyze_tactical_situation",
+                "analyze_tactical_situation": "analyze_tactical_situation",
+                "get_mission_logs": "get_mission_logs",
                 "weapon_lock_fire": "tactical_execute",
                 
                 # Engineering & Power
@@ -1171,6 +1175,25 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
         terminate_agent_loop = False
         reply_text = ""
 
+        # --- ADS 9.1: SEMANTIC FAST-PATH (SOP CACHE) ---
+        sop_mgr = get_sop_manager()
+        matched_sop = sop_mgr.find_match(event.text)
+        
+        if matched_sop and not force_tool:
+            logger.info(f"[Dispatcher] FAST-PATH HIT: {matched_sop.get('intent_id', 'Unknown SOP')}")
+            tool_chain = matched_sop.get("tool_chain") or []
+            for step in tool_chain:
+                tool = step.get("tool")
+                args = step.get("args") or {}
+                tool_result = await _execute_tool(tool, args, event, user_profile, session_id)
+                executed_tools.append(tool)
+                if tool_result and tool_result.get("ok"):
+                    msg = tool_result.get("message", "") or "OK"
+                    cumulative_data.append(f"ACTION ({tool}): {msg}")
+            
+            # If SOP execution is finished, synthesize the result
+            terminate_agent_loop = True 
+        
         while iteration < max_iterations and not terminate_agent_loop:
             iteration += 1
             logger.info(f"[Dispatcher] Liquid Matrix Iteration {iteration}/{max_iterations}")
@@ -1180,8 +1203,21 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
             else:
                 extra_meta = {"user_profile": profile_str}
                 if cumulative_data: extra_meta["cumulative_data"] = "\n---\n".join(cumulative_data)
+                
+                # --- ADS 8.1: COGNITIVE BRIDGE (Situational Directives) ---
                 odn_snapshot = context_bus.get_odn_snapshot(session_id, user_profile)
                 extra_meta["odn_snapshot"] = context_bus.format_snapshot_for_prompt(odn_snapshot)
+                
+                # Dynamic Logic for Situational Guidance
+                alert_level = odn_snapshot.get("alert_level", "GREEN")
+                directive = "Status is NOMINAL. Assist the user with standard requests."
+                if alert_level == "RED":
+                    directive = "CONDITION RED: Prioritize Tactical and Engineering stability. Use Scoped Reporting (scope='tactical')."
+                elif alert_level == "YELLOW":
+                    directive = "YELLOW ALERT: Scan for local anomalies. Ensure shield readiness."
+                
+                extra_meta["situational_directive"] = f"[EXECUTIVE DIRECTIVE] {directive}"
+                
                 extra_meta["active_node"] = active_node
 
                 future = _executor.submit(rp_engine_gemini.generate_computer_reply, event.text, router.get_session_context(session_id), extra_meta)
@@ -1224,9 +1260,14 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 
                 break
 
-        # ADS 2.7 Tune: Only synthesize if we actually executed tools during this call (meaning cumulative_data changed)
-        # OR if we have pre-fetched data but the LLM hasn't produced a final narrative reply yet.
+        # ADS 2.7 Tune: Only synthesize if we actually executed tools during this call
         if executed_tools or (cumulative_data and not reply_text):
+            # --- ADS 9.2: DEHYDRATION TRIGGER ---
+            if executed_tools:
+                dehydrator = get_dehydrator()
+                # Run as fire-and-forget background task
+                asyncio.create_task(dehydrator.dehydrate_process(event.text, executed_tools, cumulative_data))
+
             all_raw = "\n\n".join(cumulative_data)
             future = _executor.submit(rp_engine_gemini.synthesize_search_result, event.text, all_raw, True, context=router.get_session_context(session_id))
             reply_text = future.result(timeout=20)

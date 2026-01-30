@@ -38,6 +38,8 @@
             <div class="elbow-top-left"></div>
             <div class="menu-items">
                 <div class="menu-btn active" data-panel="bridge">全舰状态</div>
+                <div class="menu-btn" data-panel="msd">内部状态 (MSD)</div>
+                <div class="menu-btn" data-panel="sops">规程学习 (SOP)</div>
                 <div class="menu-btn" data-panel="navigation">导航 (QQ 登录)</div>
                 <div class="menu-btn" data-panel="engineering">工程部 (设置)</div>
                 <div class="menu-btn" data-panel="sentinel">哨兵矩阵 (S.E.S.M.)</div>
@@ -54,21 +56,51 @@
                 <div class="st-line"></div>
             </header>
 
-            <!-- 面板 1: 全舰状态 -->
+            <!-- 面板 1: 全舰状态 (Overview) -->
             <section id="bridge" class="panel active config-panel">
                 <div class="status-grid">
                     <div class="status-card">
-                        <h3>子空间引擎 (AI)</h3>
+                        <h3>子空间引擎 (Phase 10 AI)</h3>
                         <p id="gemini-status">正在检测...</p>
+                    </div>
+                    <div class="status-card" id="alert-card">
+                        <h3>警报级别 (Alert Status)</h3>
+                        <p id="alert-level">GREEN ALERT</p>
                     </div>
                     <div class="status-card">
                         <h3>防御护盾 (审核)</h3>
                         <p id="mod-status">正在检测...</p>
                     </div>
-                    <div class="status-card">
-                        <h3>通讯中继 (QQ)</h3>
-                        <p id="qq-status">等待导航系统...</p>
+                </div>
+                <div class="glass-panel" style="margin-top: 20px;">
+                    <h2>实时故障流 (Active Faults)</h2>
+                    <div id="faults-list" class="data-stream">
+                        正在扫描子空间故障...
                     </div>
+                </div>
+            </section>
+
+            <!-- 面板 1.5: 内部状态 (MSD) -->
+            <section id="msd" class="panel config-panel">
+                <header class="panel-inner-header">
+                    <h2>MASTER SYSTEMS DISPLAY - 实时诊断</h2>
+                    <p class="subtitle">全舰 12,000 个 ODN 节点实时遥测</p>
+                </header>
+                <div class="glass-panel" id="msd-container" style="max-height: 500px; overflow-y: auto;">
+                    <!-- MSD nodes injected here -->
+                    <p>正在拉取 MSD 系统树...</p>
+                </div>
+            </section>
+
+            <!-- 面板 1.6: 规程学习 (SOP Review) -->
+            <section id="sops" class="panel config-panel">
+                <header class="panel-inner-header">
+                    <h2>SOP LEARNING DOCK - 规程核准终端</h2>
+                    <p class="subtitle">核准由 Dehydration Engine 提取的神经网络规程</p>
+                </header>
+                <div id="sop-list">
+                    <!-- SOP cards injected here -->
+                    <p>正在检索 DRAFT 规程...</p>
                 </div>
             </section>
 

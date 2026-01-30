@@ -625,212 +625,245 @@
           }
         }
       }
-    }
-  },
-  "maneuvering": {
-    "rcs": {
-      "display_name_en": "Reaction Control System (RCS)",
-      "display_name_cn": "\u59ff\u6001\u63a7\u5236\u7cfb\u7edf",
-      "components": {
-        "rcs_thrusters": {
-          "name": "RCS Quad-Thruster Pak",
-          "display_name_cn": "RCS \u56db\u8054\u88c5\u63a8\u529b\u5668\u5305",
-          "states": [
-            "READY",
-            "FIRING",
-            "VENTING",
-            "OFFLINE"
-          ],
-          "metrics": {
-            "thrust_output": {
-              "unit": "kN",
-              "default": 3000.0
-            },
-            "fuel_pressure": {
-              "unit": "%",
-              "default": 100.0
+    },
+    "maneuvering": {
+      "rcs": {
+        "display_name_en": "Reaction Control System (RCS)",
+        "display_name_cn": "\u59ff\u6001\u63a7\u5236\u7cfb\u7edf",
+        "components": {
+          "rcs_thrusters": {
+            "name": "RCS Quad-Thruster Pak",
+            "display_name_cn": "RCS \u56db\u8054\u88c5\u63a8\u529b\u5668\u5305",
+            "states": [
+              "READY",
+              "FIRING",
+              "VENTING",
+              "OFFLINE"
+            ],
+            "metrics": {
+              "thrust_output": {
+                "unit": "kN",
+                "default": 3000.0
+              },
+              "fuel_pressure": {
+                "unit": "%",
+                "default": 100.0
+              }
             }
           }
         }
       }
-    }
-  },
-  "software": {
-    "core_logic": {
-      "display_name_en": "Core Logic Systems",
-      "display_name_cn": "\u6838\u5fc3\u903b\u8f91\u7cfb\u7edf",
+    },
+    "personnel": {
+      "display_name_en": "Personnel Systems",
+      "display_name_cn": "\u4eba\u5236\u7cfb\u7edf",
       "components": {
-        "protocol_engine": {
-          "name": "Protocol Engine (ADS 4.0)",
-          "aliases": [
-            "protocols",
-            "compliance",
-            "go_monitor"
-          ],
+        "bio_monitors": {
+          "name": "Bio-Neural Health Monitors",
           "states": [
-            "ACTIVE",
-            "ENFORCING",
-            "OVERRIDE",
-            "LOCKED"
-          ],
-          "default_state": "ENFORCING",
-          "metrics": {
-            "compliance_rating": {
-              "unit": "%",
-              "default": 100.0
-            },
-            "active_protocols": {
-              "unit": "count",
-              "default": 14
-            }
-          }
-        },
-        "ads": {
-          "name": "Auto-Diagnostic Subroutine (ADS)",
-          "aliases": [
-            "diagnostics",
-            "self_repair",
-            "sentinel"
-          ],
-          "states": [
-            "MONITORING",
-            "DIAGNOSING",
-            "HEALING",
+            "ONLINE",
             "OFFLINE"
           ],
-          "default_state": "MONITORING",
           "metrics": {
-            "faults_detected": {
+            "active_crew_heartbeat": {
+              "unit": "count",
+              "default": 142
+            },
+            "casualty_count": {
               "unit": "count",
               "default": 0
-            },
-            "system_integrity": {
-              "unit": "%",
-              "default": 99.9
-            }
-          }
-        }
-      }
-    }
-  },
-  "auxiliary": {
-    "shuttles": {
-      "display_name_en": "Auxiliary Craft",
-      "display_name_cn": "\u8230\u8f7d\u821e\u673a",
-      "components": {
-        "shuttle_bay_1": {
-          "name": "Main Shuttlebay (Deck 4)",
-          "display_name_cn": "\u4e3b\u673a\u5e93 (4 \u53f7\u7532\u677f)",
-          "states": [
-            "READY",
-            "DECOMPRESSING",
-            "OPEN"
-          ],
-          "metrics": {
-            "complement_active": {
-              "unit": "count",
-              "default": 25
             }
           }
         },
-        "captains_yacht": {
-          "name": "Captain's Yacht (Calypso)",
-          "display_name_cn": "\u8230\u957f\u8247 (Calypso)",
+        "sickbay_grid": {
+          "name": "Sickbay EPS Grid",
           "states": [
-            "DOCKED",
-            "DEPLOYED",
-            "MAINTENANCE"
+            "OPTIMAL",
+            "LOW_POWER",
+            "OFFLINE"
           ],
-          "metrics": {
-            "hull_integrity": {
-              "unit": "%",
-              "default": 100.0
+          "dependencies": [
+            "eps_grid"
+          ]
+        }
+      }
+    },
+    "software": {
+      "core_logic": {
+        "display_name_en": "Core Logic Systems",
+        "display_name_cn": "\u6838\u5fc3\u903b\u8f91\u7cfb\u7edf",
+        "components": {
+          "protocol_engine": {
+            "name": "Protocol Engine (ADS 4.0)",
+            "aliases": [
+              "protocols",
+              "compliance",
+              "go_monitor"
+            ],
+            "states": [
+              "ACTIVE",
+              "ENFORCING",
+              "OVERRIDE",
+              "LOCKED"
+            ],
+            "default_state": "ENFORCING",
+            "metrics": {
+              "compliance_rating": {
+                "unit": "%",
+                "default": 100.0
+              },
+              "active_protocols": {
+                "unit": "count",
+                "default": 14
+              }
+            }
+          },
+          "ads": {
+            "name": "Auto-Diagnostic Subroutine (ADS)",
+            "aliases": [
+              "diagnostics",
+              "self_repair",
+              "sentinel"
+            ],
+            "states": [
+              "MONITORING",
+              "DIAGNOSING",
+              "HEALING",
+              "OFFLINE"
+            ],
+            "default_state": "MONITORING",
+            "metrics": {
+              "faults_detected": {
+                "unit": "count",
+                "default": 0
+              },
+              "system_integrity": {
+                "unit": "%",
+                "default": 99.9
+              }
             }
           }
         }
       }
     },
-    "emergency_evac": {
-      "display_name_en": "Emergency Evacuation",
-      "display_name_cn": "\u7d27\u6025\u758f\u6563",
+    "auxiliary": {
+      "shuttles": {
+        "display_name_en": "Auxiliary Craft",
+        "display_name_cn": "\u8230\u8f7d\u821e\u673a",
+        "components": {
+          "shuttle_bay_1": {
+            "name": "Main Shuttlebay (Deck 4)",
+            "display_name_cn": "\u4e3b\u673a\u5e93 (4 \u53f7\u7532\u677f)",
+            "states": [
+              "READY",
+              "DECOMPRESSING",
+              "OPEN"
+            ],
+            "metrics": {
+              "complement_active": {
+                "unit": "count",
+                "default": 25
+              }
+            }
+          },
+          "captains_yacht": {
+            "name": "Captain's Yacht (Calypso)",
+            "display_name_cn": "\u8230\u957f\u8247 (Calypso)",
+            "states": [
+              "DOCKED",
+              "DEPLOYED",
+              "MAINTENANCE"
+            ],
+            "metrics": {
+              "hull_integrity": {
+                "unit": "%",
+                "default": 100.0
+              }
+            }
+          }
+        }
+      },
+      "emergency_evac": {
+        "display_name_en": "Emergency Evacuation",
+        "display_name_cn": "\u7d27\u6025\u758f\u6563",
+        "components": {
+          "escape_pods": {
+            "name": "ASRV Lifeboats (400 Units)",
+            "display_name_cn": "ASRV \u6551\u751f\u8247 (400 \u5355\u5143)",
+            "states": [
+              "STOWED",
+              "LAUNCHED",
+              "EJECTED"
+            ],
+            "metrics": {
+              "capacity": {
+                "unit": "persons",
+                "default": 1400
+              }
+            }
+          }
+        }
+      }
+    },
+    "_evolution_log": [
+      {
+        "timestamp": 1769591505.063243,
+        "system": "main_reactor",
+        "change": "Added state: WARP_9.975",
+        "justification": "Intrepid-class sustained cruise upgrade."
+      },
+      {
+        "timestamp": 1769591506.364942,
+        "system": "shields",
+        "change": "Added metric: graviton_load (mC)",
+        "justification": "Metaphasic shielding requirement."
+      },
+      {
+        "timestamp": 1769592004.379097,
+        "system": "warp_drive",
+        "change": "Added state: QUANTUM_SLIPSTREAM_STANDBY",
+        "justification": "Experimental drive upgrade."
+      },
+      {
+        "timestamp": 1769673645.3957949,
+        "system": "bioneural_gel_packs",
+        "change": "Expanded Registry: Integrated 'bioneural_gel_packs' into 'computer_systems' path.",
+        "justification": "Upgrade to Intrepid-class neural computing layer."
+      },
+      {
+        "timestamp": 1717027200.0,
+        "system": "galaxy_class_core",
+        "change": "Full Technical Manual Indexing: Ingested Sections 1.0-17.0.",
+        "justification": "Restructuring registry for 100% Galaxy-class physics fidelity."
+      }
+    ],
+    "computer_systems": {
+      "display_name_en": "Computer Systems",
+      "display_name_cn": "\u65b0\u53d1\u73b0\u7cfb\u7edf (computer_systems)",
       "components": {
-        "escape_pods": {
-          "name": "ASRV Lifeboats (400 Units)",
-          "display_name_cn": "ASRV \u6551\u751f\u8247 (400 \u5355\u5143)",
+        "bioneural_gel_packs": {
+          "name": "Bio-Neural Gel Packs",
           "states": [
-            "STOWED",
-            "LAUNCHED",
-            "EJECTED"
+            "ONLINE",
+            "OFFLINE",
+            "DEGRADED"
           ],
+          "default_state": "ONLINE",
           "metrics": {
-            "capacity": {
-              "unit": "persons",
-              "default": 1400
+            "processing_rate": {
+              "unit": "TFLOP/s",
+              "default": 25000.0
             }
-          }
+          },
+          "dependencies": [
+            "main_core",
+            "life_support"
+          ],
+          "learned": true,
+          "aliases": [
+            "bio_neural_gel_packs"
+          ]
         }
-      }
-    }
-  },
-  "_evolution_log": [
-    {
-      "timestamp": 1769591505.063243,
-      "system": "main_reactor",
-      "change": "Added state: WARP_9.975",
-      "justification": "Intrepid-class sustained cruise upgrade."
-    },
-    {
-      "timestamp": 1769591506.364942,
-      "system": "shields",
-      "change": "Added metric: graviton_load (mC)",
-      "justification": "Metaphasic shielding requirement."
-    },
-    {
-      "timestamp": 1769592004.379097,
-      "system": "warp_drive",
-      "change": "Added state: QUANTUM_SLIPSTREAM_STANDBY",
-      "justification": "Experimental drive upgrade."
-    },
-    {
-      "timestamp": 1769673645.3957949,
-      "system": "bioneural_gel_packs",
-      "change": "Expanded Registry: Integrated 'bioneural_gel_packs' into 'computer_systems' path.",
-      "justification": "Upgrade to Intrepid-class neural computing layer."
-    },
-    {
-      "timestamp": 1717027200.0,
-      "system": "galaxy_class_core",
-      "change": "Full Technical Manual Indexing: Ingested Sections 1.0-17.0.",
-      "justification": "Restructuring registry for 100% Galaxy-class physics fidelity."
-    }
-  ],
-  "computer_systems": {
-    "display_name_en": "Computer Systems",
-    "display_name_cn": "\u65b0\u53d1\u73b0\u7cfb\u7edf (computer_systems)",
-    "components": {
-      "bioneural_gel_packs": {
-        "name": "Bio-Neural Gel Packs",
-        "states": [
-          "ONLINE",
-          "OFFLINE",
-          "DEGRADED"
-        ],
-        "default_state": "ONLINE",
-        "metrics": {
-          "processing_rate": {
-            "unit": "TFLOP/s",
-            "default": 25000.0
-          }
-        },
-        "dependencies": [
-          "main_core",
-          "life_support"
-        ],
-        "learned": true,
-        "aliases": [
-          "bio_neural_gel_packs"
-        ]
       }
     }
   }
-}

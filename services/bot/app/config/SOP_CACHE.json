@@ -1,0 +1,41 @@
+{
+    "system_defaults": {
+        "report_status_scoped": {
+            "trigger": [
+                "report status",
+                "报告状态",
+                "报一下状态"
+            ],
+            "tool_chain": [
+                {
+                    "tool": "get_status",
+                    "args": {
+                        "scope": "all",
+                        "depth": "summary"
+                    }
+                }
+            ],
+            "intent_id": "SYS_STATUS_QUICK",
+            "confidence": 1.0
+        },
+        "tactical_scan": {
+            "trigger": [
+                "tactical scan",
+                "全域扫描",
+                "开始战术扫描"
+            ],
+            "tool_chain": [
+                {
+                    "tool": "get_status",
+                    "args": {
+                        "scope": "tactical",
+                        "depth": "full"
+                    }
+                }
+            ],
+            "intent_id": "SYS_TAC_SCAN",
+            "confidence": 1.0
+        }
+    },
+    "learned_procedures": {}
+}

@@ -11,6 +11,7 @@ services:
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no
     volumes:
       - ..:/app
+      - ../data:/app/data
       - ~/.ssh:/root/.ssh:ro
     working_dir: /app/services/bot
     ports:

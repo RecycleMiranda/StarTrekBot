@@ -44,6 +44,11 @@ class ShipSystems:
         self.battery_reserve_pct = 100.0
         self.current_load_mw = 4200000.0
         
+    @property
+    def registry(self):
+        """Legacy alias for msd_registry."""
+        return self.msd_registry
+
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
@@ -59,7 +64,7 @@ class ShipSystems:
         try:
             # 1. Load Main
             with open(CONFIG_PATH, "r") as f:
-                self.registry = json.load(f)
+                self.msd_registry = json.load(f)
             
             # 2. Merge Experimental (L2 Buffer)
             if os.path.exists(EXP_CONFIG_PATH):
@@ -70,17 +75,17 @@ class ShipSystems:
                 for cat, content in exp_data.items():
                     if cat.startswith("_"): continue # Skip metadata
                     
-                    if cat not in self.registry:
-                        self.registry[cat] = content
+                    if cat not in self.msd_registry:
+                        self.msd_registry[cat] = content
                     else:
                         # Merge components if category already exists
                         exp_comps = content.get("components", {})
-                        if "components" not in self.registry[cat]:
-                            self.registry[cat]["components"] = {}
-                        self.registry[cat]["components"].update(exp_comps)
+                        if "components" not in self.msd_registry[cat]:
+                            self.msd_registry[cat]["components"] = {}
+                        self.msd_registry[cat]["components"].update(exp_comps)
             
             # Build valid component map recursively from the merged registry
-            self._recursive_build_map(self.registry)
+            self._recursive_build_map(self.msd_registry)
             logger.info(f"[ShipSystems] MSD Registry loaded with experimental buffer integration. {len(self.component_map)} components mapped.")
             print(f"DEBUG: Loaded keys: {list(self.component_map.keys())}")
 
@@ -88,7 +93,7 @@ class ShipSystems:
             logger.error(f"[ShipSystems] CRITICAL: Failed to load registry: {e}")
             print(f"DEBUG CRITICAL ERROR: {e}")
             # Fallback to minimal dict to prevent crash
-            self.registry = {}
+            self.msd_registry = {}
             self.component_map = {}
 
     def _recursive_build_map(self, node: dict, prefix: str = ""):
@@ -509,6 +514,10 @@ class ShipSystems:
             "alert": self.alert_status.value,
             "msd_manifest": self._get_flattened_metrics()
         }
+
+    def get_full_manifest(self) -> Dict:
+        """Returns the complete MSD tree with dynamic values for LCARS Hub."""
+        return self.msd_registry
 
     def _get_flattened_metrics(self) -> Dict:
         """Returns a flat key-value of critical systems for AI context."""

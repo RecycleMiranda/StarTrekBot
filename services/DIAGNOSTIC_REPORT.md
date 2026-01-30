@@ -4,31 +4,15 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x76D5 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-30 16:14:56
-- **错误信息**: `tactical_execute() missing 1 required positional argument: 'action'`
-- **原始指令**: `计算机，分析当前的战术态势`
-- **AI 诊断**: The `tactical_execute` function is being called without the required 'action' argument within the AgenticLoop of the Dispatcher component. This is a TypeError indicating a mismatch between the expected function signature and the actual arguments provided during the function call.
+### ERR-0xD26C | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-30 17:54:36
+- **错误信息**: `'NoneType' object is not subscriptable`
+- **原始指令**: `计算机，列出目前最耗电的三个子系统`
+- **AI 诊断**: Failed to analyze fault via AI Brain.
 - **建议方案**:
 
 ```diff
-```diff
---- a/app/dispatcher.py
-+++ b/app/dispatcher.py
-@@ -1042,7 +1042,11 @@
-         # Execute the tool function
-         try:
-             if isinstance(func, types.FunctionType):
--                result = func(**args)
-+                if 'action' not in args:
-+                    logger.error(f"Missing 'action' argument for tactical_execute. Args: {args}")
-+                    raise ValueError("Missing 'action' argument for tactical_execute")
-+                result = func(**args)
-+                
-             else:
-                 result = await func(**args)
-         except Exception as e2:
-```
+# ERROR: Diagnostic Subroutine Offline
 ```
 
 ---

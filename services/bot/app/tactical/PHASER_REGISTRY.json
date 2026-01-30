@@ -1,0 +1,101 @@
+{
+    "meta": {
+        "version": "1.0",
+        "standard": "SF-PHASER-2460",
+        "description": "Directed Energy Weapon Registry (Shielded EPS Topology)"
+    },
+    "emitter_registry": {
+        "strip_type_26": {
+            "name": "Type-26 Linear Array",
+            "role": "Main Artillery",
+            "output_mw_per_seg": 32.7,
+            "segments_max_focus": 200,
+            "max_pulse_output_gw": 6.54,
+            "thermal_cooldown_s": 15.0
+        },
+        "emitter_type_25": {
+            "name": "Type-25 Planetary Emitter",
+            "role": "Siege/Interceptor",
+            "output_mw_per_seg": 55.0,
+            "segments_max_focus": 1,
+            "max_pulse_output_gw": 1.2,
+            "special": "High-Density NDF Focus",
+            "thermal_cooldown_s": 45.0
+        },
+        "turret_twin_bank": {
+            "name": "Twin-Bank PD Turret",
+            "role": "Point Defense",
+            "output_mw_per_seg": 26.3,
+            "max_pulse_output_gw": 0.0526,
+            "special": "Fast Track"
+        },
+        "rifle_type_3b": {
+            "name": "Type-3B Sniper Rifle",
+            "role": "Personnel",
+            "max_pulse_output_gw": 0.00005
+        }
+    },
+    "capacitor_registry": {
+        "cap_heavy_ix": {
+            "name": "Capacitor Heavy-IX",
+            "capacity_mj": 15000,
+            "max_discharge_rate": 7000,
+            "recharge_rate_grid": 500,
+            "assigned_to": "strip_type_26"
+        },
+        "cap_siege_v": {
+            "name": "Capacitor Siege-V",
+            "capacity_mj": 50000,
+            "max_discharge_rate": 2000,
+            "recharge_rate_grid": 100,
+            "assigned_to": "emitter_type_25"
+        },
+        "cap_rapid_iii": {
+            "name": "Capacitor Rapid-III",
+            "capacity_mj": 500,
+            "max_discharge_rate": 60,
+            "recharge_rate_grid": 60,
+            "assigned_to": "turret_twin_bank"
+        }
+    },
+    "station_deployment_map": {
+        "alpha_zone": {
+            "batteries": [
+                {
+                    "id": "alpha_prime_phaser",
+                    "type": "strip_type_26",
+                    "qty": 64
+                },
+                {
+                    "id": "alpha_siege_tower",
+                    "type": "emitter_type_25",
+                    "qty": 20
+                },
+                {
+                    "id": "alpha_pd_grid",
+                    "type": "turret_twin_bank",
+                    "qty": 1000
+                }
+            ]
+        },
+        "beta_zone": {
+            "batteries": [
+                {
+                    "id": "beta_prime_phaser",
+                    "type": "strip_type_26",
+                    "qty": 64
+                },
+                {
+                    "id": "beta_siege_tower",
+                    "type": "emitter_type_25",
+                    "qty": 16
+                },
+                {
+                    "id": "beta_pd_grid",
+                    "type": "turret_twin_bank",
+                    "qty": 2200
+                }
+            ]
+        }
+    }
+}

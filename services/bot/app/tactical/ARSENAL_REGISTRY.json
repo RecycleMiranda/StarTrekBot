@@ -1,0 +1,168 @@
+{
+    "meta": {
+        "version": "1.2",
+        "standard": "TTM-2460-TORP",
+        "description": "Master Registry for Station-Grade Projectile Weapons & Probes"
+    },
+    "component_registry": {
+        "guidance": {
+            "G-25-STD": {
+                "name": "Type-25 Standard Nav",
+                "effect": "Proportional Navigation",
+                "accuracy_mod": 1.0,
+                "jamming_resistance": 0.5
+            },
+            "G-28-LR": {
+                "name": "Type-28 Long Range",
+                "effect": "High-Gain Scan",
+                "accuracy_mod": 1.4,
+                "jamming_resistance": 0.2
+            },
+            "G-02-BAL": {
+                "name": "Ballistic Shunt",
+                "effect": "Dumbfire",
+                "accuracy_mod": 0.1,
+                "jamming_resistance": 1.0
+            },
+            "G-88-TP": {
+                "name": "Temporal Predictor",
+                "effect": "Pre-Calc Trajectory",
+                "accuracy_mod": 0.99,
+                "jamming_resistance": 0.9,
+                "clearance": "OMEGA"
+            }
+        },
+        "warhead": {
+            "W-AM-STD": {
+                "name": "M/AM Injector Type-6",
+                "type": "Explosive",
+                "yield_range": [
+                    1,
+                    45
+                ],
+                "yield_unit": "Isotons",
+                "radius_km": 900
+            },
+            "W-ZP-Q": {
+                "name": "Zero-Point Insert",
+                "type": "Explosive",
+                "yield_fixed": 125,
+                "radius_km": 1500
+            },
+            "W-TP-C": {
+                "name": "Phase Compressor",
+                "type": "Explosive",
+                "yield_fixed": 250,
+                "penetration": 0.999
+            },
+            "W-TC-VIII": {
+                "name": "Tricobalt Device",
+                "type": "Siege/Subspace",
+                "yield_fixed": 5000,
+                "radius_km": 10000,
+                "requires_casing": "Type-8"
+            },
+            "S-Short-T": {
+                "name": "Sensor: Tactical Deployable",
+                "type": "Sensor",
+                "class": "I-III",
+                "range_km": 1000000
+            },
+            "S-Multi-Mp": {
+                "name": "Sensor: Multimission",
+                "type": "Sensor",
+                "class": "VIII",
+                "range_km": 5000000
+            },
+            "S-Long-LR": {
+                "name": "Sensor: Long-Range Recon",
+                "type": "Sensor",
+                "class": "IX",
+                "range_km": 40000000,
+                "requires_engine": "P-EXT-4"
+            }
+        },
+        "propulsion": {
+            "P-SUST-6": {
+                "name": "Standard Sustainer",
+                "max_speed_c": 0.99,
+                "range_rated_km": 5000000
+            },
+            "P-INJ-9": {
+                "name": "High-Burn Injector",
+                "max_speed_c": 1.5,
+                "range_rated_km": 2500000,
+                "note": "Interceptor"
+            },
+            "P-EXT-4": {
+                "name": "Extended Fuselage",
+                "max_speed_c": 0.90,
+                "range_rated_km": 7500000
+            }
+        }
+    },
+    "shell_assembly_templates": {
+        "photon_torpedo_mk25": {
+            "name": "Photon Torpedo Mk XXV",
+            "casing": "Type-6",
+            "default_components": [
+                "G-25-STD",
+                "W-AM-STD",
+                "P-SUST-6"
+            ],
+            "cost_credits": 50
+        },
+        "quantum_torpedo_qv": {
+            "name": "Quantum Torpedo Q-V",
+            "casing": "Type-6",
+            "default_components": [
+                "G-25-STD",
+                "W-ZP-Q",
+                "P-SUST-6"
+            ],
+            "cost_credits": 120
+        },
+        "transphasic_mk2": {
+            "name": "Transphasic Torpedo Mk II",
+            "casing": "Type-6",
+            "default_components": [
+                "G-88-TP",
+                "W-TP-C",
+                "P-SUST-6"
+            ],
+            "cost_credits": 5000,
+            "restricted": true
+        },
+        "probe_class_viii": {
+            "name": "Class VIII Multimission Probe",
+            "casing": "Type-6",
+            "default_components": [
+                "G-28-LR",
+                "S-Multi-Mp",
+                "P-SUST-6"
+            ],
+            "cost_credits": 80
+        },
+        "probe_class_ix": {
+            "name": "Class IX Long-Range Probe",
+            "casing": "Type-8",
+            "default_components": [
+                "G-28-LR",
+                "S-Long-LR",
+                "P-EXT-4"
+            ],
+            "cost_credits": 150
+        },
+        "siege_tricobalt": {
+            "name": "Tricobalt Siege Device",
+            "casing": "Type-8",
+            "default_components": [
+                "G-02-BAL",
+                "W-TC-VIII",
+                "P-SUST-6"
+            ],
+            "cost_credits": 800,
+            "restricted": true
+        }
+    }
+}

@@ -1,0 +1,100 @@
+{
+    "meta": {
+        "version": "1.0",
+        "doctrine": "FORTRESS_DEFENSE_2460",
+        "description": "Standard Operating Procedure for Station Tactical AI"
+    },
+    "scenarios": [
+        {
+            "id": "TAC-001-SHIELD-STRIP",
+            "tags": [
+                "ShieldsUp",
+                "LongRange",
+                "CapitalShip"
+            ],
+            "trigger_conditions": {
+                "target_shield_pct_min": 0.2,
+                "range_km_max": 200000
+            },
+            "response_logic": {
+                "primary_action": "FIRE_PHASER_STRIP",
+                "description": "Use Type-26 Strips to strip shields based on Phased Array efficiency.",
+                "weapons_free": [
+                    "Type-26 Strip",
+                    "Type-25 Heavy"
+                ],
+                "target_priority": "SHIELD_GENERATOR"
+            },
+            "effectiveness_rating": 0.9,
+            "usage_count": 0
+        },
+        {
+            "id": "TAC-002-HULL-SMASH",
+            "tags": [
+                "ShieldsDown",
+                "LongRange",
+                "CapitalShip"
+            ],
+            "trigger_conditions": {
+                "target_shield_pct_max": 0.1,
+                "range_km_min": 10000
+            },
+            "response_logic": {
+                "primary_action": "FIRE_TORPEDO_SALVO",
+                "description": "Shields down. Execute 12-round Salvo from Siege Tubes.",
+                "weapons_free": [
+                    "Type-12 Heavy",
+                    "Type-11 Main"
+                ],
+                "target_priority": "WARP_CORE"
+            },
+            "effectiveness_rating": 0.95,
+            "usage_count": 0
+        },
+        {
+            "id": "TAC-003-FIGHTER-SWARM",
+            "tags": [
+                "MultipleTargets",
+                "HighSpeed",
+                "CloseRange"
+            ],
+            "trigger_conditions": {
+                "target_count_min": 5,
+                "range_km_max": 5000,
+                "target_class": "FIGHTER"
+            },
+            "response_logic": {
+                "primary_action": "FIRE_PD_GRID",
+                "description": "Activate 2400-turret PD grid. Saturation fire.",
+                "weapons_free": [
+                    "Twin-Bank PD",
+                    "Type-9 Rapid"
+                ],
+                "fire_mode": "INDEPENDENT_TRACKING"
+            },
+            "effectiveness_rating": 0.88,
+            "usage_count": 0
+        },
+        {
+            "id": "TAC-004-SIEGE-DEFENSE",
+            "tags": [
+                "StationaryTarget",
+                "ExtremeRange"
+            ],
+            "trigger_conditions": {
+                "range_km_min": 500000,
+                "target_speed_max": 0.05
+            },
+            "response_logic": {
+                "primary_action": "FIRE_PLANETARY_EMITTER",
+                "description": "Use Type-25 Heavy Emitters for long-range NDF drilling.",
+                "weapons_free": [
+                    "Type-25 Heavy"
+                ],
+                "capacitor_mode": "FULL_DISCHARGE"
+            },
+            "effectiveness_rating": 0.92,
+            "usage_count": 0
+        }
+    ]
+}

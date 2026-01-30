@@ -45,11 +45,44 @@ def log_jsonl(filename: str, data: dict):
     except Exception as e:
         logger.warning(f"Failed to write log to {path}: {e}")
 
+async def run_boot_sync():
+    """
+    Executes a Master Pull from GitHub to hydrate local logs/data on deployment.
+    """
+    logger.info("Initializing Starfleet Logistics Boot Sync...")
+    try:
+        # Resolve path to git_sync.py (located at repo root)
+        # services/bot/app/main.py -> ../../../git_sync.py
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        sync_script = os.path.join(repo_root, "git_sync.py")
+        
+        if os.path.exists(sync_script):
+            process = await asyncio.create_subprocess_exec(
+                "python3", sync_script, "pull",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=repo_root
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode == 0:
+                logger.info("Logistics Sync Success: Local data tracks updated.")
+            else:
+                logger.warning(f"Logistics Sync failed with exit code {process.returncode}")
+                if stderr: logger.warning(f"Sync Error: {stderr.decode()}")
+        else:
+            logger.warning(f"Sync Script not found at: {sync_script}")
+    except Exception as e:
+        logger.error(f"Critical error during boot sync: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """
     Initialize config, sender and start the background worker.
     """
+    # 0. Logsitics Boot Sync (Hydrate data from logs branch)
+    await run_boot_sync()
+
     token = (os.getenv("WEBHOOK_TOKEN") or "").strip().strip('"').strip("'")
     if token:
         logger.info(f"[Auth] Admin Token configured. Hint: {token[:3]}...{token[-1] if len(token)>1 else ''}")

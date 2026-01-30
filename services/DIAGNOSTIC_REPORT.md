@@ -4,29 +4,31 @@
 > 本文件由 ADS (Auto-Diagnostic Routine) 自动维护。请参考诊断结论进行修复。
 
 ## 活跃故障 (Active Faults)
-### ERR-0x9934 | Dispatcher.AgenticLoop
-- **发生时间**: 2026-01-29 16:26:40
-- **错误信息**: `object dict can't be used in 'await' expression`
-- **原始指令**: `计算机，访问联邦数据库，检索让-卢克·皮卡德在联邦星舰真理号上的服役记录`
-- **AI 诊断**: The `query_knowledge_base` function is likely returning a plain Python dictionary instead of an awaitable object (like a coroutine or a future). This is causing the `await` expression to fail.
+### ERR-0x76D5 | Dispatcher.AgenticLoop
+- **发生时间**: 2026-01-30 16:14:56
+- **错误信息**: `tactical_execute() missing 1 required positional argument: 'action'`
+- **原始指令**: `计算机，分析当前的战术态势`
+- **AI 诊断**: The `tactical_execute` function is being called without the required 'action' argument within the AgenticLoop of the Dispatcher component. This is a TypeError indicating a mismatch between the expected function signature and the actual arguments provided during the function call.
 - **建议方案**:
 
 ```diff
 ```diff
 --- a/app/dispatcher.py
 +++ b/app/dispatcher.py
-@@ -841,7 +841,10 @@
-     try:
-         # Execute the tool
-         logger.debug(f"Executing tool {tool.__name__} with args: {args}")
--        result = await tools.query_knowledge_base(f"Personnel File: {target} history and biography", session_id)
-+        result = tools.query_knowledge_base(f"Personnel File: {target} history and biography", session_id)
-+        if isinstance(result, dict):
-+            logger.warning("query_knowledge_base returned a dict, not an awaitable.  This is likely an error.")
-+        result = await result
-         logger.debug(f"Tool {tool.__name__} returned: {result}")
- 
-         # Handle the result
+@@ -1042,7 +1042,11 @@
+         # Execute the tool function
+         try:
+             if isinstance(func, types.FunctionType):
+-                result = func(**args)
++                if 'action' not in args:
++                    logger.error(f"Missing 'action' argument for tactical_execute. Args: {args}")
++                    raise ValueError("Missing 'action' argument for tactical_execute")
++                result = func(**args)
++                
+             else:
+                 result = await func(**args)
+         except Exception as e2:
+```
 ```
 
 ---

@@ -15,6 +15,7 @@ BASE_DIR = os.path.dirname(__file__)
 REPO_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 DIAGNOSTIC_REPORT_PATH = os.path.join(REPO_ROOT, "DIAGNOSTIC_REPORT.md")
 AUDIT_HISTORY_PATH = os.path.join(REPO_ROOT, "AUDIT_HISTORY.md")
+APP_DIR_FULL = os.path.join(REPO_ROOT, "services", "bot", "app")
 
 @dataclass
 class DiagnosticEntry:
@@ -99,50 +100,80 @@ class DiagnosticManager:
             pm = get_protocol_manager()
             pm.git_sync(f"ADS: Diagnosed fault {entry.id}", extra_files=[DIAGNOSTIC_REPORT_PATH])
 
-            # --- AUTO-HEALING TRIGGER ---
-            recoverable_keywords = ["SyntaxError", "UnboundLocalError", "AttributeError", "ModuleNotFoundError", "ImportError"]
-            if any(kw in entry.error_msg for kw in recoverable_keywords):
-                logger.info(f"[ADS] Fault {entry.id} is potentially recoverable. Launching Autopilot.")
-                
-                # Identify module
-                module = entry.component.split(".")[0].lower() + ".py"
-                if "dispatcher" in module: module = "dispatcher.py" # Normalization
-                
-                from . import repair_agent
-                ra = repair_agent.RepairAgent.get_instance()
-                
-                # Run Autopilot
-                import asyncio
-                # We need a loop if we are in a thread
+            # --- AUTO-HEALING TRIGGER: Subspace Bypass Hotfix ---
+            # User Directive: Attempt repair regardless of fault type
+            logger.info(f"[ADS] Fault {entry.id} captured. Attempting Subspace Bypass Hotfix.")
+            
+            # Identify module from component name (e.g. SendQueue.QQSender -> sender_qq.py)
+            component_parts = entry.component.split(".")
+            module_hint = component_parts[-1].lower() if component_parts else ""
+            
+            # Mapping logic for common components to files
+            module_map = {
+                "qqsender": "sender_qq.py",
+                "sendqueue": "send_queue.py",
+                "agenticloop": "dispatcher.py",
+                "dispatcher": "dispatcher.py",
+                "rp_engine": "rp_engine_gemini.py"
+            }
+            
+            module = module_map.get(module_hint)
+            if not module:
+                # Fallback: simple heuristic
+                module = module_hint + ".py"
+
+            from . import repair_agent
+            ra = repair_agent.RepairAgent.get_instance()
+            
+            # Run Autopilot
+            import asyncio
+            # We need a loop if we are in a thread
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                repair_res = loop.run_until_complete(ra.async_autopilot_repair(module, entry.error_msg))
+            
+            # Diagnosis info to pass
+            repair_context = f"Error: {entry.error_msg}\nLocation: {entry.component}\nTrace: {entry.stack_trace}"
+            
+            repair_res = loop.run_until_complete(ra.async_autopilot_repair(module, repair_context))
                 
                 if repair_res.get("ok"):
                     logger.info(f"[ADS] Autopilot successfully applied bypass to {module}")
                     entry.status = "BYPASS_ACTIVE"
                     self._write_report()
-                    self._register_bypass(entry, module)
+                    registry_path = self._register_bypass(entry, module)
+                    
+                    # SYNC TO GITHUB: Final closure of the bypass event
+                    pm = get_protocol_manager()
+                    pm.git_sync(
+                        f"ADS: Autonomous Subspace Bypass patch applied for {entry.id}", 
+                        extra_files=[
+                            DIAGNOSTIC_REPORT_PATH, 
+                            registry_path, 
+                            str(os.path.join(APP_DIR_FULL, module)) # Use full path to the patched file
+                        ]
+                    )
                 else:
                     logger.warning(f"[ADS] Autopilot failed for {entry.id}: {repair_res.get('message')}")
 
         except Exception as e:
             logger.error(f"[ADS] AI Diagnosis failed for {entry.id}: {e}")
 
-    def _register_bypass(self, entry: DiagnosticEntry, module: str):
+    def _register_bypass(self, entry: DiagnosticEntry, module: str) -> str:
         """Registers the bypass in BYPASS_REGISTRY.md"""
         registry_path = os.path.join(REPO_ROOT, "BYPASS_REGISTRY.md")
         line = f"| {entry.id} | {module} | {time.strftime('%Y-%m-%d %H:%M:%S')} | [ACTIVE] |\n"
         
         if not os.path.exists(registry_path):
             with open(registry_path, "w", encoding="utf-8") as f:
-                f.write("# LCARS 子空间旁路注册表 (Bypass Registry)\n\n| Fault ID | Module | timestamp | Status |\n|---|---|---|---|\n")
+                f.write("# LCARS 子空间旁路注册表 (Subspace Bypass Registry)\n\n| Fault ID | Module | timestamp | Status |\n|---|---|---|---|\n")
         
         with open(registry_path, "a", encoding="utf-8") as f:
             f.write(line)
         
-        pm = get_protocol_manager()
-        pm.git_sync(f"ADS: Registered subspace bypass for {entry.id}", extra_files=[registry_path])
+        return registry_path
 
     def _write_report(self):
         content = "# LCARS 自动诊断报告 (Auto-Diagnostic Report)\n\n"

@@ -101,7 +101,7 @@ def get_status(scope: str = "all", depth: str = "full", **kwargs) -> dict:
             base_path = os.path.dirname(os.path.abspath(__file__))
             analyzer = LogAnalyzer(base_path)
             tac_data = analyzer.generate_summary("tactical")
-            tac_summary = tac_data.split("\n")[-1].replace("- **", "").replace("**", "")
+            tac_summary = tac_data 
         except Exception:
             tac_summary = "OFFLINE"
 

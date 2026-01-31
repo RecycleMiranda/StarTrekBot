@@ -44,16 +44,20 @@ PROTECTED_MODULES = {
 }
 
 
-def is_module_accessible(module_name: str) -> tuple[bool, str]:
+def is_module_accessible(module_name: str, force: bool = False) -> tuple[bool, str]:
     """Check if a module can be accessed by the repair system."""
     # Normalize the name
     if not module_name.endswith(".py"):
         module_name = module_name + ".py"
     
-    if module_name in PROTECTED_MODULES:
+    # EVEN WITH FORCE, some things are too dangerous to hot-edit autonomously
+    if module_name in ["repair_tools.py", "diagnostic_manager.py"] and force:
+         return False, f"CRITICAL SAFEGUARD: {module_name} cannot be hot-edited even in emergency mode."
+
+    if module_name in PROTECTED_MODULES and not force:
         return False, f"PROTECTED: {module_name} is a core system module and cannot be modified."
     
-    if module_name not in MODIFIABLE_MODULES:
+    if module_name not in MODIFIABLE_MODULES and not force:
         return False, f"RESTRICTED: {module_name} is not in the modifiable whitelist."
     
     module_path = APP_BASE / module_name
@@ -63,12 +67,12 @@ def is_module_accessible(module_name: str) -> tuple[bool, str]:
     return True, "OK"
 
 
-def read_module(module_name: str) -> dict:
+def read_module(module_name: str, force: bool = False) -> dict:
     """
     Read a module's source code with line numbers.
     Returns the content and metadata.
     """
-    accessible, reason = is_module_accessible(module_name)
+    accessible, reason = is_module_accessible(module_name, force=force)
     if not accessible:
         return {"ok": False, "message": reason}
     
@@ -293,11 +297,11 @@ def git_sync_changes(file_paths: list[Path], message: str) -> dict:
         return {"ok": False, "message": f"Git sync failed: {e}"}
 
 
-def write_module(module_name: str, content: str, create_backup: bool = True) -> dict:
+def write_module(module_name: str, content: str, create_backup: bool = True, force: bool = False) -> dict:
     """
     Write new content to a module with validation and optional backup.
     """
-    accessible, reason = is_module_accessible(module_name)
+    accessible, reason = is_module_accessible(module_name, force=force)
     if not accessible:
         return {"ok": False, "message": reason}
     

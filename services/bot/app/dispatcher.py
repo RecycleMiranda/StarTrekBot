@@ -1046,7 +1046,10 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 # Check signature to safely pass args (naive approach: assume kwargs matching)
                 try:
                     # Filter args to match signature? Not easy dynamically without inspect.
-                    result = func(**args)
+                    if inspect.iscoroutinefunction(func):
+                        result = await func(**args)
+                    else:
+                        result = func(**args)
                     result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
                     
                 except TypeError as te:
@@ -1091,9 +1094,11 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                              elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
                                  # If function has **kwargs, we can pass everything
                                  filtered_args[k] = v
-                         
                          logger.info(f"[Dispatcher] Executing with filtered args: {list(filtered_args.keys())}")
-                         result = func(**filtered_args)
+                         if inspect.iscoroutinefunction(func):
+                             result = await func(**filtered_args)
+                         else:
+                             result = func(**filtered_args)
                          result["meta"] = {"self_healed": True, "original_tool": tool, "corrected_tool": corrected_tool}
                      except Exception as e2:
                          # CRITICAL: Re-raise so this bubbles up to the Dispatcher's ADS fault reporter

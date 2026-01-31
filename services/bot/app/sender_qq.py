@@ -20,8 +20,10 @@ class QQSender(Sender):
         Sends message to NapCat via OneBot v11 HTTP API.
         """
         group_id = meta.get("group_id")
-        if not group_id:
-            raise RuntimeError("NO_GROUP_ID_IN_META")
+        user_id = meta.get("user_id")
+        
+        if not group_id and not user_id:
+            raise RuntimeError("NO_ID_IN_META")
 
         base_url = f"http://{self.host}:{self.port}"
         
@@ -41,18 +43,20 @@ class QQSender(Sender):
         if reply_to:
             message_to_send = f"[CQ:reply,id={reply_to}]{message_to_send}"
 
-        # OneBot v11 format
-        payload = {
-            "group_id": int(group_id),
-            "message": message_to_send
-        }
+        # OneBot v11 format selection
+        if group_id:
+            payload = {
+                "group_id": int(group_id),
+                "message": message_to_send
+            }
+            paths = ["/send_group_msg", "/api/send_group_msg"]
+        else:
+            payload = {
+                "user_id": int(user_id),
+                "message": message_to_send
+            }
+            paths = ["/send_private_msg", "/api/send_private_msg"]
 
-        # Try paths - /send_group_msg works for NapCat
-        paths = [
-            "/send_group_msg",
-            "/api/send_group_msg"
-        ]
-        
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for path in paths:
                 endpoint = f"{base_url}{path}"

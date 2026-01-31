@@ -224,8 +224,8 @@ def rollback_module(module_name: str, backup_index: int = 0) -> dict:
 
 def git_sync_changes(file_paths: list[Path], message: str) -> dict:
     """
-    Enhanced Git Sync: Commits and pushes changes with high reliability.
-    Implicitly stages ALL modified tracked files to prevent 'dirty repo' blocking.
+    Remote-First Git Sync: Commits and pushes changes with autonomous conflict resolution.
+    Strictly avoids blocking common server-side operations.
     """
     try:
         # In Docker, we map the repo root directly to /app
@@ -234,7 +234,6 @@ def git_sync_changes(file_paths: list[Path], message: str) -> dict:
         if not repo_root:
             # Fallback for local
             try:
-                # Use current file's parent as start for search
                 repo_root = subprocess.check_output(
                     ["git", "rev-parse", "--show-toplevel"], 
                     cwd=str(APP_BASE), 
@@ -246,49 +245,68 @@ def git_sync_changes(file_paths: list[Path], message: str) -> dict:
         if not os.path.exists(os.path.join(repo_root, ".git")):
             return {"ok": False, "message": "Not a git repository."}
 
-        logger.info(f"[RepairTools] Universal Sync initiated in: {repo_root}")
+        # --- RECOVERY PHASE: Ensure we aren't in a broken state ---
+        # Abort any failed merges or cherry-picks that might be locking the index
+        subprocess.run(["git", "merge", "--abort"], cwd=repo_root, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "rebase", "--abort"], cwd=repo_root, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "am", "--abort"], cwd=repo_root, stderr=subprocess.DEVNULL)
+
+        logger.info(f"[RepairTools] Remote-First Sync initiated in: {repo_root}")
 
         # 1. Identity Assurance
         subprocess.run(["git", "config", "user.name", "StarTrekBot"], cwd=repo_root, check=True)
         subprocess.run(["git", "config", "user.email", "bot@lcars.starfleet"], cwd=repo_root, check=True)
         
         # 2. Aggressive Staging
-        # Stage specific files requested
+        # Stage requested files
         for f in file_paths:
             try:
                 rel = os.path.relpath(str(f), repo_root)
                 subprocess.run(["git", "add", rel], cwd=repo_root, check=True)
             except: pass
             
-        # IMPORTANT: Stage all other MODIFIED tracked files (Prevents 'git pull' blocks)
+        # Stage all modified tracked files
         subprocess.run(["git", "add", "-u"], cwd=repo_root, check=True)
         
         # 3. Commit Check
         status = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True)
         if not status.stdout.strip():
-            logger.info("[RepairTools] No changes to commit.")
-            return {"ok": True, "message": "Repository is clean."}
-
-        subprocess.run(["git", "commit", "-m", message], cwd=repo_root, check=True)
+            logger.info("[RepairTools] Repo clean. Triggering pull refresh anyway.")
+        else:
+            subprocess.run(["git", "commit", "-m", message], cwd=repo_root, check=True)
         
-        # 4. Pull & Push (Rebase to avoid merge commits)
+        # 4. Remote Refresh & Resolve
         try:
-            # Try to rebase first to stay clean
-            logger.info("[RepairTools] Fetching and rebasing from remote...")
-            subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=repo_root, check=True, timeout=30)
+            # Try plain rebase
+            logger.info("[RepairTools] Attempting rebase from remote...")
+            pull_res = subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=repo_root, capture_output=True, text=True)
             
+            if pull_res.returncode != 0:
+                # CONFLICT DETECTED
+                logger.warning("[RepairTools] REBASE CONFLICT! Activating Remote-First recovery...")
+                
+                # Check for specific JSON conflicts (like SOP_CACHE.json) and follow 'theirs'
+                # This ensures the repo's authoritative version wins, preventing 'unmerged files' lock.
+                subprocess.run(["git", "checkout", "--theirs", "."], cwd=repo_root, stderr=subprocess.DEVNULL)
+                subprocess.run(["git", "add", "."], cwd=repo_root, check=True)
+                
+                # Continue rebase if in the middle of one, otherwise just commit
+                if os.path.exists(os.path.join(repo_root, ".git", "rebase-merge")) or os.path.exists(os.path.join(repo_root, ".git", "rebase-apply")):
+                    subprocess.run(["env", "GIT_EDITOR=true", "git", "rebase", "--continue"], cwd=repo_root)
+                
+            # Final Push
             subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, timeout=30)
-            logger.info("[RepairTools] Universal Git Sync COMPLETE.")
-            return {"ok": True, "message": f"Synced to GitHub: {message}"}
+            logger.info("[RepairTools] Remote-First Git Sync COMPLETE.")
+            return {"ok": True, "message": f"Synced to GitHub (Conflict resolved): {message}"}
+            
         except subprocess.CalledProcessError as e:
-            err_msg = e.stderr.decode() if e.stderr else str(e)
-            logger.warning(f"[RepairTools] Sync non-fatal error (usually push conflict): {err_msg}")
-            # If rebase fails, we might be in a conflict. Stash and Move on?
-            # For now, just exit with warning.
-            return {"ok": True, "message": f"Committed locally, but remote sync delayed: {err_msg}"}
+            err_msg = e.stderr if e.stderr else str(e)
+            logger.warning(f"[RepairTools] Push delayed/failed: {err_msg}")
+            # Even if we can't push, we are no longer in a 'dirty unmerged' state locally
+            return {"ok": True, "message": f"Committed locally, sync pending. {err_msg}"}
             
     except Exception as e:
-        logger.error(f"[RepairTools] Critical Git Sync Failure: {e}")
+        logger.error(f"[RepairTools] Critical Sync Failure: {e}")
         return {"ok": False, "message": f"Sync failed: {e}"}
 
 

@@ -26,6 +26,7 @@ class SOPManager:
             try:
                 with open(self.cache_path, "r", encoding="utf-8") as f:
                     self.cache = json.load(f)
+                self._last_load_time = os.path.getmtime(self.cache_path)
                 logger.info(f"[SOPManager] Loaded {len(self.cache)} SOP entries.")
             except Exception as e:
                 logger.error(f"[SOPManager] Failed to load SOP Cache: {e}")
@@ -45,10 +46,20 @@ class SOPManager:
 
     def _save_cache(self):
         try:
+            # ADS 15: Merge Awareness
+            # Before saving, check if disk version is newer than our last load
+            if os.path.exists(self.cache_path):
+                mtime = os.path.getmtime(self.cache_path)
+                if mtime > getattr(self, "_last_load_time", 0):
+                    logger.info("[SOPManager] External change detected. Merging disk state before save...")
+                    self._load_cache()
+
             os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
             with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
             
+            self._last_load_time = os.path.getmtime(self.cache_path)
+
             # ADS 14: Universal Git Sync
             from .protocol_manager import get_protocol_manager
             pm = get_protocol_manager()

@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Data directory
-DATA_DIR = "/app/data"
+DATA_DIR = "/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def _get_verified_token(provided_token: str) -> bool:

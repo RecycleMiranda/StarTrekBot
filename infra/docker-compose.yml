@@ -6,13 +6,12 @@ services:
       - ../services/bot/.env
     environment:
       - NAPCAT_HOST=napcat
-      - PROTOCOLS_PATH=/app/data/federation_protocols.json
-      - STANDARDS_MD_PATH=/app/data/FEDERATION_STANDARDS.md
-      - SOP_CACHE_PATH=/app/data/SOP_CACHE.json
+      - PROTOCOLS_PATH=/data/federation_protocols.json
+      - STANDARDS_MD_PATH=/data/FEDERATION_STANDARDS.md
+      - SOP_CACHE_PATH=/data/SOP_CACHE.json
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no
     volumes:
-      - ..:/app
-      - ../data:/app/data
+      - ./data:/data
       - ~/.ssh:/root/.ssh:ro
     working_dir: /app/services/bot
     ports:

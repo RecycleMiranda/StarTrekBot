@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = os.path.join("/app/data", "settings.json")
+CONFIG_PATH = os.path.join("/data", "settings.json")
 
 DEFAULT_CONFIG = {
     "enabled_groups": os.getenv("BOT_ENABLED_GROUPS", "*"),

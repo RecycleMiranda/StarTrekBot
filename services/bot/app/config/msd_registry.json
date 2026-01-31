@@ -209,6 +209,17 @@
               "unit": "MW",
               "default": 1250.0
             },
+            "hull_integrity": {
+              "unit": "%",
+              "default": 100.0,
+              "nominal": 100.0,
+              "linked_to_state": {
+                "NOMINAL": 100.0,
+                "REINFORCED": 110.0,
+                "DEGRADED": 45.0,
+                "OFFLINE": 0.0
+              }
+            },
             "hull_stress": {
               "unit": "kPa",
               "default": 0.0
@@ -866,4 +877,5 @@
         }
       }
     }
-  }}
+  }
+}

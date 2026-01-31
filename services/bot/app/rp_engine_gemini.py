@@ -494,13 +494,14 @@ The output MUST adhere to the following schema:
 }}
 
 GUIDELINES:
-1. **Separation of Concerns**: You are the Architect. You decide *what* to show and *how* it is grouped. The Render Engine will handle fonts and pixels.
-2. **Data Integrity**: If data is missing for a key field (e.g. Dimensions), omit that key-value pair. Do not invent numbers.
-3. **Bilingual Strategy**:
+1. **Direct Answer First (MANDATORY)**: If the user asked a specific question (e.g., 'How many ships?', 'What is the status of X?'), you MUST provide a clear, concise natural language answer as the VERY FIRST part of your `reply` field, anchored in the `Raw Data`.
+2. **Separation of Concerns**: You are the Architect. You decide *what* to show and *how* it is grouped. The Render Engine will handle fonts and pixels.
+3. **Data Integrity**: If data is missing for a key field (e.g. Dimensions), omit that key-value pair. Do not invent numbers. UNLESS you use a tool to formalize your discovery first.
+4. **Bilingual Strategy**:
    - `kv_grid`: Keys should be English (Standard). Values can be mixed.
    - `text_block`: Use English as primary. You may include Chinese translation in `()` or as a separate paragraph if the user requested Chinese.
-4. **Zebra Striping**: The `kv_grid` will be automatically rendered with zebra stripes. Use it for ANY technical specifications.
-5. **No Markdown**: The `content` strings must be plain text.
+5. **Zebra Striping**: The `kv_grid` will be automatically rendered with zebra stripes. Use it for ANY technical specifications.
+6. **No Markdown**: The `content` strings must be plain text.
 
 Raw Data for Synthesis:
 {raw_data}

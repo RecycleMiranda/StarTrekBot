@@ -78,7 +78,7 @@ class ConfigManager:
             # ADS 14: Universal Git Sync
             from .protocol_manager import get_protocol_manager
             pm = get_protocol_manager()
-            pm.git_sync(f"LCARS: Updated system configuration", extra_files=[CONFIG_PATH])
+            pm.git_sync(f"LCARS: Updated system configuration")
             return True
         except Exception as e:
             logger.error(f"Failed to save settings.json: {e}")

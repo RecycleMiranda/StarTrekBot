@@ -258,10 +258,14 @@ def git_sync_changes(file_paths: list[Path], message: str) -> dict:
         subprocess.run(["git", "config", "user.email", "bot@lcars.starfleet"], cwd=repo_root, check=True)
         
         # 2. Aggressive Staging
-        # Stage requested files
+        # Stage requested files (with Firewall)
         for f in file_paths:
             try:
                 rel = os.path.relpath(str(f), repo_root)
+                # ADS 6.6 SECURITY: Path Blacklist (Prevention of credential leakage)
+                if "data/" in rel or "settings.json" in rel:
+                    logger.warning(f"[GitFirewall] BLOCKED staging of sensitive path: {rel}")
+                    continue
                 subprocess.run(["git", "add", rel], cwd=repo_root, check=True)
             except: pass
             

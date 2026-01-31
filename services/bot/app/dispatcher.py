@@ -239,6 +239,13 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
         "execute_procedure": "execute_procedure",
         "start_procedure": "execute_procedure",
         "run_sequence": "execute_procedure",
+        # 6.0 Tactical & Grounded Creativity Aliases
+        "scan": "sci_execute",
+        "sensor_scan": "sci_execute",
+        "tactical_scan": "analyze_tactical_situation",
+        "analyze_sensors": "sci_execute",
+        "register_contact": "register_sensor_contact",
+        "formalize_discovery": "register_sensor_contact"
     }
 
 
@@ -797,6 +804,42 @@ async def _execute_tool(tool: str, args: dict, event: InternalEvent, profile: di
                 **args
             )
 
+        # --- ADS 6.0/6.5 TACTICAL GATEWAYS ---
+        elif tool == "sci_execute":
+            result = tools.sci_execute(
+                action=args.get("action", "SCAN"),
+                scan_type=args.get("scan_type", "standard"),
+                focus=args.get("focus"),
+                range=float(args.get("range", 1.0)),
+                clearance=profile.get("clearance", 1)
+            )
+        elif tool == "analyze_tactical_situation":
+            result = tools.analyze_tactical_situation(clearance=profile.get("clearance", 1))
+        elif tool == "ops_execute":
+            result = tools.ops_execute(
+                action=args.get("action", "REPORT"),
+                item=args.get("item"),
+                destination=args.get("destination"),
+                frequency=args.get("frequency"),
+                clearance=profile.get("clearance", 1)
+            )
+        elif tool == "eng_execute":
+            result = tools.eng_execute(
+                action=args.get("action", "STATUS"),
+                system=args.get("system", "EPS"),
+                source=args.get("source"),
+                sink=args.get("sink"),
+                value=args.get("value"),
+                clearance=profile.get("clearance", 1)
+            )
+        elif tool == "register_sensor_contact":
+            result = tools.register_sensor_contact(
+                target_id=args.get("target_id") or args.get("name", "Unknown-Target"),
+                class_name=args.get("class_name") or args.get("class", "Unknown"),
+                distance=args.get("distance") or args.get("range", "Unknown"),
+                extra_data=args.get("extra_data") or args.get("notes")
+            )
+
         elif tool == "get_repair_module_outline":
             result = tools.get_repair_module_outline(
                 args.get("module") or args.get("name", ""),
@@ -1195,6 +1238,11 @@ async def _execute_ai_logic(event: InternalEvent, user_profile: dict, session_id
                 if tool_result and tool_result.get("ok"):
                     msg = tool_result.get("message", "") or "OK"
                     cumulative_data.append(f"ACTION ({tool}): {msg}")
+            
+            # Bridge real-time state to the SOP synthesis
+            odn_snapshot = context_bus.get_odn_snapshot(session_id, user_profile)
+            snapshot_str = context_bus.format_snapshot_for_prompt(odn_snapshot)
+            cumulative_data.append(f"SYSTEM_STATE_SNAPSHOT:\n{snapshot_str}")
             
             # If SOP execution is finished, synthesize the result
             terminate_agent_loop = True 

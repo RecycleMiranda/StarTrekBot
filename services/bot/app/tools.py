@@ -2230,6 +2230,36 @@ def get_mission_logs(log_type: str = "tactical", page: int = 0, filter_event: Op
             "has_next": res["has_next"]
         }
 
+def register_sensor_contact(target_id: str, class_name: str = "Unknown", distance: str = "Unknown", extra_data: Optional[str] = None, **kwargs) -> Dict:
+    """
+    ADS 6.5: Grounded Creativity Bridge.
+    Allows the AI to formalize a 'discovered' contact into the ship's sensor logs.
+    This ensures that AI creativity is persisted and consistent across sessions.
+    """
+    import datetime
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    log_path = os.path.join(base_path, "tactical", "SENSOR_LOGS.md")
+    
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"{timestamp} [ACQUISITION] TARGET_ID: {target_id}, CLASS: {class_name}, RANGE: {distance}"
+    if extra_data:
+        entry += f", DATA: {extra_data}"
+    
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+        
+        logger.info(f"[Tools] Grounded Creativity: Formalized contact {target_id} into SENSOR_LOGS.")
+        return {
+            "ok": True,
+            "message": f"SENSOR RECORD UPDATED: Contact {target_id} ({class_name}) formalized at {distance}. Context synchronized.",
+            "entry": entry
+        }
+    except Exception as e:
+        logger.error(f"Failed to register sensor contact: {e}")
+        return {"ok": False, "message": f"Sensor Registry Error: {str(e)}"}
+
 def execute_procedure_direct(procedure_id: str, session_id: str, clearance: int = 1, **kwargs) -> Dict:
     """
     ADS 6.0: Procedural Execution Entry Point.

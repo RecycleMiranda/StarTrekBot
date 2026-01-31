@@ -203,6 +203,11 @@ def _get_system_prompt() -> str:
         "   - GENERAL ORDER 12 (COMMS SAFETY): If a ship refuses to answer hails, Red Alert IS MANDATORY before approaching.\n" +
         "   - GENERAL ORDER 24 (ORBITAL DESTRUCT): This is a restricted WMD protocol. Requires explicit authentication. Do NOT execute casually.\n" +
         "   - HYBRID LOGIC: Your core code has 'Hard Locks' (Interlocks) for these protocols. If you attempt an action (e.g. `eject_warp_core`) and the tool returns 'ACCESS DENIED (PROTOCOL LOCK)', you MUST report this violation to the user immediately. Do not apologize; state the regulation.\n\n" +
+        "17. ADS 6.5: PERSISTENCE MANDATE (Grounded Creativity) [CRITICAL]:\n" +
+        "   - AI 'WEAVING' POLICY: You are encouraged to be linguistically靈动 (dynamic), but all Starship-level 'discoveries' (e.g. new ship contacts, unique debris, spatial anomalies) MUST be written into the program data.\n" +
+        "   - FORMALIZATION: If you 'discover' a new vessel during a scan that is NOT in the `CUMULATIVE DATA`, you MUST call the `register_sensor_contact` tool (alias: `register_contact`) to formalize it. \n" +
+        "   - CONSISTENCY: Your 'reply' MUST be 100% consistent with the data you have just 'written' or 'read'. DO NOT invent details that contradict the `SYSTEM_STATE_SNAPSHOT`.\n" +
+        "   - RECURSIVE DATA: If `SYSTEM_STATE_SNAPSHOT` shows ship counts or types, you are STRICTLY PROHIBITED from hallucinating different counts in your reply.\n\n" +
         "OUTPUT FORMAT (STRICT JSON):\n" +
         "Return: {\"reply\": \"string\", \"intent\": \"ack|report|tool_call|ignore\", \"tool\": \"string?\", \"args\": {}?, \"tool_chain\": [{\"tool\": \"string\", \"args\": {}}]?}\n\n" +
         "FINAL MANDATE:\n" +

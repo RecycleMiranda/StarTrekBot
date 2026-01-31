@@ -11,7 +11,7 @@ class SOPManager:
     
     def __init__(self):
         self.base_path = os.path.dirname(os.path.abspath(__file__))
-        self.cache_path = os.path.join(self.base_path, "config", "SOP_CACHE.json")
+        self.cache_path = os.getenv("SOP_CACHE_PATH", os.path.join(self.base_path, "config", "SOP_CACHE.json"))
         self.cache = {}
         self._load_cache()
 
@@ -22,27 +22,45 @@ class SOPManager:
         return cls._instance
 
     def _load_cache(self):
+        # 1. Try to load from the target path (likely persistent volume)
         if os.path.exists(self.cache_path):
             try:
                 with open(self.cache_path, "r", encoding="utf-8") as f:
                     self.cache = json.load(f)
                 self._last_load_time = os.path.getmtime(self.cache_path)
-                logger.info(f"[SOPManager] Loaded {len(self.cache)} SOP entries.")
+                logger.info(f"[SOPManager] Loaded {len(self.cache)} SOP entries from {self.cache_path}")
+                return
             except Exception as e:
                 logger.error(f"[SOPManager] Failed to load SOP Cache: {e}")
-                self.cache = {}
-        else:
-            self.cache = {
-                "system_defaults": {
-                    "report_status": {
-                        "trigger": ["report status", "报告状态", "报一下状态"],
-                        "tool_chain": [{"tool": "get_status", "args": {"scope": "all", "depth": "summary"}}],
-                        "confidence": 1.0
-                    }
-                },
-                "learned_procedures": {}
-            }
-            self._save_cache()
+
+        # 2. Fallback: Initialize from template in the app directory
+        template_path = os.path.join(self.base_path, "config", "SOP_CACHE.json")
+        if self.cache_path != template_path and os.path.exists(template_path):
+            try:
+                logger.info(f"[SOPManager] Initializing persistent SOP cache from template: {template_path}")
+                with open(template_path, "r", encoding="utf-8") as f:
+                    self.cache = json.load(f)
+                
+                # Immediately save to the persistent location
+                os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
+                with open(self.cache_path, "w", encoding="utf-8") as f:
+                    json.dump(self.cache, f, indent=2, ensure_ascii=False)
+                return
+            except Exception as e:
+                logger.error(f"[SOPManager] Failed to initialize SOP from template: {e}")
+
+        # 3. Last Resort: Hardcoded Default
+        self.cache = {
+            "system_defaults": {
+                "report_status": {
+                    "trigger": ["report status", "报告状态", "报一下状态"],
+                    "tool_chain": [{"tool": "get_status", "args": {"scope": "all", "depth": "summary"}}],
+                    "confidence": 1.0
+                }
+            },
+            "learned_procedures": {}
+        }
+        self._save_cache()
 
     def _save_cache(self):
         try:

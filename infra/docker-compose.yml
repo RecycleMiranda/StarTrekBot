@@ -6,8 +6,9 @@ services:
       - ../services/bot/.env
     environment:
       - NAPCAT_HOST=napcat
-      - PROTOCOLS_PATH=/app/services/bot/app/config/federation_protocols.json
-      - STANDARDS_MD_PATH=/app/services/bot/app/FEDERATION_STANDARDS.md
+      - PROTOCOLS_PATH=/app/data/federation_protocols.json
+      - STANDARDS_MD_PATH=/app/data/FEDERATION_STANDARDS.md
+      - SOP_CACHE_PATH=/app/data/SOP_CACHE.json
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no
     volumes:
       - ..:/app

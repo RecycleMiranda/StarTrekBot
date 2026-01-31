@@ -10,6 +10,7 @@ import json
 import asyncio
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+from .signal_hub import get_signal_hub
 from .sentinel import SentinelRegistry
 
 logger = logging.getLogger(__name__)
@@ -2229,7 +2230,7 @@ def get_mission_logs(log_type: str = "tactical", page: int = 0, filter_event: Op
             "has_next": res["has_next"]
         }
 
-def execute_procedure(procedure_id: str, session_id: str, clearance: int = 1, **kwargs) -> Dict:
+def execute_procedure_direct(procedure_id: str, session_id: str, clearance: int = 1, **kwargs) -> Dict:
     """
     ADS 6.0: Procedural Execution Entry Point.
     Executes a multi-step protocol (e.g. cold start, shield modulation) asynchronously.

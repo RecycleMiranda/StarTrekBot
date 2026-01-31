@@ -139,24 +139,24 @@ class DiagnosticManager:
             
             repair_res = loop.run_until_complete(ra.async_autopilot_repair(module, repair_context))
                 
-                if repair_res.get("ok"):
-                    logger.info(f"[ADS] Autopilot successfully applied bypass to {module}")
-                    entry.status = "BYPASS_ACTIVE"
-                    self._write_report()
-                    registry_path = self._register_bypass(entry, module)
-                    
-                    # SYNC TO GITHUB: Final closure of the bypass event
-                    pm = get_protocol_manager()
-                    pm.git_sync(
-                        f"ADS: Autonomous Subspace Bypass patch applied for {entry.id}", 
-                        extra_files=[
-                            DIAGNOSTIC_REPORT_PATH, 
-                            registry_path, 
-                            str(os.path.join(APP_DIR_FULL, module)) # Use full path to the patched file
-                        ]
-                    )
-                else:
-                    logger.warning(f"[ADS] Autopilot failed for {entry.id}: {repair_res.get('message')}")
+            if repair_res.get("ok"):
+                logger.info(f"[ADS] Autopilot successfully applied bypass to {module}")
+                entry.status = "BYPASS_ACTIVE"
+                self._write_report()
+                registry_path = self._register_bypass(entry, module)
+                
+                # SYNC TO GITHUB: Final closure of the bypass event
+                pm = get_protocol_manager()
+                pm.git_sync(
+                    f"ADS: Autonomous Subspace Bypass patch applied for {entry.id}", 
+                    extra_files=[
+                        DIAGNOSTIC_REPORT_PATH, 
+                        registry_path, 
+                        str(os.path.join(APP_DIR_FULL, module)) # Use full path to the patched file
+                    ]
+                )
+            else:
+                logger.warning(f"[ADS] Autopilot failed for {entry.id}: {repair_res.get('message')}")
 
         except Exception as e:
             logger.error(f"[ADS] AI Diagnosis failed for {entry.id}: {e}")

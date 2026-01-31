@@ -74,6 +74,11 @@ class ConfigManager:
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.info("Configuration saved to settings.json")
+            
+            # ADS 14: Universal Git Sync
+            from .protocol_manager import get_protocol_manager
+            pm = get_protocol_manager()
+            pm.git_sync(f"LCARS: Updated system configuration", extra_files=[CONFIG_PATH])
             return True
         except Exception as e:
             logger.error(f"Failed to save settings.json: {e}")

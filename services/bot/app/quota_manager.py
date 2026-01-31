@@ -34,6 +34,11 @@ class QuotaManager:
     def _save_data(self):
         with open(self.db_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
+        
+        # ADS 14: Universal Git Sync
+        from .protocol_manager import get_protocol_manager
+        pm = get_protocol_manager()
+        pm.git_sync(f"LCARS: Updated user quotas/balances", extra_files=[self.db_path])
 
     def get_balance(self, user_id: str, rank: str = "Ensign") -> int:
         user_id = str(user_id)

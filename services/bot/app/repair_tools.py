@@ -224,77 +224,72 @@ def rollback_module(module_name: str, backup_index: int = 0) -> dict:
 
 def git_sync_changes(file_paths: list[Path], message: str) -> dict:
     """
-    Commit and push multiple files to git.
-    Includes auto-configuration of git identity for server environments.
+    Enhanced Git Sync: Commits and pushes changes with high reliability.
+    Implicitly stages ALL modified tracked files to prevent 'dirty repo' blocking.
     """
     try:
-        if not file_paths:
-            return {"ok": True, "message": "No files provided."}
-
         # In Docker, we map the repo root directly to /app
         repo_root = "/app" if os.path.exists("/app/.git") else None
         
-        first_file = file_paths[0]
         if not repo_root:
+            # Fallback for local
             try:
+                # Use current file's parent as start for search
                 repo_root = subprocess.check_output(
                     ["git", "rev-parse", "--show-toplevel"], 
-                    cwd=str(first_file.parent), 
+                    cwd=str(APP_BASE), 
                     stderr=subprocess.DEVNULL
                 ).decode().strip()
             except:
-                # Fallback to current working directory or APP_BASE parent
                 repo_root = str(APP_BASE.parent.parent)
 
-        logger.info(f"[RepairTools] Syncing {len(file_paths)} files in repo: {repo_root}")
+        if not os.path.exists(os.path.join(repo_root, ".git")):
+            return {"ok": False, "message": "Not a git repository."}
 
-        # 1. Ensure Git Identity
-        try:
-            subprocess.run(["git", "config", "user.name"], cwd=repo_root, check=True, capture_output=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.info("[RepairTools] Configuring default Git identity...")
-            subprocess.run(["git", "config", "user.name", "StarTrekBot"], cwd=repo_root, check=True)
-            subprocess.run(["git", "config", "user.email", "bot@lcars.starfleet"], cwd=repo_root, check=True)
+        logger.info(f"[RepairTools] Universal Sync initiated in: {repo_root}")
+
+        # 1. Identity Assurance
+        subprocess.run(["git", "config", "user.name", "StarTrekBot"], cwd=repo_root, check=True)
+        subprocess.run(["git", "config", "user.email", "bot@lcars.starfleet"], cwd=repo_root, check=True)
         
-        # 2. Add files
-        rel_paths = []
+        # 2. Aggressive Staging
+        # Stage specific files requested
         for f in file_paths:
             try:
                 rel = os.path.relpath(str(f), repo_root)
                 subprocess.run(["git", "add", rel], cwd=repo_root, check=True)
-                rel_paths.append(rel)
-            except Exception as e:
-                logger.warning(f"[RepairTools] Failed to stage {f}: {e}")
+            except: pass
+            
+        # IMPORTANT: Stage all other MODIFIED tracked files (Prevents 'git pull' blocks)
+        subprocess.run(["git", "add", "-u"], cwd=repo_root, check=True)
         
-        if not rel_paths:
-            return {"ok": False, "message": "No valid files were staged."}
-
-        # 3. Commit
-        # Check if there are actually changes to commit
-        status = subprocess.run(["git", "status", "--porcelain"] + rel_paths, cwd=repo_root, capture_output=True, text=True)
+        # 3. Commit Check
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True)
         if not status.stdout.strip():
-            logger.info(f"[RepairTools] No changes detected for provided files. Skipping commit.")
-            return {"ok": True, "message": "No changes to sync."}
+            logger.info("[RepairTools] No changes to commit.")
+            return {"ok": True, "message": "Repository is clean."}
 
         subprocess.run(["git", "commit", "-m", message], cwd=repo_root, check=True)
         
-        # 4. Push 
+        # 4. Pull & Push (Rebase to avoid merge commits)
         try:
-            subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, timeout=15, capture_output=True)
-            logger.info(f"[RepairTools] Git push successful for {len(rel_paths)} files")
-        except Exception as e:
-            logger.warning(f"[RepairTools] Git push failed (but commit succeeded): {e}")
-            return {"ok": True, "message": "Changes committed locally, but push failed (check network/auth)."}
+            # Try to rebase first to stay clean
+            logger.info("[RepairTools] Fetching and rebasing from remote...")
+            subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=repo_root, check=True, timeout=30)
             
-        return {"ok": True, "message": f"Successfully synced {len(rel_paths)} files to git."}
-        
-    except subprocess.CalledProcessError as e:
-        err_msg = e.stderr.decode() if e.stderr else str(e)
-        logger.error(f"[RepairTools] Git error: {err_msg}")
-        return {"ok": False, "message": f"Git sync failed: {err_msg}"}
+            subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, timeout=30)
+            logger.info("[RepairTools] Universal Git Sync COMPLETE.")
+            return {"ok": True, "message": f"Synced to GitHub: {message}"}
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.decode() if e.stderr else str(e)
+            logger.warning(f"[RepairTools] Sync non-fatal error (usually push conflict): {err_msg}")
+            # If rebase fails, we might be in a conflict. Stash and Move on?
+            # For now, just exit with warning.
+            return {"ok": True, "message": f"Committed locally, but remote sync delayed: {err_msg}"}
+            
     except Exception as e:
-        logger.error(f"[RepairTools] Git unexpected error: {e}")
-        return {"ok": False, "message": f"Git sync failed: {e}"}
+        logger.error(f"[RepairTools] Critical Git Sync Failure: {e}")
+        return {"ok": False, "message": f"Sync failed: {e}"}
 
 
 def write_module(module_name: str, content: str, create_backup: bool = True, force: bool = False) -> dict:

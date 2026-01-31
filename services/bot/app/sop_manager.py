@@ -48,6 +48,11 @@ class SOPManager:
             os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
             with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
+            
+            # ADS 14: Universal Git Sync
+            from .protocol_manager import get_protocol_manager
+            pm = get_protocol_manager()
+            pm.git_sync(f"LCARS: Updated SOP Cache ({len(self.cache.get('learned_procedures', {}))} learned)", extra_files=[self.cache_path])
         except Exception as e:
             logger.error(f"[SOPManager] Failed to save SOP Cache: {e}")
 
